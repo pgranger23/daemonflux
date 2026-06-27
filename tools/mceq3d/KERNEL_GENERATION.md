@@ -138,8 +138,22 @@ python splice_kernels.py mom_piplus_low.npz mom_piplus_high.npz \
 ```
 
 `m_spliced.npz` is now a **drop-in replacement** for the file of the same name in
-the repo. Repeat the three commands for `--sec piminus`, `Kplus`, `Kminus`
-(changing `--out` names, e.g. `m_spliced_Kplus.npz`) to produce the full set.
+the repo.
+
+**Filenames matter — use these exact names** (they are hard-coded in the solver
+and in `channel_comparison.py`; do not invent variants like `m_spliced_piplus`):
+
+| secondary | final spliced filename            |
+|-----------|-----------------------------------|
+| `piplus`  | **`m_spliced.npz`** (the default drop-in loaded by ~10 modules + the tests; it *is* the π⁺ channel) |
+| `piminus` | `m_piminus.npz`                   |
+| `Kplus`   | `m_Kplus.npz`                     |
+| `Kminus`  | `m_Kminus.npz`                    |
+
+Repeat the §3 commands for the other three secondaries, writing each splice to the
+filename above. If you prefer a self-documenting original, splice π⁺ to
+`m_spliced_piplus.npz` and then `cp m_spliced_piplus.npz m_spliced.npz` — but the
+file the code loads by default **must** be named `m_spliced.npz`.
 
 ### Sanity check (prints automatically)
 
