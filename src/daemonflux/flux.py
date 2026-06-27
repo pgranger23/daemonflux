@@ -121,6 +121,7 @@ class Flux:
         uncorrelated_hadr_errors=False,
         exclude=[],
         keep_old_revisions=False,
+        geomag_location=None,
         debug=1,
     ) -> None:
         """
@@ -145,6 +146,10 @@ class Flux:
             A list of parameters to be excluded, default is an empty list.
         keep_old_revisions : bool, optional
             Flag indicating whether to keep old spline file revisions, default is False.
+        geomag_location : str, GeomagneticSite, GeomagneticModel or None, optional
+            Enable 3D geomagnetic corrections for this location. Accepts a known
+            site name (e.g. "kamioka"), a ``GeomagneticSite``/``GeomagneticModel``
+            instance, or ``None`` (default) for the unmodified 1D model.
         debug : int, optional
             Debug level, default is 1.
         """
@@ -176,6 +181,36 @@ class Flux:
         self._load_splines(spl_file, cal_file)
         if not keep_old_revisions:
             self._cleanup_old_revisions()
+        if geomag_location is not None:
+            self.set_geomagnetic_model(geomag_location)
+
+    def set_geomagnetic_model(self, model, exp=None) -> None:
+        """Enable, replace, or clear the 3D geomagnetic correction.
+
+        Parameters
+        ----------
+        model : str, GeomagneticSite, GeomagneticModel or None
+            A known site name (see ``daemonflux.geomagnetic.KNOWN_SITES``), a
+            ``GeomagneticSite``/``GeomagneticModel`` instance, or ``None`` to
+            restore the unmodified 1D behaviour.
+        exp : str or None, optional
+            Apply the model only to this location/experiment. By default the
+            model is applied to every location in the file.
+        """
+        from .geomagnetic import GeomagneticModel, GeomagneticSite
+
+        if model is not None and not isinstance(model, GeomagneticModel):
+            if isinstance(model, (str, GeomagneticSite)):
+                model = GeomagneticModel(model)
+            else:
+                raise TypeError(
+                    "geomagnetic model must be a str, GeomagneticSite, "
+                    "GeomagneticModel or None"
+                )
+
+        targets = self.supported_fluxes if exp is None else [exp]
+        for label in targets:
+            self.__getattribute__(label).set_geomagnetic_model(model)
 
     def _cleanup_old_revisions(self):
         """
@@ -386,7 +421,7 @@ class Flux:
         """
         return self._get_flux_instance(exp)._params
 
-    def flux(self, energy, zenith_deg, quantity, params={}, exp=""):
+    def flux(self, energy, zenith_deg, quantity, params={}, exp="", azimuth_deg=None):
         """
         The flux of a given quantity for the specified energy energy and zenith angles.
 
@@ -403,6 +438,10 @@ class Flux:
             The type of flux to be returned.
         params : Dict[str, float], optional
             A dictionary of parameter values to shift daemonflux off the baseline.
+        azimuth_deg : float, np.ndarray or None, optional
+            Geographic azimuth in degrees (N=0, E=90, S=180, W=270). Only has an
+            effect when a geomagnetic model is attached (see
+            :meth:`set_geomagnetic_model`).
 
         Returns
         -------
@@ -414,9 +453,19 @@ class Flux:
         Exception
             If `zenith_deg` is "average" but splines do not contain average flux.
         """
-        return self._get_flux_instance(exp).flux(energy, zenith_deg, quantity, params)
+        return self._get_flux_instance(exp).flux(
+            energy, zenith_deg, quantity, params, azimuth_deg=azimuth_deg
+        )
 
-    def error(self, energy, zenith_deg, quantity, only_hadronic=False, exp=""):
+    def error(
+        self,
+        energy,
+        zenith_deg,
+        quantity,
+        only_hadronic=False,
+        exp="",
+        azimuth_deg=None,
+    ):
         """
         The flux of a given quantity for the specified energy energy and zenith angles.
 
@@ -449,6 +498,7 @@ class Flux:
             zenith_deg,
             quantity,
             only_hadronic,
+            azimuth_deg=azimuth_deg,
         )
 
     def chi2(self, params={}, exp=""):
@@ -510,6 +560,9 @@ class _FluxEntry(Flux):
         self._jac_spl = jac_spl
         self._params = params
         self._debug = debug
+        # Optional geomagnetic (3D) model. When None, the evaluator behaves
+        # exactly as the published 1D daemonflux.
+        self._geomag = None
         assert self._fl_spl is not None, "Splines have to be initialized"
         assert self._jac_spl is not None, "Jacobians required for error estimate"
         self._spl_contains_average = "average" in self._fl_spl
@@ -530,6 +583,47 @@ class _FluxEntry(Flux):
             The list of formatted zenith angles.
         """
         return [format_angle(a) for a in self._zenith_deg_arr]
+
+    def set_geomagnetic_model(self, model) -> None:
+        """Attach (or clear, with ``None``) a geomagnetic model to this entry."""
+        self._geomag = model
+
+    def _apply_geomag(
+        self,
+        base: np.ndarray,
+        energy: Union[np.ndarray, float],
+        zenith_deg: Union[float, str, np.ndarray],
+        quantity: str,
+        azimuth_deg,
+    ) -> np.ndarray:
+        """Multiply a 1D flux/error by the geomagnetic admittance.
+
+        No-op (returns ``base`` unchanged) when no geomagnetic model is
+        attached, preserving the published 1D behaviour. When a model is
+        attached but ``azimuth_deg`` is ``None``, the azimuth-averaged
+        admittance is applied (still captures the latitude/low-energy cutoff).
+        """
+        if self._geomag is None:
+            return base
+        if isinstance(zenith_deg, str):
+            if zenith_deg == "average":
+                # Azimuth-averaged geomagnetic cutoff is ill-defined for a
+                # flux already averaged over zenith; leave it untouched.
+                return base
+            zenith_val = float(zenith_deg)
+        elif is_iterable(zenith_deg):
+            # The admittance broadcasting assumes a single zenith per call
+            # (azimuth occupies the leading axis). Reject array zenith with an
+            # active geomagnetic model rather than mis-broadcasting silently.
+            raise NotImplementedError(
+                "Geomagnetic corrections currently support a single zenith angle "
+                "per call. Loop over zenith angles, or disable the model with "
+                "set_geomagnetic_model(None)."
+            )
+        else:
+            zenith_val = float(zenith_deg)
+        adm = self._geomag.admittance(quantity, energy, zenith_val, azimuth_deg)
+        return np.squeeze(np.asarray(base) * adm)
 
     @contextmanager
     def _temporary_parameters(self, modified_params: dict):
@@ -750,6 +844,7 @@ class _FluxEntry(Flux):
         zenith_deg: Union[float, str, np.ndarray],
         quantity: str,
         params: Dict[str, float] = {},
+        azimuth_deg: Union[float, np.ndarray, None] = None,
     ) -> Union[float, np.ndarray]:
         """
         Compute the flux at the given energy energy, zenith angle, and quantity.
@@ -765,6 +860,11 @@ class _FluxEntry(Flux):
             The type of flux to be returned.
         params : Dict[str, float], optional
             A dictionary of parameter values to shift daemonflux off the baseline.
+        azimuth_deg : float, np.ndarray or None, optional
+            Geographic azimuth in degrees (N=0, E=90, S=180, W=270). Only has an
+            effect when a geomagnetic model is attached (see
+            :meth:`Flux.set_geomagnetic_model`). When ``None`` and a model is
+            attached, the azimuth-averaged geomagnetic cutoff is applied.
 
         Returns
         -------
@@ -781,15 +881,16 @@ class _FluxEntry(Flux):
         if isinstance(zenith_deg, str) and zenith_deg == "average":
             if not self._spl_contains_average:
                 raise Exception("Splines do not contain average flux")
-            return self._flux_from_spl(energy, zenith_deg, quantity, params)
-
+            base = self._flux_from_spl(energy, zenith_deg, quantity, params)
         # handle the case where the zenith angle is a single value or an array
-        if not is_iterable(zenith_deg) and float(zenith_deg) in self._zenith_deg_arr:
-            return self._flux_from_spl(
+        elif not is_iterable(zenith_deg) and float(zenith_deg) in self._zenith_deg_arr:
+            base = self._flux_from_spl(
                 energy, format_angle(float(zenith_deg)), quantity, params
             )
         else:
-            return self._flux_from_interp(energy, zenith_deg, quantity, params)
+            base = self._flux_from_interp(energy, zenith_deg, quantity, params)
+
+        return self._apply_geomag(base, energy, zenith_deg, quantity, azimuth_deg)
 
     def error(
         self,
@@ -797,6 +898,7 @@ class _FluxEntry(Flux):
         zenith_deg: Union[float, str],
         quantity: str,
         only_hadronic: bool = False,
+        azimuth_deg: Union[float, np.ndarray, None] = None,
     ) -> Union[float, np.ndarray]:
         """
         Return the error of the flux estimation for the given parameters.
@@ -814,6 +916,11 @@ class _FluxEntry(Flux):
         only_hadronic : bool, optional
             Whether to only include the hadronic error, excluding the cosmic ray flux
             error, by default False.
+        azimuth_deg : float, np.ndarray or None, optional
+            Geographic azimuth in degrees (N=0, E=90, S=180, W=270). Only has an
+            effect when a geomagnetic model is attached. The same admittance that
+            scales the flux also scales its absolute error (the relative error is
+            preserved), so the error inherits the East--West asymmetry.
 
         Returns
         -------
@@ -831,15 +938,16 @@ class _FluxEntry(Flux):
         if isinstance(zenith_deg, str) and zenith_deg == "average":
             if not self._spl_contains_average:
                 raise Exception("Splines do not contain average flux")
-            return self._error_from_spl(energy, zenith_deg, quantity, only_hadronic)
-
+            base = self._error_from_spl(energy, zenith_deg, quantity, only_hadronic)
         # handle the case where the zenith angle is a single value or an array
-        if not is_iterable(zenith_deg) and float(zenith_deg) in self._zenith_deg_arr:
-            return self._error_from_spl(
+        elif not is_iterable(zenith_deg) and float(zenith_deg) in self._zenith_deg_arr:
+            base = self._error_from_spl(
                 energy, format_angle(zenith_deg), quantity, only_hadronic
             )
         else:
-            return self._error_from_interp(energy, zenith_deg, quantity, only_hadronic)
+            base = self._error_from_interp(energy, zenith_deg, quantity, only_hadronic)
+
+        return self._apply_geomag(base, energy, zenith_deg, quantity, azimuth_deg)
 
     def chi2(self, params={}):
         """

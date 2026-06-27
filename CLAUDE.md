@@ -24,7 +24,7 @@ pytest tests/test_daemonflux.py::test_name -vv
 
 ## Code Quality
 
-- **Formatter**: Black (max line length 90)
+- **Formatter**: Black (default settings, line length 88; pre-commit hook psf/black 24.4.2)
 - **Linter**: Flake8 (config in setup.cfg, ignore E203)
 - **Docstrings**: NumPy convention
 - Pre-commit hooks configured in `.pre-commit-config.yaml`
@@ -38,6 +38,13 @@ The package source lives in `src/daemonflux/`. There are three core classes in `
 - **`Parameters`** — Manages model parameters, their covariance/inverse-covariance matrices, and supports iteration. Provides `errors`, `invcov`, and `chi2` properties.
 
 `utils.py` contains helpers for file downloading/caching, angle formatting, covariance matrix operations, and the list of supported flux quantities.
+
+`geomagnetic.py` provides the optional 3D / geomagnetic extension. `GeomagneticModel`
+computes a directional admittance factor `G(E, zenith, azimuth) ∈ [0, 1]` (Störmer
+cutoff + penumbral admittance) that `_FluxEntry` multiplies onto the 1D flux/error.
+When no model is attached (default), behaviour is identical to the published 1D model.
+The model is the single plug-point for replacing the analytic cutoff with admittance
+ratios from a full 3D Monte-Carlo. See README "3D / geomagnetic corrections".
 
 Data files (`src/daemonflux/data/`) are pickled scipy spline objects for different detector locations (generic, Kamioka) and calibration sets (default, with_deis). They are downloaded from GitHub on first use and cached locally.
 
