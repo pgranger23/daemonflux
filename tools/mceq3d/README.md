@@ -472,10 +472,22 @@ pytest test_geomag_backtrace.py test_muon_bending.py -q
     horizon (off-axis excess). `muon_bending.py` now gives the **coherent
     charge-dependent E-W shift** (mu+ ~+3° east, mu- ~-3° west; ~3° ν/ν̄ split
     sub-GeV, ~0.3° summed). `spherical_streaming.png`, `muon_bending.png`.
-18. Genuinely remaining (cluster / final coupling):
-    * **high-statistics double-differential kernels** — the cluster campaign
-      (~10 core-hours for the `theta1(E)` variance set; ~100–200 for full-shape +
-      hadronic systematics; only `theta1(E)` is used so far);
-    * **couple** the spherical-streaming operator to the energy cascade for the
-      quantitative off-axis magnitude (all building blocks now in place);
-    * **NA61 K± / direct Honda-3D magnitude** cross-checks.
+18. ~~Couple the cascade to the curved atmosphere~~ **done** —
+    `spherical_cascade.py` runs the energy cascade *down the curved line of sight*
+    of each arrival direction (depth-resolved, local density), giving the absolute
+    directional flux `Phi_nu(E, cos zenith)`. Reproduces the textbook structure:
+    near-isotropic sub-GeV, **sec θ horizon enhancement at high E** made finite by
+    the geometry (≈5× at 2 TeV near the horizon vs the divergent sec θ=25), 1D
+    vertical reference. This is the *dominant* directional structure; the
+    genuinely-3D residual (inter-direction streaming) is small (~1–2%, the
+    `spherical_streaming`/`coupled_3d_flux` term). `spherical_cascade.png`.
+19. ~~High-statistics kernels~~ **done** — produced on a cluster (UrQMD34 +
+    Sibyll23d, 200k evt/pt, spliced at 80 GeV → 41-pt grid) and installed as the
+    drop-in `m_spliced.npz` / `m_{piminus,Kplus,Kminus}.npz`; see
+    `KERNEL_PRODUCTION_REPORT.md`.
+20. Genuinely remaining (refinements):
+    * **full-shape double-differential kernels** for the S_N operator (the
+      variance `theta1(E)` set is done; ~100–200 core-hours for full shape +
+      hadronic systematics);
+    * **NA61 K± / absolute Honda-3D** magnitude cross-checks against published
+      3D-vs-1D tables.

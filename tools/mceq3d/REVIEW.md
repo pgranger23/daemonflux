@@ -71,10 +71,18 @@ Worked through the action items in priority order:
   it stays sparse & ~linear, and it redistributes the detector flux toward the
   horizon. The **coherent charge-dependent muon-bending E-W shift** is delivered
   in `muon_bending.py` (mu± ~±3°, ~3° ν/ν̄ split sub-GeV).
-* **Still open:** **coupling** the spherical-streaming operator to the energy
-  cascade for the quantitative off-axis magnitude (building blocks in place);
-  (D) the Honda magnitude cross-check; the high-statistics kernel campaign
-  (cluster, ~10–200 core-hours).
+* **(off-axis coupling) done.** `spherical_cascade.py` runs the cascade down the
+  curved line of sight per direction (depth-resolved, local density), giving the
+  absolute `Phi_nu(E, cos zenith)`: near-isotropic sub-GeV, sec θ horizon
+  enhancement at high E with finite curved saturation (≈5× at 2 TeV vs the
+  divergent sec θ=25). The genuinely-3D residual (inter-direction streaming)
+  is small (~1–2%). The clarifying physics finding: the large directional
+  structure is the sec θ effect (high-E, 1D-per-direction), **not** a sub-GeV
+  term — sub-GeV 3D is dominated by geomagnetics + muon bending.
+* **High-statistics kernels done** (cluster: UrQMD34+Sibyll23d, 200k evt/pt,
+  spliced; installed as the drop-in moments). See `KERNEL_PRODUCTION_REPORT.md`.
+* **Still open (refinements):** the full-shape kernels for the S_N operator; (D)
+  the absolute Honda 3D-vs-1D magnitude cross-check against published tables.
 
 The body below is the original review; read it together with the statuses above.
 
