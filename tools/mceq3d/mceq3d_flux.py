@@ -333,6 +333,27 @@ def _validate(r, args):
             mv = mine["total_numu"][iz].mean(0)[ie]
             hv = nm[ihz].mean(0)[ih]
             print(f"  {E:5.1f}   {cz:5.2f}   {mv:9.3g}  {hv:9.3g}   {mv/hv:5.2f}")
+
+    # flavour ratio (nue+nuebar)/(numu+numubar) -- robust across models
+    if "nue" in h:
+        nue_h = h["nue"] + h["nuebar"]
+        numu_h = h["numu"] + h["numubar"]
+        print("\nFLAVOUR RATIO (nue+nuebar)/(numu+numubar) vs Honda (vertical):")
+        print("  E[GeV]   this work   Honda")
+        iz = int(np.argmin(np.abs(r["cos_zeniths"] - 0.95)))
+        ihz = int(np.argmin(np.abs(Hcz - 0.9)))
+        for E in (0.5, 1.0, 3.0):
+            ie = int(np.argmin(np.abs(e - E)))
+            ih = int(np.argmin(np.abs(He - E)))
+            rm = (
+                mine["total_nue"][iz].mean(0)[ie]
+                + mine["total_antinue"][iz].mean(0)[ie]
+            ) / (
+                mine["total_numu"][iz].mean(0)[ie]
+                + mine["total_antinumu"][iz].mean(0)[ie]
+            )
+            rh = nue_h[ihz].mean(0)[ih] / numu_h[ihz].mean(0)[ih]
+            print(f"  {E:5.1f}     {rm:6.3f}     {rh:6.3f}")
     if args.plot:
         _plot(r, h)
 
