@@ -485,9 +485,17 @@ pytest test_geomag_backtrace.py test_muon_bending.py -q
     Sibyll23d, 200k evt/pt, spliced at 80 GeV → 41-pt grid) and installed as the
     drop-in `m_spliced.npz` / `m_{piminus,Kplus,Kminus}.npz`; see
     `KERNEL_PRODUCTION_REPORT.md`.
-20. Genuinely remaining (refinements):
-    * **full-shape double-differential kernels** for the S_N operator (the
-      variance `theta1(E)` set is done; ~100–200 core-hours for full shape +
-      hadronic systematics);
-    * **NA61 K± / absolute Honda-3D** magnitude cross-checks against published
-      3D-vs-1D tables.
+20. ~~Full-shape S_N adequacy~~ **resolved** — `sn_transport.py --kernel` builds
+    the single-production density from a real `d²N/dx_L dθ` kernel and compares to
+    a Gaussian of the *same variance*: pure-shape median rel diff ≈ 0, so the
+    variance-only Fokker-Planck input suffices and the full-shape kernel is **not
+    needed for the angular spread**. (`sn_transport.png`, demo `k_local_demo.npz`.)
+21. Genuinely remaining (validation gaps, network-blocked here):
+    * **NA61 K±** HEPData fit (only an internal `<p_T>`-scale cross-check done);
+    * **quantitative Honda 3D-table** cross-check — the key open validation
+      (consistency with known features/magnitudes shown; a table-by-table
+      reproduction needs their setup + network).
+
+> **See [`IMPLEMENTATION_REPORT.md`](IMPLEMENTATION_REPORT.md)** for the complete,
+> self-critical account (every method, validation plot, and an exhaustive list of
+> simplifications/cheats) — written to communicate this work to the package author.
