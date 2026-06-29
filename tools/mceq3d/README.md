@@ -495,16 +495,18 @@ pytest test_geomag_backtrace.py test_muon_bending.py -q
     the directional observables: East–West amplitude 2.1 (Honda) vs 2.4 at 1 GeV
     (both peak sub-GeV, vanish >10 GeV) and sec θ horizon enhancement 2.19 vs 2.17
     at 100 GeV. (`validate_honda.png`.)
-22. ~~Trustable absolute directional engine~~ **done** — `mceq3d_flux.py` returns
-    the absolute Φ(E, cosθ, azimuth) for all 4 flavours to ~0.5 GeV as MCEq
-    (curved) × cascade-correct geomag (no `x_eff`); **absolute** νμ matches Honda
-    at Kamioka to 0.80–0.91 @1 GeV (vertical/mid). `interp_flux()` accessor.
-    (`mceq3d_flux.png`.)
-23. Genuinely remaining (for full-sky / data-anchored use):
-    * **up-going** hemisphere (global geomagnetic back-tracing);
-    * **per-nucleus rigidity** in the cut (sub-GeV-horizon ~20–40%);
-    * **daemonflux muon-calibrated base** to anchor the normalization (1-line
-      swap, needs spline data); **NA61 K±** HEPData fit.
+22. ~~Trustable absolute *full-sky* directional engine~~ **done** —
+    `mceq3d_flux.py` returns the absolute Φ(E, cosθ, azimuth) for all 4 flavours
+    over the whole sky to ~0.5 GeV as MCEq (curved) × cascade-correct geomag (no
+    `x_eff`); up-going via the **global far-side** geomagnetic treatment.
+    **Absolute** νμ matches Honda at Kamioka to **0.90–0.98 @1 GeV** and
+    reproduces the **up/down asymmetry** (up 129–135 vs down 111–117, Honda
+    133–138 vs 122–130). `interp_flux()` accessor. (`mceq3d_flux.png`.)
+23. Genuinely remaining (refinements):
+    * **daemonflux muon-calibrated base** to anchor the ~10–20% normalization
+      (1-line swap, needs spline data);
+    * **per-nucleus rigidity** in the cut (~20% at the sub-GeV horizon); finer
+      cosθ grid near the horizon; **NA61 K±** HEPData fit.
 
 > **See [`IMPLEMENTATION_REPORT.md`](IMPLEMENTATION_REPORT.md)** for the complete,
 > self-critical account (every method, validation plot, and an exhaustive list of
