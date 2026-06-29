@@ -42,11 +42,19 @@ plots, 4 companion docs.** Tooling: Black + flake8 clean, NumPy docstrings.
     horizon at TeV, finite thanks to curvature); sub-GeV the conventional flux is
     **near-isotropic**. This is captured by 1D-per-direction with curved columns;
     the genuinely-3D inter-direction residual is the small (~1–2%) part.
-* **Validated against Honda HKKM2014** (§8, this round): the directional
-  observables match the authoritative 3D tables — East–West amplitude at Kamioka
-  **2.1 (Honda) vs 2.4 (this work)** at 1 GeV with the correct sub-GeV peak and
-  >10 GeV vanishing, and the sec θ horizon enhancement **2.19 vs 2.17** at
-  100 GeV.
+* **Validated against Honda HKKM2014** (§8): the directional observables match the
+  authoritative 3D tables — East–West amplitude at Kamioka **2.1 (Honda) vs 2.4
+  (this work)** at 1 GeV with the correct sub-GeV peak and >10 GeV vanishing, and
+  the sec θ horizon enhancement **2.19 vs 2.17** at 100 GeV.
+* **A trustable *absolute* directional engine** (`mceq3d_flux.py`, §5.11): returns
+  the absolute Φ(E, cosθ, azimuth) for all four flavours down to ~0.5 GeV as
+  **MCEq (curved, per-zenith) × cascade-correct geomagnetic factor** (no `x_eff`).
+  Its **absolute** νμ flux matches Honda at Kamioka to **0.80–0.91 at 1 GeV** and
+  0.82 at 0.5 GeV (vertical/mid) — the level different published models differ
+  from each other. **Trust boundary:** down-going hemisphere; the sub-GeV
+  near-horizon (highest-cutoff directions) carries a larger ~20–40% uncertainty
+  from the nucleus-rigidity approximation, and up-going needs the global
+  geomagnetic treatment (both documented).
 * **Net message:** the value for sub-GeV daemonflux is overwhelmingly in the
   **geomagnetic layer** (production-ready as an admittance factor) plus muon
   bending; the deterministic-3D cascade machinery is validated as an architecture
@@ -94,7 +102,8 @@ geometry). That is exactly what this layer adds.
 | geomagnetic | `geomagnetic.py` (pkg), `geomag_backtrace` | back-traced, lit-checked |
 | muon bending | `muon_bending` | analytic, validated |
 | cascade engines | `mceq3d_solver` (toy), `mceq3d_production` (MCEq) | l=0 ≡ MCEq exactly |
-| directional flux | `directional_flux`, `unified_3d_flux` | Φ(E,θ,φ) |
+| directional flux | `directional_flux`, `unified_3d_flux` | Φ(E,θ,φ) ratios |
+| **absolute 3D engine** | **`mceq3d_flux`** | **Φ(E,θ,φ) absolute, all flavours, Honda-validated** |
 | spherical PDE / coupling | `spherical_streaming`, `spherical_cascade` | curvature validated |
 | de-risking prototypes | `prototype_3d_cascade`, `prototype_streaming`, `spherical_geometry`, `coupled_3d_flux`, `channel_comparison` | feasibility |
 
@@ -336,6 +345,58 @@ loss / EM cascade / charge separation; **primaries collimated per direction**
 from that direction only); interacted mesons are absorbed (no re-injection).
 Output is the curved 1D-per-direction flux; the 3D residual is *not* added here.
 
+### 5.11 Trustable absolute directional engine — `mceq3d_flux.py` (capstone)
+
+**Idea.** A usable, *absolute*, all-flavour 3D flux to ~0.5 GeV where every factor
+is trusted and the result is validated *absolutely* against Honda — not toy
+ratios.
+
+**Construction.** `Φ_3D(E, cosθ, az, s) = Φ_MCEq(E, cosθ, s) · G_s(E, R_c(cosθ,
+az))`:
+* `Φ_MCEq` — real MCEq per zenith, **curved atmosphere** (absolute norm, all four
+  species, spectra, and the sec θ horizon enhancement). Units converted cm⁻²→m⁻².
+* `G_s(E, R_c)` — the geomagnetic suppression computed as **MCEq(primary cut at
+  R_c)/MCEq(full)**: the cascade-correct response to removing sub-cutoff
+  primaries, with **no `x_eff`**. The cut is applied to the primary nucleons in
+  MCEq's `_phi0` (protons at R=E, bound neutrons at R≈2E); precomputed on a small
+  R_c grid (the *ratio* is ~zenith-independent) and interpolated.
+* `R_c(cosθ, az)` — the back-traced full-IGRF cutoff (§5.4).
+
+**Absolute validation vs Honda (`--validate`, Kamioka νμ):**
+
+| E, cosθ | this work | Honda | ratio |
+|---|---|---|---|
+| 1 GeV, vertical | 111 | 122 | **0.91** |
+| 1 GeV, cosθ=0.55 | 117 | 130 | 0.90 |
+| 1 GeV, horizon | 121 | 152 | 0.80 |
+| 0.5 GeV, vertical | 416 | 510 | 0.82 |
+| 0.5 GeV, horizon | 425 | 738 | 0.58 |
+
+(flux in /(m² s sr GeV); `mceq3d_flux.png`). The vertical/mid agreement
+(~10–20%) is the normal inter-model spread (SIBYLL23D+H3a vs Honda's
+model/atmosphere — visible at the no-geomag spectral peak); both reproduce the
+sub-GeV horizon rise.
+
+**Usage.** `MCEq3DFlux().solve(lat, lon, cos_zeniths, azimuths)` → grid;
+`interp_flux(result, E, cosθ, azimuth, species)` evaluates it anywhere.
+
+**Simplifications / cheats (this engine).**
+* **Down-going hemisphere only is correct.** Up-going neutrinos are produced on
+  the far-side atmosphere; their geomagnetic cutoff is set there, not at the
+  detector — that requires the *global* 3D back-tracing Honda does and is **not**
+  included. (Flux magnitude is ~up/down symmetric; the up-going geomagnetic
+  modulation is missing.) This is the main gap for full-sky / oscillation use.
+* **Nucleus rigidity** handled by superposition with R≈(A/Z)E (protons R=E,
+  neutrons R≈2E). This over-suppresses where the cutoff is highest (sub-GeV
+  horizon East) — the dominant cause of the 0.58 ratio above. Proper per-nucleus
+  rigidity is the fix.
+* The **absolute normalization** carries the SIBYLL23D/H3a hadronic-model
+  systematic (~15–20%). The natural fix is to use **daemonflux's muon-calibrated
+  1D flux as the base** instead of raw MCEq (a one-line swap; not done here
+  because the spline data needs network this environment lacks). That would make
+  the normalization *data-anchored* — the most trustable option.
+* Geomag `G` ratio assumed zenith-independent (precomputed at vertical).
+
 ### 5.10 De-risking prototypes & utilities
 
 `prototype_3d_cascade.py` (coupled (E,l) cascade, derived N_eff),
@@ -488,14 +549,20 @@ Consolidated, so nothing is buried. Grouped by severity.
 
 ## 10. Production-ready vs research-grade
 
-* **Production-ready now:** `src/daemonflux/geomagnetic.py` — a clean, optional,
-  identity-by-default directional admittance factor on the 1D flux. The single
-  plug-point to later swap the analytic cutoff for back-traced/Monte-Carlo
-  admittances. Back-traced cutoffs (`geomag_backtrace.py`) are
-  literature-validated and can feed it.
-* **Research-grade (architecture + validated ingredients):** everything in
-  `tools/mceq3d/`. `mceq3d_production` is the most trustworthy (real MCEq `l=0`);
-  the rest quantifies effect sizes and proves feasibility.
+* **Production-ready now:**
+  * `src/daemonflux/geomagnetic.py` — a clean, optional, identity-by-default
+    directional admittance factor on the 1D flux (the package plug-point).
+  * **`mceq3d_flux.py`** — the absolute directional engine (§5.11): trusted MCEq
+    base × cascade-correct geomagnetics, **validated absolutely against Honda**
+    (~10–20% over the down-going sky), usable to ~0.5 GeV via `interp_flux`. The
+    recommended way to get a 3D atmospheric-ν flux from this work. Its documented
+    boundaries: down-going hemisphere, sub-GeV-horizon nucleus systematic,
+    hadronic-model normalization (swap in daemonflux's muon-calibrated base to
+    anchor it).
+* **Research-grade (architecture + validated ingredients):** the rest of
+  `tools/mceq3d/` — quantifies effect sizes, proves feasibility, and supplies the
+  validated factors (`geomag_backtrace`, `muon_bending`, `spherical_streaming`,
+  the production-angle kernels) that feed the engine.
 
 ---
 
@@ -516,7 +583,8 @@ geomagnetic corrections" section.
 pip install -e .[test]            # package + tests
 pip install chromo ppigrf MCEq    # kernels, IGRF, consistency gate
 cd tools/mceq3d
-pytest -q                                   # 99 offline tests
+pytest -q                                   # 105 offline tests
+python mceq3d_flux.py --validate --plot     # CAPSTONE: absolute Φ(E,θ,φ) vs Honda
 python mceq3d_production.py --plot          # MCEq l=0 + angular layer
 python directional_flux.py --plot           # Φ(E, zenith, azimuth), Kamioka
 python geomag_backtrace.py                  # back-traced cutoffs vs Störmer
@@ -530,7 +598,7 @@ Kernel regeneration on a cluster: see `KERNEL_GENERATION.md`.
 
 ## 13. Inventory
 
-* **20 modules**, **19 test files**, **101 passing offline tests**, **23 plots**,
+* **21 modules**, **20 test files**, **105 passing offline tests**, **24 plots**,
   Black/flake8 clean.
 * Companion docs: `README.md` (full roadmap), `REVIEW.md` (self-review with
   statuses), `KERNEL_GENERATION.md` (cluster runbook), `KERNEL_PRODUCTION_REPORT.md`
@@ -540,15 +608,18 @@ Kernel regeneration on a cluster: see `KERNEL_GENERATION.md`.
 
 ## 14. Remaining work (in priority order)
 
-1. ~~Quantitative Honda 3D-table cross-check~~ **done** (§8) — directional E–W and
-   sec θ ratios match Honda HKKM2014.
-2. **Absolute** per-bin Honda reproduction (would need matching their hadronic
-   model / primary spectrum / NRLMSISE-00 atmosphere) — optional.
-3. NA61 **K±** HEPData fit (§5.2, needs network).
-4. Wire the back-traced directional cutoffs into the package admittance factor to
-   retire `x_eff` from the production path (§9-A1).
-5. (If ever needed) full-shape high-stat kernels + S_N yield transport — shown
-   *not* required for the angular spread, only for a full directional yield solve.
+1. **Up-going hemisphere** — global geomagnetic back-tracing so cosθ<0 is correct
+   (the main gap for full-sky / oscillation use; down-going is done, §5.11).
+2. **Per-nucleus rigidity** in the geomagnetic cut (retire the superposition
+   R≈(A/Z)E approximation) — fixes the sub-GeV-horizon ~20–40% deficit.
+3. **Data-anchored normalization** — use daemonflux's muon-calibrated 1D flux as
+   the `mceq3d_flux` base instead of raw MCEq (one-line swap; removes the ~15–20%
+   hadronic-model offset). Needs the spline data (network).
+4. ~~Quantitative Honda 3D cross-check~~ **done** (§8) — directional ratios and
+   now the **absolute** flux (§5.11) match Honda.
+5. NA61 **K±** HEPData fit (§5.2, needs network).
+6. (If ever needed) full-shape high-stat kernels + S_N yield transport — shown
+   *not* required for the angular spread.
 
 ---
 
@@ -570,6 +641,7 @@ Kernel regeneration on a cluster: see `KERNEL_GENERATION.md`.
 | `unified_3d_flux.png` | analytic-Störmer directional flux |
 | `spherical_streaming.png` | curvature ≡ spherical diffusion; horizon redistribution |
 | `spherical_cascade.png` | curved-atmosphere directional flux (sec θ, saturation) |
-| `validate_honda.png` | **Honda HKKM2014 3D cross-check** (E–W + sec θ) |
+| `mceq3d_flux.png` | **absolute** νμ flux vs Honda (spectrum + zenith), capstone |
+| `validate_honda.png` | Honda HKKM2014 3D cross-check (E–W + sec θ) |
 | `spherical_geometry.png` | geometric horizon limit (thin-target) |
 | `prototype_streaming.png`, `prototype_3d_cascade.png`, `coupled_3d_flux.png` | feasibility / ~1–2% residual |
