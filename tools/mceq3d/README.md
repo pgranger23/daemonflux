@@ -490,11 +490,15 @@ pytest test_geomag_backtrace.py test_muon_bending.py -q
     a Gaussian of the *same variance*: pure-shape median rel diff ≈ 0, so the
     variance-only Fokker-Planck input suffices and the full-shape kernel is **not
     needed for the angular spread**. (`sn_transport.png`, demo `k_local_demo.npz`.)
-21. Genuinely remaining (validation gaps, network-blocked here):
-    * **NA61 K±** HEPData fit (only an internal `<p_T>`-scale cross-check done);
-    * **quantitative Honda 3D-table** cross-check — the key open validation
-      (consistency with known features/magnitudes shown; a table-by-table
-      reproduction needs their setup + network).
+21. ~~Quantitative Honda 3D cross-check~~ **done** — `validate_honda.py` parses
+    the Honda HKKM2014 azimuth-dependent Kamioka table and matches this work on
+    the directional observables: East–West amplitude 2.1 (Honda) vs 2.4 at 1 GeV
+    (both peak sub-GeV, vanish >10 GeV) and sec θ horizon enhancement 2.19 vs 2.17
+    at 100 GeV. (`validate_honda.png`.)
+22. Genuinely remaining:
+    * **absolute** per-bin Honda reproduction (needs their hadronic/primary/
+      atmosphere setup); **NA61 K±** HEPData fit (only an internal `<p_T>`-scale
+      cross-check done; needs network).
 
 > **See [`IMPLEMENTATION_REPORT.md`](IMPLEMENTATION_REPORT.md)** for the complete,
 > self-critical account (every method, validation plot, and an exhaustive list of

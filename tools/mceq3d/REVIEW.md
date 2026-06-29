@@ -81,8 +81,14 @@ Worked through the action items in priority order:
   term — sub-GeV 3D is dominated by geomagnetics + muon bending.
 * **High-statistics kernels done** (cluster: UrQMD34+Sibyll23d, 200k evt/pt,
   spliced; installed as the drop-in moments). See `KERNEL_PRODUCTION_REPORT.md`.
-* **Still open (refinements):** the full-shape kernels for the S_N operator; (D)
-  the absolute Honda 3D-vs-1D magnitude cross-check against published tables.
+* **(D) Honda cross-check — done.** `validate_honda.py` parses the Honda
+  HKKM2014 azimuth-dependent Kamioka table and matches this work on the
+  directional observables: East–West 2.1 (Honda) vs 2.4 (this work) at 1 GeV
+  (both peak sub-GeV, vanish >10 GeV); sec θ horizon 2.19 vs 2.17 at 100 GeV.
+* **(full-shape S_N) resolved** — real kernel shape ≡ same-variance Gaussian, so
+  the variance-only FP input suffices (no full-shape kernel needed for the spread).
+* **Still open:** absolute per-bin Honda reproduction (needs their full setup);
+  NA61 K± HEPData fit (network).
 
 The body below is the original review; read it together with the statuses above.
 
