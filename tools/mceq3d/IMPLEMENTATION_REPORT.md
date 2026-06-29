@@ -55,8 +55,10 @@ plots, 4 companion docs.** Tooling: Black + flake8 clean, NumPy docstrings.
   **reproduces the up/down asymmetry** (up-going 129–135 vs down-going 111–117 at
   1 GeV, matching Honda's 133–138 vs 122–130). The ~10–20% normalization offset is
   the SIBYLL23D/H3a-vs-Honda hadronic-model spread (anchorable to daemonflux's
-  muon-calibrated base). **Trust boundary:** the sub-GeV near-horizon carries a
-  larger ~20% uncertainty from the nucleus-rigidity approximation (documented).
+  muon-calibrated base). The **flavour ratio (νe/νμ) matches Honda to 0.7–4%** —
+  the robust, model-independent test passes for all four species. **Trust
+  boundary:** the sub-GeV near-horizon carries a larger ~20% uncertainty from the
+  nucleus-rigidity approximation (documented).
 * **Net message:** the value for sub-GeV daemonflux is overwhelmingly in the
   **geomagnetic layer** (production-ready as an admittance factor) plus muon
   bending; the deterministic-3D cascade machinery is validated as an architecture
@@ -386,6 +388,12 @@ az))`:
 129–135 > down-going 111–117 at 1 GeV, as in Honda 133–138 > 122–130) — the
 observable that drives atmospheric-ν oscillation analyses. The ~10–20% offset is
 the inter-model spread (SIBYLL23D+H3a vs Honda; visible at the no-geomag peak).
+
+**Flavour ratio — the robust cross-check.** `(νe+ν̄e)/(νμ+ν̄μ)` is nearly
+model-independent (set by the π→μ→e decay chain), so it is the sharpest test of
+the flavour physics. This work vs Honda (vertical): **0.450/0.436 (0.5 GeV),
+0.405/0.402 (1 GeV), 0.312/0.301 (3 GeV)** — **0.7–4%**. The engine is trustable
+for *all four flavours* down to ~0.5 GeV, not just νμ.
 
 **Usage.** `MCEq3DFlux().solve(lat, lon, cos_zeniths, azimuths)` → full-sky grid
 (`cos_zeniths` may be negative); `interp_flux(result, E, cosθ, azimuth, species)`
