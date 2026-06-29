@@ -27,15 +27,21 @@ Validation (`validate_honda.py`, and ``--validate`` here): the absolute Phi(E,
 cosZ, az) for numu and nue matches the Honda HKKM2014 Kamioka tables in
 normalization, zenith (sec theta) and azimuth (East-West).
 
+Full sky
+--------
+* **Down-going (cosZ >= 0):** detector geomagnetic cutoff.
+* **Up-going (cosZ < 0):** the production is up/down symmetric (same atmosphere at
+  |cosZ|), but the geomagnetic cutoff is evaluated at the **far-side production
+  point** (:func:`farside_production`) -- a global geomagnetic treatment, so the
+  up-going hemisphere is included (essential for oscillation analyses).
+
 Trust boundary (documented, not hidden)
 ---------------------------------------
-* **Down-going hemisphere (cosZ >= 0) is correct.** Up-going neutrinos come from
-  primaries hitting the far-side atmosphere; their geomagnetic cutoff is set there,
-  not at the detector -- that needs the *global* 3D back-tracing Honda does and is
-  **not** included (the flux magnitude is ~up/down symmetric; the up-going
-  geomagnetic modulation is the missing piece).
+* Up-going uses a single representative far-side production point per direction
+  (the production region has finite extent; this is the leading geometric term).
 * Nuclei treated by superposition with an approximate R=(A/Z)E rigidity for the
-  cut (leading order; ~10-20% on the suppression near the cutoff).
+  cut (leading order; ~10-20% on the suppression near the cutoff, largest at the
+  sub-GeV horizon where the cutoff is highest).
 * Inter-direction streaming residual (~1-2%) and muon-bending E-W (charge-split,
   ~3 deg sub-GeV) are separate small corrections (see `spherical_streaming`,
   `muon_bending`); optionally folded via ``muon_ew=True``.
@@ -69,8 +75,40 @@ def _transmission(e_grid, rc_gv, penumbra=0.5, az_over_z=1.0):
     return 0.5 * (1.0 + erf((np.log(r) - np.log(rc_gv)) / (np.sqrt(2) * penumbra)))
 
 
+def farside_production(lat, lon, cos_zenith, azimuth, h_prod_km=20.0):
+    """Far-side production point for an UP-going arrival (cos_zenith < 0).
+
+    Up-going neutrinos are produced on the *opposite* side of the Earth and travel
+    straight through it. The atmospheric production is up/down symmetric (same
+    atmosphere at |cosZ|), but the **geomagnetic cutoff is set at the far-side
+    production point**, not at the detector. This returns that point's
+    ``(lat, lon)`` and the local primary arrival ``(cosZ, azimuth)`` there, so the
+    detector's up-going geomagnetics can be evaluated globally.
+    """
+    from geomag_backtrace import _local_frame, arrival_direction, RE
+
+    up = _local_frame(lat, lon)[0]
+    P = RE * up
+    d = arrival_direction(
+        lat, lon, np.degrees(np.arccos(np.clip(cos_zenith, -1, 1))), azimuth
+    )  # neutrino velocity (up-going for cosZ<0)
+    Rh = RE + h_prod_km * 1e3
+    Pd = P @ d
+    s = Pd + np.sqrt(max(Pd**2 + (Rh**2 - RE**2), 0.0))  # far-side intersection
+    Q = P - s * d
+    qhat = Q / np.linalg.norm(Q)
+    lat_q = np.degrees(np.arcsin(np.clip(qhat[2], -1, 1)))
+    lon_q = np.degrees(np.arctan2(qhat[1], qhat[0]))
+    upq, northq, eastq = _local_frame(lat_q, lon_q)
+    src = -d  # primary source direction at Q
+    cosz_q = float(src @ upq)
+    horiz = src - cosz_q * upq
+    az_q = np.degrees(np.arctan2(horiz @ eastq, horiz @ northq)) % 360.0
+    return lat_q, lon_q, cosz_q, az_q
+
+
 class MCEq3DFlux:
-    """Absolute directional flux engine (down-going hemisphere)."""
+    """Absolute directional flux engine (full sky: down-going + up-going)."""
 
     def __init__(
         self,
@@ -96,11 +134,15 @@ class MCEq3DFlux:
 
     # -- base: MCEq per zenith, curved atmosphere, no geomag --
     def base(self, cos_zeniths):
-        """Phi_MCEq[species, cosZ, E] in /(m^2 s sr GeV) (curved, no geomag)."""
+        """Phi_MCEq[species, |cosZ|, E] in /(m^2 s sr GeV) (curved, no geomag).
+
+        Uses ``|cosZ|`` (production is up/down symmetric: an up-going neutrino is
+        produced on the far side at the conjugate down-going slant).
+        """
         self.mceq._phi0[:] = self._phi0_std
         out = {s: np.zeros((len(cos_zeniths), len(self.e))) for s in SPECIES}
         for i, cz in enumerate(cos_zeniths):
-            self.mceq.set_theta_deg(np.degrees(np.arccos(np.clip(cz, 1e-3, 1))))
+            self.mceq.set_theta_deg(np.degrees(np.arccos(np.clip(abs(cz), 1e-3, 1))))
             self.mceq.solve()
             for s in SPECIES:
                 out[s][i] = self.mceq.get_solution(s, 0) * CM2_PER_M2
@@ -128,12 +170,64 @@ class MCEq3DFlux:
         self.mceq._phi0[:] = self._phi0_std
         return G, rc_grid
 
+    def cutoff_grid(
+        self, lat, lon, cos_zeniths, azimuths, date, n_scan=14, r_lo=0.5, r_hi=20.0
+    ):
+        """R_c[cosZ, az] [GV]: detector cutoff (down-going), far-side (up-going).
+
+        Both hemispheres use a single batched trajectory back-trace. For up-going,
+        the primary's velocity at the far-side production point equals the
+        (straight-line) neutrino direction ``d``, so the cutoff is a back-trace
+        from the production point ``Q`` with ``u0 = -d`` -- the global geomagnetic
+        treatment, batched like :func:`geomag_backtrace.cutoff_map`.
+        """
+        import geomag_backtrace as gb
+
+        rc = np.zeros((len(cos_zeniths), len(azimuths)))
+        down = cos_zeniths >= 0
+        if np.any(down):
+            zen = np.degrees(np.arccos(np.clip(cos_zeniths[down], 1e-3, 1)))
+            rc[down] = gb.cutoff_map(
+                lat, lon, date, zen, azimuths, n_scan=n_scan, r_lo=r_lo, r_hi=r_hi
+            )
+        ups = np.where(~down)[0]
+        if len(ups):
+            m_hat = gb.dipole_axis()
+            rs = np.linspace(r_hi, r_lo, n_scan)
+            r0, u0, R, idx = [], [], [], []
+            for iz in ups:
+                zdeg = np.degrees(np.arccos(np.clip(cos_zeniths[iz], -1, 1)))
+                for ia, az in enumerate(azimuths):
+                    latq, lonq, _, _ = farside_production(lat, lon, cos_zeniths[iz], az)
+                    Q = (gb.RE + 20e3) * gb._local_frame(latq, lonq)[0]
+                    d = gb.arrival_direction(lat, lon, zdeg, az)  # neutrino velocity
+                    for Ri in rs:
+                        r0.append(Q)
+                        u0.append(-d)
+                        R.append(Ri)
+                    idx.append((iz, ia))
+            allowed = gb.backtrace_vec(
+                np.array(r0), np.array(u0), np.array(R), date, m_hat
+            ).reshape(len(idx), n_scan)
+            for k, (iz, ia) in enumerate(idx):
+                forb = np.where(~allowed[k])[0]
+                rc[iz, ia] = (
+                    r_lo
+                    if len(forb) == 0
+                    else (
+                        r_hi if forb[0] == 0 else 0.5 * (rs[forb[0] - 1] + rs[forb[0]])
+                    )
+                )
+        return rc
+
     def solve(
         self, lat, lon, cos_zeniths, azimuths, date=None, n_scan=12, rc_grid=None
     ):
-        """Absolute Phi[species, cosZ, az, E] for a site (down-going)."""
-        import geomag_backtrace as gb
+        """Absolute Phi[species, cosZ, az, E] for a site (full sky).
 
+        Down-going (cosZ>=0): detector geomagnetic cutoff. Up-going (cosZ<0):
+        far-side production-point cutoff (global treatment, :func:`farside_production`).
+        """
         cos_zeniths = np.asarray(cos_zeniths, float)
         azimuths = np.asarray(azimuths, float)
         if rc_grid is None:
@@ -144,8 +238,7 @@ class MCEq3DFlux:
         import datetime as _dt
 
         date = date or _dt.datetime(2020, 1, 1)
-        zen_deg = np.degrees(np.arccos(np.clip(cos_zeniths, 1e-3, 1)))
-        rc_map = gb.cutoff_map(lat, lon, date, zen_deg, azimuths, n_scan=n_scan)
+        rc_map = self.cutoff_grid(lat, lon, cos_zeniths, azimuths, date, n_scan)
 
         flux = {
             s: np.zeros((len(cos_zeniths), len(azimuths), len(self.e))) for s in SPECIES
@@ -204,7 +297,7 @@ def main(argv=None):
     args = p.parse_args(argv)
 
     eng = MCEq3DFlux()
-    cz = np.array([0.95, 0.75, 0.55, 0.35, 0.15, 0.05])
+    cz = np.array([-0.95, -0.55, -0.15, 0.15, 0.55, 0.95])  # full sky
     az = np.array([0, 45, 90, 135, 180, 225, 270, 315], float)
     r = eng.solve(args.lat, args.lon, cz, az)
     e = r["e"]
@@ -234,12 +327,12 @@ def _validate(r, args):
     for E in (0.5, 1.0):
         ie = int(np.argmin(np.abs(e - E)))
         ih = int(np.argmin(np.abs(He - E)))
-        for cz in (0.95, 0.55, 0.05):
+        for cz in (-0.95, -0.55, 0.55, 0.95):  # up-going and down-going
             iz = int(np.argmin(np.abs(r["cos_zeniths"] - cz)))
             ihz = int(np.argmin(np.abs(Hcz - (cz - 0.05))))  # Honda bin lo edge
             mv = mine["total_numu"][iz].mean(0)[ie]
             hv = nm[ihz].mean(0)[ih]
-            print(f"  {E:5.1f}   {cz:4.2f}   {mv:9.3g}  {hv:9.3g}   {mv/hv:5.2f}")
+            print(f"  {E:5.1f}   {cz:5.2f}   {mv:9.3g}  {hv:9.3g}   {mv/hv:5.2f}")
     if args.plot:
         _plot(r, h)
 

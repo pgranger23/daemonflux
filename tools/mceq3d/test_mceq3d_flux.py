@@ -7,7 +7,28 @@ so here we test only the offline rigidity-transmission helper.
 
 import numpy as np
 
-from mceq3d_flux import _transmission, interp_flux, CM2_PER_M2, SPECIES
+from mceq3d_flux import (
+    _transmission,
+    interp_flux,
+    farside_production,
+    CM2_PER_M2,
+    SPECIES,
+)
+
+
+def test_farside_straight_up_is_antipode():
+    # straight-up from Kamioka -> far-side at the antipodal longitude, vertical down
+    lat, lon = 36.43, 137.31
+    latq, lonq, czq, azq = farside_production(lat, lon, -1.0, 0.0)
+    assert abs(((lonq - (lon - 180)) + 180) % 360 - 180) < 2.0  # antipode longitude
+    assert abs(latq + lat) < 2.0  # antipode latitude
+    assert czq > 0.99  # vertical (down-going) primary at the far side
+
+
+def test_farside_near_horizon_stays_near_horizon():
+    # up-going near the horizon is produced near the horizon on the far side
+    _, _, czq, _ = farside_production(36.43, 137.31, -0.05, 90.0)
+    assert 0.0 < czq < 0.3
 
 
 def test_interp_flux_on_synthetic_grid():
