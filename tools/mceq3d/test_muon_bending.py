@@ -10,7 +10,27 @@ from muon_bending import (
     decay_in_flight_fraction,
     numu_bending_sigma2,
     numu_ew_asymmetry,
+    path_length_km,
+    muon_decay_numu_fraction,
 )
+
+
+def test_path_length_grows_with_zenith():
+    # vertical -> ~production altitude; near horizon -> hundreds of km (curved)
+    assert abs(path_length_km(0.0) - 15.0) < 0.1
+    assert path_length_km(60.0) > path_length_km(0.0)
+    assert path_length_km(89.0) > 100.0  # long near-horizon slant
+
+
+def test_muon_decay_fraction_bounded_and_falls():
+    # w = f/(1+f) in [0, 0.5], larger at low E (muons decay), ->0 at high E
+    w_lo = muon_decay_numu_fraction(0.3)
+    w_hi = muon_decay_numu_fraction(100.0)
+    assert 0.0 <= w_hi < w_lo <= 0.5
+    # near-horizon path is longer -> more decay -> larger weight at fixed E
+    assert muon_decay_numu_fraction(3.0, zenith_deg=85.0) > muon_decay_numu_fraction(
+        3.0, zenith_deg=0.0
+    )
 
 
 def test_coherent_shift_charge_antisymmetric():

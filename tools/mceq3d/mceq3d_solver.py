@@ -118,7 +118,11 @@ def solve(
     if muon_bending:
         from muon_bending import numu_bending_sigma2
 
-        theta_dec = np.sqrt(theta_dec**2 + numu_bending_sigma2(e))
+        # restricted to the muon-decay nu_mu channel (weighted by its fraction,
+        # not added to every decay nu) and using the zenith-dependent path.
+        theta_dec = np.sqrt(
+            theta_dec**2 + numu_bending_sigma2(e, zenith_deg=zenith_deg)
+        )
     if collimated:
         theta1 = np.zeros_like(theta1)
         theta_dec = np.zeros_like(theta_dec)

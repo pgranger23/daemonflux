@@ -46,6 +46,8 @@ M_MU_KG = 1.883531e-28  # kg
 Q = 1.602176634e-19  # C
 C = 2.99792458e8  # m/s
 CTAU_MU = C * TAU_MU  # ~659 m
+R_EARTH_KM = 6371.0
+H_MU_PROD_KM = 15.0  # representative muon production altitude
 
 
 def bending_angle(b_gauss=0.45):
@@ -61,24 +63,58 @@ def decay_length_km(e_mu_gev):
     return gamma * beta * CTAU_MU / 1e3
 
 
-def decay_in_flight_fraction(e_mu_gev, path_km=15.0):
-    """Fraction of muons of energy E that decay within ``path_km`` of atmosphere
-    (the rest reach the ground and produce no atmospheric decay neutrino)."""
+def path_length_km(zenith_deg=0.0, h_prod_km=H_MU_PROD_KM):
+    """Curved slant path [km] from muon production (~h_prod) down to the surface
+    for arrival zenith.
+
+    Replaces the old fixed 15 km with the real geometric path: vertical -> h_prod;
+    near the horizon -> ~sqrt(2 R h) (hundreds of km), so near-horizon muons
+    traverse much more atmosphere and decay more. Curved-Earth chord:
+    ``L = -R cosθ + sqrt((R cosθ)^2 + 2 R h + h^2)``.
+    """
+    c = np.cos(np.deg2rad(np.asarray(zenith_deg, dtype=float)))
+    R = R_EARTH_KM
+    return -R * c + np.sqrt((R * c) ** 2 + 2 * R * h_prod_km + h_prod_km**2)
+
+
+def decay_in_flight_fraction(e_mu_gev, path_km=None, zenith_deg=0.0):
+    """Fraction of muons of energy E that decay before reaching the ground.
+
+    The path is the **zenith-dependent** curved slant length
+    (:func:`path_length_km`) unless an explicit ``path_km`` is given.
+    """
+    if path_km is None:
+        path_km = path_length_km(zenith_deg)
     return 1.0 - np.exp(-path_km / decay_length_km(e_mu_gev))
 
 
-def numu_bending_sigma2(e_nu_gev, b_gauss=0.45, path_km=15.0):
-    """Angular-spread variance <theta^2> [rad^2] that muon bending adds to a
-    mu-decay neutrino of energy ``e_nu_gev``.
+def muon_decay_numu_fraction(e_nu_gev, zenith_deg=0.0):
+    """Fraction of nu_mu that come from **muon decay** (vs direct pi/K decay).
 
-    The neutrino carries ~1/3 of the muon energy on average, so E_mu ~ 3 E_nu.
-    The spread is the bending angle weighted by the decay-in-flight fraction
-    (only decaying muons contribute); the RMS over the exponential decay-time
-    distribution equals the mean bending angle (Delta_phi), so var ~ f * Dphi^2.
+    Muon-decay nu_mu exist only when the muon decays in flight; relative to the
+    always-present direct nu_mu the weight is bounded ``w = f/(1+f)`` with ``f``
+    the decay-in-flight fraction -> ~0.5 sub-GeV (muons decay), ->0 at high E
+    (muons reach the ground). This is the weight by which muon bending should be
+    applied to a *lumped* nu_mu sample, so it does **not** bleed into the
+    direct-decay nu_mu.
     """
-    e_mu = 3.0 * np.asarray(e_nu_gev, dtype=float)
-    f = decay_in_flight_fraction(e_mu, path_km)
-    return f * bending_angle(b_gauss) ** 2
+    f = decay_in_flight_fraction(
+        3.0 * np.asarray(e_nu_gev, dtype=float), zenith_deg=zenith_deg
+    )
+    return f / (1.0 + f)
+
+
+def numu_bending_sigma2(e_nu_gev, b_gauss=0.45, zenith_deg=0.0):
+    """Angular-spread variance <theta^2> [rad^2] that muon bending adds to the
+    *muon-decay* nu_mu component of a lumped nu_mu sample of energy ``e_nu_gev``.
+
+    E_mu ~ 3 E_nu; the per-muon-decay bending RMS is the (energy-independent)
+    Delta_phi, and it is applied with the **muon-decay nu_mu fraction**
+    :func:`muon_decay_numu_fraction` so it is restricted to that channel rather
+    than added to every decay neutrino: ``var = w_mudecay * Dphi^2``.
+    """
+    w = muon_decay_numu_fraction(e_nu_gev, zenith_deg)
+    return w * bending_angle(b_gauss) ** 2
 
 
 def bending_deflection(vel_hat, b_gauss_enu, charge=+1):
@@ -107,21 +143,21 @@ def coherent_ew_shift_deg(b_north_gauss=0.30, charge=+1):
     return np.degrees(d[0])  # east component
 
 
-def numu_ew_asymmetry(e_nu_gev, b_north_gauss=0.30, charge_ratio=1.27, path_km=15.0):
+def numu_ew_asymmetry(e_nu_gev, b_north_gauss=0.30, charge_ratio=1.27, zenith_deg=0.0):
     """Net East-West azimuthal displacement [deg] of the *summed* mu-decay
     neutrino flux from coherent muon bending.
 
     mu+ and mu- deflect oppositely (+/- the coherent shift); with a muon charge
     ratio ``R = N+/N-`` the net displacement of the (nu_mu + nubar_mu) sum is
-    ``shift * (R-1)/(R+1)``, gated by the decay-in-flight fraction (sub-GeV only).
-    The charge-*separated* shift (full +/- the value, for nu vs nubar) is the
-    larger, flavour-dependent effect; return both.
+    ``shift * (R-1)/(R+1)``, weighted by the muon-decay nu_mu fraction (so it is
+    restricted to that channel, and is sub-GeV only). The charge-*separated* shift
+    (full +/- the value, for nu vs nubar) is the larger, flavour-dependent effect;
+    return both. The decay weight uses the zenith-dependent path.
     """
-    e_mu = 3.0 * np.asarray(e_nu_gev, dtype=float)
-    f = decay_in_flight_fraction(e_mu, path_km)
+    w = muon_decay_numu_fraction(e_nu_gev, zenith_deg)
     shift = coherent_ew_shift_deg(b_north_gauss, charge=+1)  # mu+ east
-    net = shift * (charge_ratio - 1) / (charge_ratio + 1) * f
-    return dict(net_shift_deg=net, charge_separated_deg=shift * f)
+    net = shift * (charge_ratio - 1) / (charge_ratio + 1) * w
+    return dict(net_shift_deg=net, charge_separated_deg=shift * w)
 
 
 def main(argv=None):
@@ -135,13 +171,17 @@ def main(argv=None):
             f"  B = {b:.2f} G  ->  Delta_phi = {np.degrees(bending_angle(b)):.2f} deg"
         )
 
-    print("\ndecay-in-flight fraction (15 km path) & neutrino bending spread:")
-    print("  E_nu[GeV]   E_mu[GeV]   f_decay   sqrt<theta^2>_bend [deg]")
+    print("\nzenith-dependent slant path (muon production ~15 km -> surface):")
+    for z in (0.0, 60.0, 85.0):
+        print(f"  zenith {z:4.0f} deg -> path {path_length_km(z):7.1f} km")
+
+    print("\nmuon-decay-channel bending spread (restricted to mu-decay nu_mu):")
+    print("  E_nu[GeV]   E_mu[GeV]   w_mu-decay   sqrt<theta^2>_bend [deg]")
     for enu in (0.3, 1.0, 3.0, 10.0, 30.0):
         emu = 3 * enu
-        f = decay_in_flight_fraction(emu)
+        w = muon_decay_numu_fraction(enu)
         s = np.degrees(np.sqrt(numu_bending_sigma2(enu)))
-        print(f"  {enu:7.1f}    {emu:7.1f}    {f:6.3f}     {s:6.2f}")
+        print(f"  {enu:7.1f}    {emu:7.1f}    {w:6.3f}      {s:6.2f}")
 
     print("\ncoherent charge-dependent E-W shift (B_north=0.30 G, vertical muon):")
     print(

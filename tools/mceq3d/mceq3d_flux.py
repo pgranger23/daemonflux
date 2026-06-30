@@ -131,6 +131,18 @@ class MCEq3DFlux:
         n = self.mceq.pman[(2112, 0)]
         self._p_sl = slice(p.lidx, p.uidx)
         self._n_sl = slice(n.lidx, n.uidx)
+        # Per-nucleus rigidity bookkeeping. The geomagnetic cutoff is on RIGIDITY
+        # R = (A/Z)*E_nucleon, so free protons (A/Z=1) and bound nucleons
+        # (He/CNO/Fe, A/Z~2) are cut at different energies. By isospin the bound
+        # protons ~ the neutron flux, so from MCEq's own p/n nucleon fluxes:
+        #   free protons  = p - n  (A/Z=1),   bound protons = n (A/Z~2).
+        p_arr = self._phi0_std[self._p_sl]
+        n_arr = self._phi0_std[self._n_sl]
+        with np.errstate(invalid="ignore", divide="ignore"):
+            self._f_free = np.where(
+                p_arr > 0, np.clip((p_arr - n_arr) / p_arr, 0.0, 1.0), 1.0
+            )
+        self._az_bound = 2.0  # <A/Z> of bound nucleons (He/CNO ~2.0, Fe 2.08)
 
     # -- base: MCEq per zenith, curved atmosphere, no geomag --
     def base(self, cos_zeniths):
@@ -157,8 +169,12 @@ class MCEq3DFlux:
         full = {s: self.mceq.get_solution(s, 0).copy() for s in SPECIES}
         G = {s: np.ones((len(rc_grid), len(self.e))) for s in SPECIES}
         for j, rc in enumerate(rc_grid):
-            tp = _transmission(self.e, rc, az_over_z=1.0)  # protons R=E
-            tn = _transmission(self.e, rc, az_over_z=2.0)  # bound n, R~2E
+            # proper per-nucleus rigidity: split the proton flux into free
+            # (A/Z=1) and bound (A/Z~2); neutrons are all bound.
+            t1 = _transmission(self.e, rc, az_over_z=1.0)
+            t2 = _transmission(self.e, rc, az_over_z=self._az_bound)
+            tp = self._f_free * t1 + (1.0 - self._f_free) * t2
+            tn = t2
             self.mceq._phi0[:] = self._phi0_std
             self.mceq._phi0[self._p_sl] *= tp
             self.mceq._phi0[self._n_sl] *= tn
