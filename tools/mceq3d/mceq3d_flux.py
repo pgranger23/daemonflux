@@ -331,9 +331,20 @@ class MCEq3DFlux:
         """
         cos_zeniths = np.asarray(cos_zeniths, float)
         azimuths = np.asarray(azimuths, float)
-        if rc_grid is None:
-            rc_grid = np.linspace(2.0, 20.0, 8)
         base = self.base(cos_zeniths)
+
+        import datetime as _dt
+
+        date = date or _dt.datetime(2020, 1, 1)
+        rc_map = self.cutoff_grid(lat, lon, cos_zeniths, azimuths, date, n_scan)
+
+        # Build the G(R_c) interpolation grid to *span the actual cutoff map*, so the
+        # suppression is never clamped: a fixed floor (e.g. 2 GV) would apply spurious
+        # suppression to low-cutoff directions/sites (polar R_c<2 GV) where G->1.
+        if rc_grid is None:
+            lo = max(0.1, float(np.min(rc_map)) * 0.9)
+            hi = max(lo + 0.5, float(np.max(rc_map)) * 1.05)
+            rc_grid = np.linspace(lo, hi, 12)
         if zenith_dependent_geomag:
             G_by_z = []
             for cz in cos_zeniths:
@@ -343,22 +354,13 @@ class MCEq3DFlux:
             G0, rc_grid = self.geomag_response(rc_grid)
             G_by_z = [G0] * len(cos_zeniths)
 
-        import datetime as _dt
-
-        date = date or _dt.datetime(2020, 1, 1)
-        rc_map = self.cutoff_grid(lat, lon, cos_zeniths, azimuths, date, n_scan)
-
         flux = {
             s: np.zeros((len(cos_zeniths), len(azimuths), len(self.e))) for s in SPECIES
         }
         for s in SPECIES:
             for ia in range(len(azimuths)):
                 for iz in range(len(cos_zeniths)):
-                    rc = rc_map[iz, ia]
-                    Gs = G_by_z[iz][s]
-                    g = np.array(
-                        [np.interp(rc, rc_grid, Gs[:, k]) for k in range(len(self.e))]
-                    )
+                    g = _interp_rc(rc_map[iz, ia], rc_grid, G_by_z[iz][s])
                     flux[s][iz, ia] = base[s][iz] * g
         return dict(
             e=self.e,
@@ -368,6 +370,19 @@ class MCEq3DFlux:
             base=base,
             cutoff=rc_map,
         )
+
+
+def _interp_rc(rc, rc_grid, gmat):
+    """Linear interp of G at scalar ``rc`` along axis 0 of ``gmat`` (n_rc, n_e).
+
+    Vectorised over energy (replaces a per-energy ``np.interp`` loop); clamps to the
+    grid endpoints exactly like ``np.interp``.
+    """
+    rc = min(max(float(rc), rc_grid[0]), rc_grid[-1])
+    j = int(np.searchsorted(rc_grid, rc))
+    j = min(max(j, 1), len(rc_grid) - 1)
+    w = (rc - rc_grid[j - 1]) / (rc_grid[j] - rc_grid[j - 1])
+    return (1.0 - w) * gmat[j - 1] + w * gmat[j]
 
 
 def horizon_grid(n_horizon=9, n_bulk=6, cz_max=0.95, horizon_half_width=0.2):

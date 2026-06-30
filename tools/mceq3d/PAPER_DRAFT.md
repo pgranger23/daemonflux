@@ -153,7 +153,7 @@ with $L(\theta_z)$ the curved-atmosphere slant path from the production altitude
 
 We compare the absolute $\nu_\mu$ flux at Kamioka against the Honda HKKM2014 tables [6] on a dense energy grid from $0.1$ to $100\,\mathrm{GeV}$. Both predictions are log–log interpolated to common energies; a naïve nearest-grid-point comparison mismatches MCEq's $0.89\,\mathrm{GeV}$ node against Honda's $1.0\,\mathrm{GeV}$ bin and is misleading on a steep spectrum.
 
-The comparison (Table 1, Figure 4) reveals the role of the 1D base. The raw-MCEq base lies $\approx 25$–$30\%$ below Honda across $0.3$–$10\,\mathrm{GeV}$, a genuine SIBYLL/H3a normalisation deficit. The `daemonflux`-anchored base agrees with Honda to $\approx 10\%$ for $E\gtrsim 1\,\mathrm{GeV}$ up to $100\,\mathrm{GeV}$, but over-predicts toward $0.1\,\mathrm{GeV}$ (up to $\sim\!2\times$), where it extrapolates beyond its muon calibration. Honda lies between the two models; the bases therefore bracket the truth (Section 5).
+The comparison (Table 1, Figure 4) reveals the role of the 1D base. The raw-MCEq base lies $\approx 25$–$30\%$ below Honda across $0.3$–$10\,\mathrm{GeV}$, a genuine SIBYLL/H3a normalisation deficit. The `daemonflux`-anchored base agrees with Honda to $\approx 10\%$ for $E\gtrsim 1\,\mathrm{GeV}$ up to $100\,\mathrm{GeV}$, but over-predicts toward $0.1\,\mathrm{GeV}$ (up to $\sim\!2\times$), where it extrapolates beyond its muon calibration. The two bases **bracket Honda below $\sim 1\,\mathrm{GeV}$** (daemonflux above, MCEq below); above $\sim 1\,\mathrm{GeV}$ both lie below Honda, with the data-anchored daemonflux base the closer of the two. We therefore adopt the daemonflux base as the central estimate, and use the inter-base spread to define the systematic (Section 5).
 
 **Table 1.** Ratio of the absolute vertical $\nu_\mu$ flux at Kamioka to Honda HKKM2014.
 
@@ -190,17 +190,18 @@ As a stability check we evaluate the central flux and its systematic from a high
 
 ## 5. Systematic uncertainties
 
-The dominant uncertainty below a few GeV is physical, not numerical: independent, credible flux models disagree at the $20$–$40\%$ level there [6,7,8,24], and no method choice removes this. Rather than adopt a single base, we quantify the spread from the two bracketing bases. Denoting the MCEq- and `daemonflux`-based predictions $\Phi_{\rm mc}$ and $\Phi_{\rm df}$, we take the geometric mean as the central estimate and the half log-spread as a one-sigma flux uncertainty,
+The dominant uncertainty below a few GeV is physical, not numerical: independent, credible flux models disagree at the $20$–$40\%$ level there [6,7,8,24], and no method choice removes this. We quantify it from the spread of our two bases. Denoting the MCEq- and `daemonflux`-based predictions $\Phi_{\rm mc}$ and $\Phi_{\rm df}$, the half log-spread defines a one-sigma model systematic, with the data-anchored daemonflux base as the central value (and the geometric mean as a convenience central where the bases bracket Honda),
 
 $$
-\Phi_{\rm central} = \sqrt{\Phi_{\rm mc}\,\Phi_{\rm df}},\qquad
-\sigma_{\rm sys}(E) = \tfrac12\left|\ln\!\frac{\Phi_{\rm df}}{\Phi_{\rm mc}}\right| .
+\sigma_{\rm sys}(E) = \tfrac12\left|\ln\!\frac{\Phi_{\rm df}}{\Phi_{\rm mc}}\right| ,\qquad
+\Phi_{\rm central} \equiv \Phi_{\rm df}\ (E\gtrsim 0.5\,\mathrm{GeV}),\quad
+\sqrt{\Phi_{\rm mc}\Phi_{\rm df}}\ (\mathrm{sub\text{-}GeV}) .
 \tag{11}
 $$
 
-The central estimate tracks Honda to $\approx 15\%$ over $0.3$–$100\,\mathrm{GeV}$, and the band is $\pm 37\%$ at $0.1\,\mathrm{GeV}$, $\pm 31\%$ at $0.5\,\mathrm{GeV}$, $\pm 21\%$ at $1\,\mathrm{GeV}$, $\pm 10\%$ at $10\,\mathrm{GeV}$ and $\pm 4\%$ at $100\,\mathrm{GeV}$ (Figure 9). It is intended to be propagated through an oscillation fit as a correlated normalisation-versus-energy systematic. Sub-dominant, well-bounded effects include the production-angle treatment ($\sim 1$–$2\%$), the zenith-independence of $G_s$ ($\le 2\%$, Section 3.4), the composition-averaged bound $\langle A/Z\rangle$, and the muon-bending kinematic constants, which matter only for fine-grained charge-resolved studies.
+The band is $\pm 37\%$ at $0.1\,\mathrm{GeV}$, $\pm 31\%$ at $0.5\,\mathrm{GeV}$, $\pm 21\%$ at $1\,\mathrm{GeV}$, $\pm 10\%$ at $10\,\mathrm{GeV}$ and $\pm 4\%$ at $100\,\mathrm{GeV}$ (Figure 9), to be propagated through an oscillation fit as a correlated normalisation-versus-energy systematic. Two honest caveats apply. First, the bases bracket Honda only **below $\sim 1\,\mathrm{GeV}$** (daemonflux above, MCEq below), where the geometric-mean central reproduces Honda to $\approx 5\%$; **above $\sim 1\,\mathrm{GeV}$ both bases lie below Honda** (daemonflux at $\approx 0.91$, the better central; the geometric mean is biased $\approx 10$–$18\%$ low and should not be used there). Second, being a two-model spread it is an *intra-framework* systematic — a floor on the flux uncertainty — and does not by itself span other calculations (Honda lies $\approx 10$–$18\%$ above the geometric mean at multi-GeV); a complete analysis should fold in the inter-calculation (Honda/Bartol/FLUKA) envelope. Sub-dominant, well-bounded effects include the production-angle treatment ($\sim 1$–$2\%$), the zenith-independence of $G_s$ ($\le 2\%$, Section 3.4), the composition-averaged bound $\langle A/Z\rangle$, and the muon-bending kinematic constants, which matter only for fine-grained charge-resolved studies.
 
-![**Figure 9.** The two 1D bases bracket Honda; their geometric mean (central) and log-spread (systematic band) over $0.1$–$100\,\mathrm{GeV}$.](base_comparison.png)
+![**Figure 9.** The two 1D bases versus Honda, with their geometric-mean central and log-spread systematic band over $0.1$–$100\,\mathrm{GeV}$. The bases bracket Honda only below $\sim 1\,\mathrm{GeV}$; above, both lie below Honda (daemonflux closer).](base_comparison.png)
 
 ---
 

@@ -125,13 +125,15 @@ all are now addressed in code:
    it in microseconds (azimuth-periodic). The first-principles IGRF cutoff is thus
    fast enough to be the standard path: `GeomagneticModel(cutoff_source=
    cached_cutoff_source(...))`. (§5.4.)
-2. **Sub-0.3 GeV volatility → an explicit systematic** — **done**. The two bases
-   bracket Honda, so `base_comparison.model_envelope` returns a **central estimate
-   (geometric mean) and a data-grounded fractional systematic (half log-spread)**.
-   The central tracks Honda to ~15 % over 0.3–100 GeV; the systematic is **±37 % at
-   0.1 GeV, ±31 % at 0.5 GeV, ±21 % at 1 GeV, ±10 % at 10 GeV, ±4 % at 100 GeV**
-   (`base_comparison.png`). This is the irreducible sub-GeV flux uncertainty, now
-   delivered as a number to carry rather than a caveat. (§5.11.)
+2. **Sub-0.3 GeV volatility → an explicit systematic** — **done**.
+   `base_comparison.model_envelope` returns a **data-grounded fractional systematic
+   (half log-spread of the two bases)** and a convenience central. The band is
+   **±37 % at 0.1 GeV, ±31 % at 0.5 GeV, ±21 % at 1 GeV, ±10 % at 10 GeV, ±4 % at
+   100 GeV** (`base_comparison.png`), delivered as a number to carry rather than a
+   caveat. Honest scope (see audit, §1e): the bases **bracket Honda only below
+   ~1 GeV** (geometric-mean central ~Honda there); above ~1 GeV both lie below Honda
+   so daemonflux is the central, and the band is an intra-framework floor (it does
+   not by itself span Honda/Bartol/FLUKA). (§5.11.)
 3. **Muon-bending vertical-muon approximation** — **fixed**. `coherent_shift_deg`
    uses the **actual muon direction** (`muon_velocity_enu`) and the **full local
    field** (`local_field_enu`, IGRF degree-13 via ppigrf: Kamioka ≈ (−0.04, 0.30,
@@ -178,6 +180,48 @@ now resolved, with the cross-checks added as reproducible scripts.
 
 With these, the two open technical spots are closed and the horizon grid is
 exposed — the conditions the verdict set for production-readiness.
+
+---
+
+## 1e. Internal audit (code + analysis)
+
+A self-critical pass over the whole engine, looking for numerical/physics corners
+beyond the review points. Three items found; the validated Kamioka results are
+**unchanged** by all of them (verified by re-running `--validate`).
+
+1. **Rigidity-grid clamping (fixed).** `solve()` interpolates the suppression
+   `G_s` on an `R_c` grid that previously had a fixed floor of 2 GV, while the
+   cutoff map can return `R_c` as low as 0.5 GV. Low-cutoff directions (polar, or
+   near-horizon at mid-latitude) were therefore clamped to `G_s(2 GV)`, applying a
+   **spurious ~3.5 % suppression at 0.3 GeV** (less above). The grid is now built to
+   **span the actual cutoff map** (`rc_grid` from `R_c^min` to `R_c^max`), so no
+   clamping occurs at any site. Kamioka (R_c≈11) was inside the old grid, hence the
+   headline numbers are identical.
+2. **Vectorised `G_s` interpolation (optimisation).** The per-energy `np.interp`
+   loop in `solve()` is replaced by a single vectorised linear interpolation along
+   the rigidity axis (`_interp_rc`), bit-identical results, ~100× fewer Python ops
+   in the inner triple loop (helps fine horizon grids).
+3. **Systematic-band scope clarified (analysis).** The earlier text said the two
+   bases "bracket Honda" and the geometric-mean central "tracks Honda to ~15 % over
+   0.3–100 GeV". On inspection this is only true **below ~1 GeV** (where daemonflux
+   > Honda > MCEq). **Above ~1 GeV both bases lie below Honda** (daemonflux ≈0.91,
+   MCEq ≈0.73), so they do *not* bracket it and the geometric mean runs ~10–18 %
+   **below** Honda — there the data-anchored **daemonflux base is the better
+   central**. The half-log-spread band remains a valid *intra-framework* systematic
+   but is a **floor**, not a full inter-calculation envelope (Honda sits above it at
+   multi-GeV). All three reports and the `base_comparison` docstrings were corrected
+   accordingly; the recommendation is now: **daemonflux central for E≳0.5 GeV**,
+   geometric-mean only in the sub-GeV crossover, band as the model systematic.
+
+**Bounded limitation (documented, not changed):** the back-traced cutoff is capped
+at `r_hi` (default 20 GV), so for very-high-cutoff **equatorial** sites the
+near-horizon-East cutoff (which can exceed 20 GV) is under-estimated, slightly
+under-suppressing those directions. Kamioka's maximum (~14 GV) is well inside the
+cap, so the validated results are unaffected; raise `r_hi` for equatorial sites.
+
+No other correctness issues were found: the per-nucleus free/bound split, the
+cascade-correct `G_s` ratio, the far-side up-going geometry, the species
+reconstruction, and `interp_flux` (which sorts cosθ and wraps azimuth) all check out.
 
 ---
 
@@ -733,11 +777,14 @@ default (not the isothermal exponential of the research demo); pass
   with E), not a fixed 2.0 (second-round item #4); the free/bound split is by
   isospin (bound p ≈ n).
 * **Absolute normalization & its systematic.** With the MCEq base it is ~25–30 %
-  low vs Honda sub-GeV; `base_model="daemonflux"` restores ~10 % at 1 GeV. The two
-  bases bracket Honda, so the **model-spread envelope is delivered as an explicit
-  systematic** (`base_comparison.model_envelope`): central (geometric mean) within
-  ~15 % of Honda over 0.3–100 GeV, with ±37 % (0.1 GeV) → ±21 % (1 GeV) → ±4 %
-  (100 GeV) — carry this band for sub-GeV analyses (second-round item #1).
+  low vs Honda sub-GeV; `base_model="daemonflux"` restores ~10 % at 1 GeV (the
+  recommended central). The **model-spread is delivered as an explicit systematic**
+  (`base_comparison.model_envelope`, half log-spread): ±37 % (0.1 GeV) → ±21 %
+  (1 GeV) → ±4 % (100 GeV). The two bases bracket Honda only **below ~1 GeV**
+  (geometric-mean central ~Honda there); above, both lie below Honda (daemonflux the
+  closer, ~0.91) so the geometric mean is ~10–18 % low and daemonflux is the
+  central. The band is an intra-framework floor, not a full inter-calculation
+  envelope (§1e).
 * Up-going uses one representative far-side production point per direction (the
   production region has finite extent — leading geometric term).
 * Geomag `G` ratio precomputed at vertical and reused at all zeniths — **validated

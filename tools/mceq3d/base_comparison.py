@@ -5,13 +5,16 @@ where atmospheric-flux models disagree most. This scans the absolute numu flux
 ratio to Honda for both ``base_model`` options on a dense grid, at Kamioka
 vertical (down-going), so the trustworthy energy range of each base is explicit:
 
-* daemonflux (muon-calibrated) is the better base for E >~ 1 GeV (~10 %), but
-  extrapolates above Honda below ~0.3 GeV (beyond its muon-calibration region);
+* daemonflux (muon-calibrated) is the better base for E >~ 1 GeV (~10 % of Honda),
+  but extrapolates above Honda below ~0.3 GeV (beyond its muon-calibration region);
 * raw MCEq (SIBYLL23D+H3a) runs ~25-30 % low over 0.3-10 GeV but is closer at
   0.1-0.2 GeV.
 
-Honda itself sits between the two over 0.3-1 GeV: that band is the genuine,
-irreducible sub-GeV flux uncertainty. Run::
+The two bases **bracket Honda only below ~1 GeV** (daemonflux above, MCEq below) --
+there the geometric mean reproduces Honda to ~5 % and that band is the genuine
+irreducible sub-GeV uncertainty. Above ~1 GeV *both* bases lie below Honda
+(daemonflux closer, ~0.91), so the geometric mean is biased ~10-18 % low there and
+daemonflux should be used as the central value. Run::
 
     python base_comparison.py
 """
@@ -66,11 +69,14 @@ def _vertical_numu(base_model):
 def model_envelope(f_mc, f_df):
     """Central value + fractional systematic from the two-base spread.
 
-    The MCEq and daemonflux bases bracket Honda over the whole range, so their
-    **geometric mean** is a sensible central estimate and the **half log-spread** is
-    a data-grounded one-sigma flux systematic — large below ~1 GeV (the irreducible
-    sub-GeV uncertainty) and shrinking to a few % above 10 GeV. Analyses should
-    carry this band rather than trust either base as exact at low energy.
+    The **half log-spread** of the MCEq and daemonflux bases is a data-grounded
+    one-sigma *model* systematic — large below ~1 GeV and shrinking to a few % above
+    10 GeV. The **geometric mean** is returned as a convenience central value, but
+    note its energy regimes differ (see `base_comparison` module docstring): the two
+    bases bracket Honda only below ~1 GeV (where the geometric mean ~ Honda); above
+    ~1 GeV both lie below Honda and the data-anchored daemonflux base is the better
+    central. The band is an intra-framework spread (a floor on the flux
+    uncertainty), not a full inter-calculation envelope.
     """
     f_mc = np.asarray(f_mc)
     f_df = np.asarray(f_df)
