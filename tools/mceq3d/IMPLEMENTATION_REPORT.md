@@ -187,6 +187,22 @@ T2K-replica record), applying the experiment's angular acceptance.
 **Result.** ~**10%** agreement in `<p_T>` over the measured range
 (`validate_na61_pt.png`).
 
+**π⁺/π⁻ charge asymmetry (a known, understood limitation).** NA61 shows a real
+π⁺/π⁻ difference in `⟨p_T⟩(p)`: π⁻ is *harder* than π⁺ at intermediate-to-high
+momentum (up to ~20% at p~2–3 GeV, ~10% averaged), agreeing only below ~1 GeV.
+This is the **forward leading-particle charge asymmetry** — the proton's valence
+*u* quarks fragment into *leading* π⁺ that go forward and beam-like with low p_T,
+pulling `⟨p_T⟩(π⁺)` down, while π⁻ (no valence-leading channel in a proton beam)
+is more central and harder. Our sim (UrQMD-3.4, the low-energy model covering this
+regime) reproduces the *sign* but **under-predicts the magnitude by ~3×** (~3–4%
+vs ~10%) — a known shortfall of low-energy hadronic models in the forward
+valence-fragmentation region, not a pipeline bug (both sides use the same
+acceptance/binning/weighting). **Impact on the 3D flux is negligible:** it maps to
+a small π⁺/π⁻ → ν_μ/ν̄_μ *production-angle* difference, riding on the ~1–2% angular
+effect at multi-GeV energies where the angle is already <0.5°; the dominant
+ν_μ/ν̄_μ difference is in the *yield*, taken from MCEq in `mceq3d_flux`. It would
+matter only for a high-precision charge-resolved directional study.
+
 **Simplifications / limitations.**
 * Pions only with a full HEPData fit. **K± was not fitted against HEPData**
   because this environment has no network (SSL). Instead the kaon kinematics are

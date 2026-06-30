@@ -11,6 +11,25 @@ NA61 reports d(sigma)/dp [mb/GeV] in bins of momentum p for ten polar-angle
 ranges theta. We form <p_T>(p) by weighting each (p, theta) cell's yield
 (d(sigma)/dp * dp) by p*sin(theta_center).
 
+pi+ vs pi- charge asymmetry (a known, understood limitation)
+-----------------------------------------------------------
+NA61 shows a real pi+/pi- difference in <p_T>(p): pi- is *harder* than pi+ at
+intermediate-to-high momentum (up to ~20% at p ~ 2-3 GeV, ~10% averaged), while
+they agree below ~1 GeV. This is the **forward leading-particle charge
+asymmetry**: the proton's valence u quarks fragment into *leading* pi+ that go
+forward and beam-like with low p_T, pulling <p_T>(pi+) down; pi- has no
+valence-leading channel in a proton beam, so it is more central and harder.
+
+UrQMD-3.4 reproduces the *sign* but **under-predicts the magnitude by ~3x**
+(~3-4% vs NA61's ~10%) -- a known shortfall of low-energy hadronic models in the
+forward valence-fragmentation region, not a bug here (both sides use the same
+acceptance/binning/weighting). Impact on the 3D flux is negligible: it maps to a
+small pi+/pi- (-> nu_mu/nubar_mu) *production-angle* difference, which rides on the
+~1-2% angular effect at multi-GeV energies where the angle is already <0.5 deg;
+the dominant nu/nubar difference is in the *yield*, taken from MCEq in
+``mceq3d_flux``. It would matter only for a high-precision charge-resolved
+directional study.
+
 The NA61 tables are cached in ``na61_886780_cache.json`` (fetched via HEPData);
 delete it to refetch. Run::
 
