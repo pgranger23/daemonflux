@@ -9,6 +9,7 @@ import numpy as np
 
 from mceq3d_flux import (
     _transmission,
+    horizon_grid,
     interp_flux,
     farside_production,
     CM2_PER_M2,
@@ -72,3 +73,14 @@ def test_bound_neutron_rigidity_less_suppressed():
 
 def test_unit_constant():
     assert CM2_PER_M2 == 1.0e4  # MCEq cm^-2 -> Honda/engine m^-2
+
+
+def test_horizon_grid_refines_near_horizon():
+    g = horizon_grid()
+    assert np.all(np.diff(g) > 0)  # strictly increasing, ordered
+    assert np.allclose(g, -g[::-1])  # symmetric up/down
+    # more points packed near the horizon than in the bulk per unit cosθ
+    near = np.sum(np.abs(g) < 0.2)
+    far = np.sum(np.abs(g) >= 0.2)
+    assert near > far  # horizon is refined
+    assert g.min() < -0.9 and g.max() > 0.9  # spans the full sky

@@ -307,19 +307,41 @@ class MCEq3DFlux:
         return rc
 
     def solve(
-        self, lat, lon, cos_zeniths, azimuths, date=None, n_scan=12, rc_grid=None
+        self,
+        lat,
+        lon,
+        cos_zeniths,
+        azimuths,
+        date=None,
+        n_scan=12,
+        rc_grid=None,
+        zenith_dependent_geomag=False,
     ):
         """Absolute Phi[species, cosZ, az, E] for a site (full sky).
 
         Down-going (cosZ>=0): detector geomagnetic cutoff. Up-going (cosZ<0):
         far-side production-point cutoff (global treatment, :func:`farside_production`).
+
+        ``zenith_dependent_geomag``: by default the suppression ratio ``G_s(E,R_c)``
+        is precomputed at the vertical column and reused at all zeniths -- validated
+        zenith-independent to <=2% (sub-GeV horizon) by `geomag_zenith_check.py`,
+        since the slant-depth shower effects cancel in the cut/full ratio. Set True
+        to instead recompute ``G_s`` at *every* zenith (removes that <=2%
+        approximation at the cost of one cascade pair per zenith band).
         """
         cos_zeniths = np.asarray(cos_zeniths, float)
         azimuths = np.asarray(azimuths, float)
         if rc_grid is None:
             rc_grid = np.linspace(2.0, 20.0, 8)
         base = self.base(cos_zeniths)
-        G, rc_grid = self.geomag_response(rc_grid)
+        if zenith_dependent_geomag:
+            G_by_z = []
+            for cz in cos_zeniths:
+                Gz, rc_grid = self.geomag_response(rc_grid, cz_ref=max(abs(cz), 1e-3))
+                G_by_z.append(Gz)
+        else:
+            G0, rc_grid = self.geomag_response(rc_grid)
+            G_by_z = [G0] * len(cos_zeniths)
 
         import datetime as _dt
 
@@ -333,8 +355,9 @@ class MCEq3DFlux:
             for ia in range(len(azimuths)):
                 for iz in range(len(cos_zeniths)):
                     rc = rc_map[iz, ia]
+                    Gs = G_by_z[iz][s]
                     g = np.array(
-                        [np.interp(rc, rc_grid, G[s][:, k]) for k in range(len(self.e))]
+                        [np.interp(rc, rc_grid, Gs[:, k]) for k in range(len(self.e))]
                     )
                     flux[s][iz, ia] = base[s][iz] * g
         return dict(
@@ -345,6 +368,20 @@ class MCEq3DFlux:
             base=base,
             cutoff=rc_map,
         )
+
+
+def horizon_grid(n_horizon=9, n_bulk=6, cz_max=0.95, horizon_half_width=0.2):
+    """Full-sky cosθ grid **refined near the horizon** (cosθ→0).
+
+    The flux (and the sec θ enhancement) vary fastest near cosθ=0, so a uniform
+    grid interpolates poorly there. This packs ``n_horizon`` points (per
+    hemisphere) into |cosθ| < ``horizon_half_width`` and ``n_bulk`` into the rest,
+    symmetric in up/down. Pass the result as ``cos_zeniths`` to :meth:`solve`.
+    """
+    bulk = np.linspace(horizon_half_width, cz_max, n_bulk)
+    horiz = np.linspace(0.02, horizon_half_width, n_horizon, endpoint=False)
+    down = np.unique(np.concatenate([horiz, bulk]))
+    return np.unique(np.concatenate([-down[::-1], down]))
 
 
 def interp_flux(result, energy_gev, cos_zenith, azimuth_deg, species="total_numu"):

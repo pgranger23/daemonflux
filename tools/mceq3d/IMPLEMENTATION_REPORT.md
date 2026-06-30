@@ -16,7 +16,7 @@ meaningful for the MCEq-backed engine (§5.6); the parametrized engines produce
 *ratios/shapes* only.
 
 All code is on the fork `pgranger23/daemonflux`, branch `3d-extension`.
-Inventory: **24 modules, 21 test files, 117 passing offline tests, 23 validation
+Inventory: **26 modules, 21 test files, 118 passing offline tests, 25 validation
 plots, 4 companion docs.** Tooling: Black + flake8 clean, NumPy docstrings.
 
 ---
@@ -148,6 +148,36 @@ is a generator-threshold artifact confined to the vanishing-yield region; the bu
 (x_L ≥ 0.005) matches to 1–3 % and the angular moments are unaffected, so those
 kernels are fine for the *angular spread* but not for standalone absolute yields —
 documented, not "fixable" without a higher-energy generator (§5.1).
+
+## 1d. Response to the third-round review
+
+The third review flagged two subtle spots and two suggested cross-checks; all are
+now resolved, with the cross-checks added as reproducible scripts.
+
+1. **Zenith-independence of `G_s` — measured and bounded** (the reviewer's
+   "zenith-insensitivity validation"). `geomag_zenith_check.py` recomputes the
+   suppression ratio `G_s = Φ_cut/Φ_full` in raw MCEq at zeniths from vertical to
+   ~84° (cosθ=0.1) for fixed cutoffs. **`G_s` is zenith-independent to ≤2.1 %** at
+   the worst point (0.3 GeV, R_c=11 GV) and **≤0.4 % above 1 GeV** — because the
+   slant-depth shower effects the reviewer noted (extra meson decay, muon energy
+   loss) act on numerator *and* denominator and **cancel in the ratio**. So the
+   vertical precomputation is safe at the ~1–2 % level; for studies that want even
+   that removed, `solve(zenith_dependent_geomag=True)` now recomputes `G_s` at every
+   zenith. (`geomag_zenith_check.png`, §5.11.)
+2. **Horizon grid exposed** (the verdict's gating item). `horizon_grid()` returns a
+   full-sky cosθ grid **refined near cosθ=0** (most points inside |cosθ|<0.2),
+   pass-through to `solve(cos_zeniths=...)`, so the sharp sec θ horizon region is
+   sampled finely without wasting points in the isotropic bulk. (§5.11.)
+3. **Extreme-latitude spot-check** (verification #1). `latitude_check.py` runs the
+   central estimate + systematic from a high-cutoff equatorial site to the polar
+   limit. **R_c falls monotonically equator→pole (17.2 → 9.0 → 1.8 → 0.8 GV)**, the
+   flux rises smoothly with no discontinuity at the no-cutoff polar limit, and the
+   **fractional systematic is site-robust (0 % spread** — the cutoff cancels in the
+   base ratio). The composition ⟨A/Z⟩ is site-independent by construction.
+   (`latitude_check.png`.)
+
+With these, the two open technical spots are closed and the horizon grid is
+exposed — the conditions the verdict set for production-readiness.
 
 ---
 
@@ -710,8 +740,12 @@ default (not the isothermal exponential of the research demo); pass
   (100 GeV) — carry this band for sub-GeV analyses (second-round item #1).
 * Up-going uses one representative far-side production point per direction (the
   production region has finite extent — leading geometric term).
-* Geomag `G` ratio assumed zenith-independent (precomputed at vertical); the
-  sharp horizon spike needs a finer cosθ grid than the demo's.
+* Geomag `G` ratio precomputed at vertical and reused at all zeniths — **validated
+  zenith-independent to ≤2.1 %** (sub-GeV horizon; ≤0.4 % above 1 GeV) by
+  `geomag_zenith_check.py`, since the slant-depth shower effects cancel in the
+  cut/full ratio. `solve(zenith_dependent_geomag=True)` removes even this residual.
+* The sharp sec θ horizon region is now sampled with `horizon_grid()` (cosθ grid
+  refined near cosθ=0), passed to `solve(cos_zeniths=...)`.
 
 ### 5.10 De-risking prototypes & utilities
 
@@ -964,7 +998,7 @@ Kernel regeneration on a cluster: see `KERNEL_GENERATION.md`.
 
 ## 13. Inventory
 
-* **24 modules**, **21 test files**, **117 passing offline tests**, **23 plots**,
+* **26 modules**, **21 test files**, **118 passing offline tests**, **25 plots**,
   Black/flake8 clean.
 * Companion docs: `README.md` (full roadmap), `REVIEW.md` (self-review with
   statuses), `KERNEL_GENERATION.md` (cluster runbook), `KERNEL_PRODUCTION_REPORT.md`
@@ -985,7 +1019,8 @@ Kernel regeneration on a cluster: see `KERNEL_GENERATION.md`.
    back-traced cutoff is now fast enough to be the default package path.
 5. ~~NA61 **K±** HEPData fit~~ **done** (§5.2, `validate_na61_kaon.py` via
    `hepdata-cli`).
-6. Finer cosθ grid near the horizon to resolve the sharp sec θ spike (open).
+6. ~~Finer cosθ grid near the horizon~~ **exposed** (`horizon_grid()`, §1d/§5.11);
+   the `G_s` zenith-independence behind it is bounded to ≤2 % (`geomag_zenith_check`).
 7. (If ever needed) full-shape high-stat kernels + S_N yield transport — shown
    *not* required for the angular spread.
 
@@ -998,6 +1033,8 @@ Kernel regeneration on a cluster: see `KERNEL_GENERATION.md`.
 | `validate_na61_pt.png` | NA61 pion `<p_T>` agreement (~10%) |
 | `validate_na61_kaon_pt.png` | NA61 **kaon** `<p_T>` vs UrQMD (K⁺/K⁻) |
 | `base_comparison.png` | MCEq vs daemonflux base vs Honda + **model-spread systematic** |
+| `geomag_zenith_check.png` | `G_s(E,R_c)` zenith-independent to ≤2% (verification #2) |
+| `latitude_check.png` | smooth central+systematic across magnetic environments (verification #1) |
 | `kernel_real_piplus.png`, `m_spliced.png` | kernel build & consistency gate |
 | `angular_smoothness_demo.png` | direct-angle binning vs p_T resampling |
 | `channel_comparison.png` | π vs K production angle / `<p_T>` (all 4 kernels) |
