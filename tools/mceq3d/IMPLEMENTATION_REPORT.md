@@ -591,6 +591,48 @@ Consolidated, so nothing is buried. Grouped by severity.
 20. Absolute normalization is physical only for the MCEq-backed `l=0`; the parametrized
     engines give ratios/shapes.
 
+### 9b. Forward-looking: when the kernel simplifications could bite
+
+Both kernel simplifications (A-style choices in §5.1) are *deferred for efficiency,
+not fundamental* — they do not degrade the current Honda-validated results, but it
+is worth being explicit about the futures in which they would.
+
+**Nitrogen-only target.** Safe now because the production *angle* is set by the
+QCD `⟨p_T⟩` scale (~target-independent), and the target-dependent *yield* cancels
+in the normalization-independent angular moments; air (⟨A⟩≈14.5) is essentially
+nitrogen (A=14), so the air-vs-N angle error is likely **<1%**, even smaller than
+the 1.3% C-vs-N bound. It would matter if:
+* the angular layer is ever needed below ~1% (the 1.3% rides on a ~1–2% effect, so
+  today it is ~0.02% on the flux) — then generate O and air-average, and actually
+  *measure* Ar rather than extrapolate (the C-vs-N check did not include O/Ar);
+* the **large-angle tails** are needed (the nuclear `p_T`-broadening / Cronin
+  effect is A-dependent and grows at high `p_T`; the conventional flux only needs
+  the small-angle variance, where it is negligible);
+* the regenerated kernel is ever used for **absolute yields** instead of just
+  angles (it is not — `mceq3d_flux` takes the absolute flux from MCEq's proper air
+  target — but a repurposing would inherit the few-% N-vs-air yield difference).
+
+**Proton-projectile-only.** The missing piece is the angular kernel for **meson
+re-interactions** (π/K + air). Safe now because the two regimes do not overlap:
+sub-GeV (where 3D matters) mesons *decay* before re-interacting, so the proton
+kernel suffices; above the critical energies (~115 GeV π, ~850 GeV K) mesons do
+re-interact, but there the production angle is already tiny (`⟨θ⟩`≈0.25° at
+100 GeV, ≈0.04° at 800 GeV), so their *angular* contribution is negligible — and
+their effect on the *magnitude* is handled correctly because `mceq3d_flux` gets
+the absolute flux from MCEq, whose matrices already include the π/K projectile
+interactions. It would matter if:
+* the project goes to a **fully standalone deterministic 3D-MCEq** that does not
+  lean on MCEq for the magnitude — then the complete `{p, n, π±, K±} × air`
+  angular-kernel matrix is required for self-consistency (still small-angle);
+* **species/charge-resolved** re-interaction kernels are wanted: the high-stat set
+  has K±/π± as *secondaries* (p→π/K) but not as *projectiles* (π→X, K→X), and
+  kaons are ~30% wider in `⟨p_T⟩` than pions.
+
+Both removals are cheap — an extra target run + air-weighting, and the existing
+one-line `ChromoSource(projectile=…)` hook plus cluster time — so they are the
+natural first steps if the angular layer is ever tightened below ~1% or made
+self-contained off MCEq.
+
 ---
 
 ## 10. Production-ready vs research-grade
