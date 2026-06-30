@@ -132,3 +132,6 @@ backup/*
 *.pkl
 daemonsplines_calibration_default_202303_1.zip
 .DS_Store
+
+# Generated per-site geomagnetic cutoff map caches (geomag_backtrace.cached_cutoff_source)
+tools/mceq3d/cutoff_cache/

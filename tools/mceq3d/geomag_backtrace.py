@@ -27,6 +27,7 @@ Run::
 from __future__ import annotations
 
 import argparse
+import os
 
 import numpy as np
 
@@ -295,6 +296,72 @@ def cutoff_source(lat_deg, lon_deg, date, **kw):
         )
         return out.reshape(zb.shape)
 
+    return f
+
+
+def cached_cutoff_source(
+    lat_deg,
+    lon_deg,
+    date,
+    n_zen=19,
+    n_az=25,
+    charge=+1,
+    cache_dir=None,
+    rebuild=False,
+    **kw,
+):
+    """Fast, **precomputed-and-cached** back-traced cutoff for a site.
+
+    This is the production-ready counterpart to :func:`cutoff_source`: it batches a
+    full (zenith x azimuth) sky map once with :func:`cutoff_map` (a few minutes),
+    caches it to ``cache_dir`` as ``.npz``, and returns a callable
+    ``f(zenith_deg, azimuth_deg) -> R_c [GV]`` that **bilinearly interpolates** the
+    map (microseconds, azimuth-periodic). Subsequent calls/processes reuse the
+    cache, so the first-principles IGRF cutoff is fast enough to be the standard
+    path::
+
+        gm = GeomagneticModel("kamioka",
+                              cutoff_source=cached_cutoff_source(36.43, 137.31, date))
+
+    The default grid is 5 deg in zenith (0-90) x 15 deg in azimuth.
+    """
+    from scipy.interpolate import RegularGridInterpolator
+
+    if cache_dir is None:
+        cache_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                 "cutoff_cache")
+    os.makedirs(cache_dir, exist_ok=True)
+    tag = getattr(date, "strftime", lambda f: str(date))("%Y%m%d")
+    fname = os.path.join(
+        cache_dir,
+        f"cutoff_{lat_deg:.2f}_{lon_deg:.2f}_{tag}_{n_zen}x{n_az}_q{charge:+d}.npz",
+    )
+    if os.path.exists(fname) and not rebuild:
+        d = np.load(fname)
+        zeniths, azimuths, grid = d["zeniths"], d["azimuths"], d["grid"]
+    else:
+        zeniths = np.linspace(0.0, 90.0, n_zen)
+        azimuths = np.linspace(0.0, 360.0, n_az)
+        grid = cutoff_map(
+            lat_deg, lon_deg, date, zeniths, azimuths, charge=charge, **kw
+        )
+        np.savez(fname, zeniths=zeniths, azimuths=azimuths, grid=grid)
+
+    interp = RegularGridInterpolator(
+        (zeniths, azimuths), grid, bounds_error=False, fill_value=None
+    )
+
+    def f(zenith_deg, azimuth_deg):
+        z = np.atleast_1d(np.asarray(zenith_deg, dtype=float))
+        a = np.atleast_1d(np.asarray(azimuth_deg, dtype=float)) % 360.0
+        zb, ab = np.broadcast_arrays(z, a)
+        out = interp(np.stack([zb.ravel(), ab.ravel()], axis=-1)).reshape(zb.shape)
+        return out if out.shape != (1,) else float(out[0])
+
+    f.grid = grid  # expose for inspection/plots
+    f.zeniths = zeniths
+    f.azimuths = azimuths
+    f.cache_file = fname
     return f
 
 

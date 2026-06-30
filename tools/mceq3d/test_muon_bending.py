@@ -6,8 +6,10 @@ from muon_bending import (
     bending_angle,
     bending_deflection,
     coherent_ew_shift_deg,
+    coherent_shift_deg,
     decay_length_km,
     decay_in_flight_fraction,
+    muon_velocity_enu,
     numu_bending_sigma2,
     numu_ew_asymmetry,
     path_length_km,
@@ -38,6 +40,22 @@ def test_coherent_shift_charge_antisymmetric():
     sm = coherent_ew_shift_deg(0.30, charge=-1)
     assert sp > 0 and np.isclose(sp, -sm)  # mu+ east, mu- west
     assert 2.0 < sp < 5.0  # ~3 deg for B_north ~ 0.3 G
+
+
+def test_muon_velocity_enu_downward():
+    v = muon_velocity_enu(0.0, 0.0)  # vertical arrival
+    assert np.allclose(v, [0, 0, -1])  # travels straight down
+    vh = muon_velocity_enu(90.0, 90.0)  # horizontal from east
+    assert vh[0] < -0.99 and abs(vh[2]) < 1e-9  # travels toward west, no vertical
+
+
+def test_general_shift_recovers_vertical_special_case():
+    # coherent_shift_deg with vertical muon + pure north field == the old E-W shift
+    g = coherent_shift_deg(0.0, 0.0, [0.0, 0.30, 0.0], charge=+1)
+    assert np.isclose(g["ew_deg"], coherent_ew_shift_deg(0.30, +1))
+    # full field adds a non-zero N-S / direction dependence the vertical case lacks
+    full = coherent_shift_deg(60.0, 90.0, [-0.04, 0.30, -0.37], charge=+1)
+    assert abs(full["ns_deg"]) > 0.5  # inclined direction: N-S term now present
 
 
 def test_deflection_perpendicular_to_velocity():

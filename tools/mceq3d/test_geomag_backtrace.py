@@ -63,6 +63,33 @@ def test_cutoff_source_factory(monkeypatch):
     assert np.allclose(out, [10.0, 10.5, 10.8])
 
 
+def test_cached_cutoff_source_builds_caches_and_interpolates(monkeypatch, tmp_path):
+    # Mock the slow batched map; test build->cache->reload->bilinear-interp path.
+    import geomag_backtrace as gb
+
+    calls = {"n": 0}
+
+    def fake_map(la, lo, d, zen, az, **k):
+        calls["n"] += 1
+        # R_c rising with zenith, independent of azimuth -> easy to check interp
+        return np.tile(10.0 + 0.05 * np.asarray(zen)[:, None], (1, len(az)))
+
+    monkeypatch.setattr(gb, "cutoff_map", fake_map)
+    f = gb.cached_cutoff_source(
+        36.43, 137.31, "2020-01-01", n_zen=5, n_az=5, cache_dir=str(tmp_path)
+    )
+    assert calls["n"] == 1  # built once
+    # bilinear interpolation between zenith nodes (azimuth-independent here)
+    assert np.isclose(f(0.0, 0.0), 10.0, atol=1e-6)
+    assert np.isclose(f(45.0, 123.0), 10.0 + 0.05 * 45.0, atol=1e-6)
+    # second call reuses the cache file (no rebuild)
+    g = gb.cached_cutoff_source(
+        36.43, 137.31, "2020-01-01", n_zen=5, n_az=5, cache_dir=str(tmp_path)
+    )
+    assert calls["n"] == 1  # not rebuilt
+    assert np.isclose(g(45.0, 0.0), 10.0 + 0.05 * 45.0, atol=1e-6)
+
+
 def test_igrf_field_magnitude():
     # Full-IGRF field (ppigrf) at the surface has a realistic magnitude
     # (~25-65 uT depending on location); check a near-surface point.

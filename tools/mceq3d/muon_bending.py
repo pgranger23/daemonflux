@@ -131,16 +131,61 @@ def bending_deflection(vel_hat, b_gauss_enu, charge=+1):
     return coeff * np.cross(np.asarray(vel_hat, float), b_t)
 
 
+def muon_velocity_enu(zenith_deg, azimuth_deg):
+    """Muon travel direction in the local (east, north, up) frame for a particle
+    *arriving* from (zenith, azimuth) -- i.e. ``-`` the from-direction (downward)."""
+    th = np.deg2rad(zenith_deg)
+    ph = np.deg2rad(azimuth_deg)  # azimuth clockwise from north
+    return np.array(
+        [-np.sin(th) * np.sin(ph), -np.sin(th) * np.cos(ph), -np.cos(th)]
+    )
+
+
+def local_field_enu(lat_deg, lon_deg, date=None, h_km=15.0):
+    """Local geomagnetic field (B_east, B_north, B_up) [gauss] at the site.
+
+    Full IGRF (degree 13) via ppigrf at the muon-production altitude. This replaces
+    the single ``B_north`` scalar so the bending uses the *real* field direction
+    (Kamioka: ~0.30 G north, ~0.0 east, ~-0.35 G up -- inclination ~49 deg).
+    """
+    import datetime
+    import ppigrf
+
+    if date is None:
+        date = datetime.datetime(2020, 1, 1)
+    be, bn, bu = ppigrf.igrf(lon_deg, lat_deg, h_km, date)  # nT, geodetic ENU
+    enu = np.array([np.ravel(be)[0], np.ravel(bn)[0], np.ravel(bu)[0]])
+    return enu * 1e-5  # nT -> gauss
+
+
+def coherent_shift_deg(zenith_deg, azimuth_deg, b_enu_gauss, charge=+1):
+    """Coherent arrival shift [deg] of a mu-decay nu for a muon of *arbitrary*
+    direction in the *full* local field -- the general form of the E-W shift.
+
+    Uses the actual muon velocity (:func:`muon_velocity_enu`) and the full field
+    vector (so vertical and both horizontal components all enter), not the
+    vertical-muon / horizontal-field-only approximation. Returns the east-west
+    (azimuthal) and north-south components and the total magnitude [deg].
+    """
+    v = muon_velocity_enu(zenith_deg, azimuth_deg)
+    d = bending_deflection(v, b_enu_gauss, charge)  # rad, ENU, perp to v
+    return dict(
+        ew_deg=float(np.degrees(d[0])),
+        ns_deg=float(np.degrees(d[1])),
+        total_deg=float(np.degrees(np.linalg.norm(d))),
+    )
+
+
 def coherent_ew_shift_deg(b_north_gauss=0.30, charge=+1):
     """East-West (azimuthal) arrival shift [deg] of mu-decay nu for a *vertical*
-    muon: only the horizontal (north) field bends it east/west.
+    muon (the special case of :func:`coherent_shift_deg`): only the horizontal
+    (north) field bends it east/west.
 
     For a downward muon ``v=-up``, ``(v x B)`` has east-component ``+B_north``, so
-    mu+ shifts east and mu- shifts west -- the coherent charge-dependent E-W
-    deflection (Honda). Magnitude = (q tau/m) B_north, energy-independent.
+    mu+ shifts east and mu- shifts west. For the direction-dependent, full-field
+    shift use :func:`coherent_shift_deg` with :func:`local_field_enu`.
     """
-    d = bending_deflection([0, 0, -1.0], [0.0, b_north_gauss, 0.0], charge)
-    return np.degrees(d[0])  # east component
+    return coherent_shift_deg(0.0, 0.0, [0.0, b_north_gauss, 0.0], charge)["ew_deg"]
 
 
 def numu_ew_asymmetry(e_nu_gev, b_north_gauss=0.30, charge_ratio=1.27, zenith_deg=0.0):

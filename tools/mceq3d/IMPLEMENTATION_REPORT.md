@@ -16,7 +16,7 @@ meaningful for the MCEq-backed engine (§5.6); the parametrized engines produce
 *ratios/shapes* only.
 
 All code is on the fork `pgranger23/daemonflux`, branch `3d-extension`.
-Inventory: **24 modules, 21 test files, 114 passing offline tests, 23 validation
+Inventory: **24 modules, 21 test files, 117 passing offline tests, 23 validation
 plots, 4 companion docs.** Tooling: Black + flake8 clean, NumPy docstrings.
 
 ---
@@ -111,10 +111,43 @@ interpolation), which had flattered the raw-MCEq numbers (§5.11).
 **Migration (the reviewer's closing question).** The full-IGRF back-tracer is now
 **selectable through the package API**: `GeomagneticModel(cutoff_source=…)` accepts
 the back-traced cutoff via `geomag_backtrace.cutoff_source(lat, lon, date)`, so it
-is no longer a standalone-only utility. The intended path: keep the dependency-free
-Störmer as the default, ship the back-traced cutoff as the recommended
-`cutoff_source`, and (the remaining engineering step) precompute/cache per-site
-cutoff maps so the principled cutoff is fast enough to be the standard package path.
+is no longer a standalone-only utility (see §1c for the now-fast cached path).
+
+## 1c. Response to the second-round review
+
+The second review confirmed the major fixes and flagged four remaining soft spots;
+all are now addressed in code:
+
+1. **Cutoff-map cache (the verdict's "remaining engineering task")** — **done**.
+   `geomag_backtrace.cached_cutoff_source(lat, lon, date)` batches the full
+   (zenith×azimuth) sky map **once** with `cutoff_map`, caches it to disk
+   (`cutoff_cache/*.npz`), and returns a callable that **bilinearly interpolates**
+   it in microseconds (azimuth-periodic). The first-principles IGRF cutoff is thus
+   fast enough to be the standard path: `GeomagneticModel(cutoff_source=
+   cached_cutoff_source(...))`. (§5.4.)
+2. **Sub-0.3 GeV volatility → an explicit systematic** — **done**. The two bases
+   bracket Honda, so `base_comparison.model_envelope` returns a **central estimate
+   (geometric mean) and a data-grounded fractional systematic (half log-spread)**.
+   The central tracks Honda to ~15 % over 0.3–100 GeV; the systematic is **±37 % at
+   0.1 GeV, ±31 % at 0.5 GeV, ±21 % at 1 GeV, ±10 % at 10 GeV, ±4 % at 100 GeV**
+   (`base_comparison.png`). This is the irreducible sub-GeV flux uncertainty, now
+   delivered as a number to carry rather than a caveat. (§5.11.)
+3. **Muon-bending vertical-muon approximation** — **fixed**. `coherent_shift_deg`
+   uses the **actual muon direction** (`muon_velocity_enu`) and the **full local
+   field** (`local_field_enu`, IGRF degree-13 via ppigrf: Kamioka ≈ (−0.04, 0.30,
+   −0.37) G, inclination ~49°), so vertical *and* both horizontal components and the
+   off-vertical geometry all enter. The old vertical/north-only result is recovered
+   as the special case. (§5.5.)
+4. **Primary composition ⟨A/Z⟩** — **fixed**. The fixed 2.0 is replaced by the
+   **nucleon-flux-weighted ⟨A/Z⟩ over the real composition** (He/CNO/Si 2.0, Fe
+   2.077), computed per energy from crflux (≈2.005, rising slightly with E as Fe
+   grows). The ~0.2–0.5 % Fe sub-component is no longer dropped. (§5.11.)
+
+The remaining **SIBYLL soft-pion turn-on** (~64 % shape agreement at the √s floor)
+is a generator-threshold artifact confined to the vanishing-yield region; the bulk
+(x_L ≥ 0.005) matches to 1–3 % and the angular moments are unaffected, so those
+kernels are fine for the *angular spread* but not for standalone absolute yields —
+documented, not "fixable" without a higher-energy generator (§5.1).
 
 ---
 
@@ -388,14 +421,22 @@ the *same* admittance machinery with the real-field cutoff —
 
 ```python
 from daemonflux.geomagnetic import GeomagneticModel
-from geomag_backtrace import cutoff_source
+from geomag_backtrace import cached_cutoff_source
 import datetime
 gm = GeomagneticModel("kamioka",
-                      cutoff_source=cutoff_source(36.43, 137.31,
+                      cutoff_source=cached_cutoff_source(36.43, 137.31,
                                                   datetime.datetime(2020, 1, 1)))
 ```
 
-So the choice is one argument. The same back-traced cutoff is also what the
+**Fast cached path (`cached_cutoff_source`).** The plain `cutoff_source` is the
+correct-but-slow drop-in (one trajectory back-trace per direction).
+`cached_cutoff_source` is the **production** form: it batches the full
+(zenith×azimuth) sky map once with `cutoff_map` (**one-time**; minutes for a coarse
+grid, longer for fine — the cost is the per-RK4-step IGRF field evaluation on
+trapped trajectories), **caches it to `cutoff_cache/*.npz`**, and thereafter
+returns a microsecond **bilinear interpolant** (azimuth-periodic). This is what makes the principled back-traced
+cutoff fast enough to be a package default — the second reviewer's "remaining
+engineering task." So the choice is one argument. The same back-traced cutoff is also what the
 absolute engine (`mceq3d_flux`, §5.11) and the research solver (`mceq3d_solver`,
 via `geomag_site` for Störmer or `cutoff_GV` for an explicit/back-traced value)
 consume — i.e. **every consumer can take either source.**
@@ -446,18 +487,27 @@ gyroradius); numerically ~3–5° for B~0.3–0.5 G. What is energy-dependent is
   the ν/ν̄ (charge-separated) flux carries a **~3° E–W split sub-GeV**, while the
   summed displacement is small (~0.3°, since the charge ratio R≈1.27 ≈ 1).
 
-**Improvements from the review (item #2).**
+**Improvements from the review (item #2, first round).**
 * The decay path is now the **zenith-dependent curved slant** (`path_length_km`:
   ~15 km vertical → hundreds of km near the horizon), not a fixed 15 km.
 * The bending spread is now **restricted to the muon-decay ν_μ channel** (weighted
   by `muon_decay_numu_fraction = f/(1+f)`), so it no longer bleeds into the
   direct-decay neutrinos.
 
-**Remaining simplifications.**
-* Coherent E–W uses a **vertical-muon approximation** (only the horizontal field
-  bends it E–W); real muons arrive at all zeniths.
-* `E_μ ≈ 3 E_ν` (mean inelasticity), `R = 1.27`, `B_north = 0.30 G` are fixed
-  constants.
+**Full-field, arbitrary-direction shift (second-round item #2).** The
+vertical-muon / horizontal-field-only approximation is replaced by
+`coherent_shift_deg(zenith, azimuth, B_enu, charge)`, which uses the **actual muon
+travel direction** (`muon_velocity_enu`) and the **full local field vector**
+(`local_field_enu` — IGRF degree-13 via ppigrf; Kamioka ≈ (−0.04, 0.30, −0.37) G,
+inclination ~49°). All three field components and the off-vertical geometry now
+enter, returning the E–W *and* N–S arrival shifts; the old vertical/north-only
+value is recovered as the special case. Example (Kamioka, μ⁺): vertical E–W +3.2°;
+60° from North E–W +5.0°; 60° from East E–W +1.6°, N–S −3.2° — the direction
+dependence the vertical approximation missed.
+
+**Remaining simplifications.** `E_μ ≈ 3 E_ν` (mean inelasticity) and `R = 1.27` are
+fixed constants; this only matters for fine-grained charge-resolved horizon shape
+studies (the aggregate effect is the small, validated ~3° sub-GeV split).
 
 ### 5.6 Cascade engines — `mceq3d_solver.py` (parametrized), `mceq3d_production.py` (MCEq)
 
@@ -646,15 +696,18 @@ default (not the isothermal exponential of the research demo); pass
 `atmosphere=("MSIS00", (site, month))` for seasonal/site tracking.
 
 **Simplifications / cheats (this engine).**
-* **Nucleus rigidity** — now handled **properly** per nucleus: the cut splits the
-  nucleon flux into free protons (A/Z=1) and bound nucleons (A/Z≈2) via MCEq's p,n
-  fluxes (review item #1). Residual: the bound part uses ⟨A/Z⟩=2.0 (Fe is 2.08, a
-  ~1% sub-component) and the free/bound split is by isospin (bound p ≈ n).
-* **Absolute normalization.** With the MCEq base it carries the full SIBYLL23D/H3a
-  hadronic systematic (~25–30 % low vs Honda sub-GeV, above). This is now
-  **fixed by `base_model="daemonflux"`** — the muon-calibrated, data-anchored 1D
-  flux (§5.11), which restores ~10 % agreement at 1 GeV. The remaining sub-GeV
-  daemonflux↔Honda spread (~30 % at 0.5 GeV) is irreducible model uncertainty.
+* **Nucleus rigidity** — handled **properly** per nucleus: the cut splits the
+  nucleon flux into free protons (A/Z=1) and bound nucleons via MCEq's p,n fluxes
+  (review item #1). The bound ⟨A/Z⟩ is now the **composition-weighted** value
+  computed per energy from crflux (He/CNO/Si 2.0, Fe 2.077 → ≈2.005, rising slightly
+  with E), not a fixed 2.0 (second-round item #4); the free/bound split is by
+  isospin (bound p ≈ n).
+* **Absolute normalization & its systematic.** With the MCEq base it is ~25–30 %
+  low vs Honda sub-GeV; `base_model="daemonflux"` restores ~10 % at 1 GeV. The two
+  bases bracket Honda, so the **model-spread envelope is delivered as an explicit
+  systematic** (`base_comparison.model_envelope`): central (geometric mean) within
+  ~15 % of Honda over 0.3–100 GeV, with ±37 % (0.1 GeV) → ±21 % (1 GeV) → ±4 %
+  (100 GeV) — carry this band for sub-GeV analyses (second-round item #1).
 * Up-going uses one representative far-side production point per direction (the
   production region has finite extent — leading geometric term).
 * Geomag `G` ratio assumed zenith-independent (precomputed at vertical); the
@@ -765,14 +818,16 @@ Consolidated, so nothing is buried. Grouped by severity.
    *package-wired* admittance factor uses it.
 2. `N_chain = 2` (number of production generations) — a physical estimate, fixed,
    not derived per energy/species.
-3. Muon bending: the path is now zenith-dependent and the spread restricted to the
-   muon-decay channel (review item #2); remaining fixed constants are `E_μ=3E_ν`,
-   `R=1.27`, `B_north=0.30 G`, and the vertical-muon approximation for the E–W
-   projection.
+3. Muon bending: path zenith-dependent, spread restricted to the muon-decay channel
+   (1st-round item #2), and the E–W shift now uses the **full local field +
+   arbitrary muon direction** (2nd-round item #2, `coherent_shift_deg`). Remaining
+   fixed constants: `E_μ=3E_ν`, `R=1.27` (the field is now real via ppigrf, not a
+   fixed `B_north`).
 4. ~~Primary as protons R≈E~~ **resolved in `mceq3d_flux`** (review item #1):
-   per-nucleus rigidity via the free/bound split (free p = p−n, A/Z=1; bound,
-   A/Z≈2). The Störmer/back-trace *cutoff* itself is a rigidity, so it is
-   species-agnostic; only the primary *folding* needed the composition, now done.
+   per-nucleus rigidity via the free/bound split (free p = p−n, A/Z=1; bound at the
+   **composition-weighted ⟨A/Z⟩≈2.005** from crflux, 2nd-round item #4). The
+   Störmer/back-trace *cutoff* itself is a rigidity, so it is species-agnostic; only
+   the primary *folding* needed the composition, now done.
 
 **B. Structural simplifications (physics omitted) — bounded/argued small:**
 5. Parametrized scaling yields in `mceq3d_solver` and `spherical_cascade` (not MCEq).
@@ -909,7 +964,7 @@ Kernel regeneration on a cluster: see `KERNEL_GENERATION.md`.
 
 ## 13. Inventory
 
-* **24 modules**, **21 test files**, **114 passing offline tests**, **23 plots**,
+* **24 modules**, **21 test files**, **117 passing offline tests**, **23 plots**,
   Black/flake8 clean.
 * Companion docs: `README.md` (full roadmap), `REVIEW.md` (self-review with
   statuses), `KERNEL_GENERATION.md` (cluster runbook), `KERNEL_PRODUCTION_REPORT.md`
@@ -921,15 +976,17 @@ Kernel regeneration on a cluster: see `KERNEL_GENERATION.md`.
 
 1. ~~Up-going hemisphere~~ **done** (§5.11) — global far-side geomagnetic
    treatment; reproduces Honda's up/down asymmetry (up-going 0.97–0.98 at 1 GeV).
-2. ~~Data-anchored normalization~~ **done** (`base_model="daemonflux"`, §5.11) —
-   muon-calibrated base; ~10 % vs Honda for E ≳ 1 GeV. *Remaining:* a principled
-   sub-0.3-GeV treatment (daemonflux over-predicts ~2× at 0.1 GeV; MCEq closer).
-3. ~~Per-nucleus rigidity~~ **done** (review item #1, §5.11) — free/bound split
-   from MCEq's p,n fluxes; improved Honda agreement at the sub-GeV horizon.
-4. Finer cosθ grid near the horizon to resolve the sharp sec θ spike.
+2. ~~Data-anchored normalization~~ **done** (`base_model="daemonflux"`, §5.11);
+   ~~principled sub-0.3-GeV treatment~~ **done** — delivered as the explicit
+   model-spread systematic (`base_comparison.model_envelope`, §1c/§5.11).
+3. ~~Per-nucleus rigidity~~ **done** (review item #1, §5.11); ⟨A/Z⟩ now
+   composition-weighted (second-round item #4).
+4. ~~Cutoff-map cache~~ **done** (`cached_cutoff_source`, §1c/§5.4) — the
+   back-traced cutoff is now fast enough to be the default package path.
 5. ~~NA61 **K±** HEPData fit~~ **done** (§5.2, `validate_na61_kaon.py` via
-   `hepdata-cli`) — UrQMD ~10–20 % harder than data.
-6. (If ever needed) full-shape high-stat kernels + S_N yield transport — shown
+   `hepdata-cli`).
+6. Finer cosθ grid near the horizon to resolve the sharp sec θ spike (open).
+7. (If ever needed) full-shape high-stat kernels + S_N yield transport — shown
    *not* required for the angular spread.
 
 ---
@@ -939,6 +996,8 @@ Kernel regeneration on a cluster: see `KERNEL_GENERATION.md`.
 | plot | shows |
 |---|---|
 | `validate_na61_pt.png` | NA61 pion `<p_T>` agreement (~10%) |
+| `validate_na61_kaon_pt.png` | NA61 **kaon** `<p_T>` vs UrQMD (K⁺/K⁻) |
+| `base_comparison.png` | MCEq vs daemonflux base vs Honda + **model-spread systematic** |
 | `kernel_real_piplus.png`, `m_spliced.png` | kernel build & consistency gate |
 | `angular_smoothness_demo.png` | direct-angle binning vs p_T resampling |
 | `channel_comparison.png` | π vs K production angle / `<p_T>` (all 4 kernels) |

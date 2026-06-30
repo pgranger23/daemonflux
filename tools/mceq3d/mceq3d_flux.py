@@ -167,7 +167,21 @@ class MCEq3DFlux:
             self._f_free = np.where(
                 p_arr > 0, np.clip((p_arr - n_arr) / p_arr, 0.0, 1.0), 1.0
             )
-        self._az_bound = 2.0  # <A/Z> of bound nucleons (He/CNO ~2.0, Fe 2.08)
+        # <A/Z> of bound nucleons, **nucleon-flux-weighted over the real primary
+        # composition** (He/CNO/Si A/Z=2, Fe 2.077) instead of a fixed 2.0, so the
+        # ~0.2-0.5% Fe sub-component is included and energy-dependent (Fe rises with
+        # E). Per species the nucleon flux at per-nucleon energy E is A^2*Phi(A*E).
+        cr = pm[0](pm[1])
+        num = np.zeros_like(self.e)
+        den = np.zeros_like(self.e)
+        for cid in cr.nucleus_ids:
+            Z, A = cr.Z_A(cid)
+            if A <= 1:
+                continue  # free protons handled separately (A/Z=1)
+            w = A * A * np.ravel(cr.nucleus_flux(cid, A * self.e))
+            num += (A / Z) * w
+            den += w
+        self._az_bound = np.where(den > 0, num / den, 2.0)
 
     # -- base: MCEq per zenith, curved atmosphere, no geomag --
     def base(self, cos_zeniths):
