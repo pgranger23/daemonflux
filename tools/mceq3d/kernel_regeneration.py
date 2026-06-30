@@ -658,19 +658,22 @@ def _plot(kernel, marginal, reference, grid, args):
         r"regenerated, $\int d\theta$" if args.angular else r"regenerated, $\int dp_T$"
     )
     axR.loglog(grid.xl_centers, marginal[i], "o-", ms=3, label=mlabel)
+    title = "Consistency gate: p_T-marginal vs MCEq"
     if reference is not None:
+        # reference is MCEq's stored dN/dx_L already divided by the log-energy bin
+        # width Delta(lnE) (load_mceq_reference) -> directly comparable, no rescale.
         m = reference[i] > 0
-        norm = np.median((marginal[i][m] / reference[i][m]))
-        axR.loglog(grid.xl_centers, reference[i], "k--", label="reference")
+        norm = np.median(marginal[i][m] / reference[i][m])
         axR.loglog(
             grid.xl_centers,
-            reference[i] * norm,
-            "r:",
-            label=f"reference x {norm:.2g} (shape)",
+            reference[i],
+            "k--",
+            label=r"MCEq $dN/dx_L$ (bin-width corrected)",
         )
+        title = f"Consistency gate (norm ratio = {norm:.2f}, shape match)"
     axR.set_xlabel(r"$x_L$")
     axR.set_ylabel(r"$dN/dx_L$ per interaction")
-    axR.set_title("Consistency gate: p_T-marginal vs reference")
+    axR.set_title(title)
     axR.legend()
 
     fig.tight_layout()
