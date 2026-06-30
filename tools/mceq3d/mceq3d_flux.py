@@ -115,7 +115,13 @@ class MCEq3DFlux:
         interaction_model="SIBYLL23D",
         primary=("HillasGaisser2012", "H3a"),
         e_min=0.3,
+        atmosphere=None,
     ):
+        """``atmosphere`` is an MCEq ``density_model`` tuple. Default ``None`` keeps
+        MCEq's realistic **CORSIKA US-Standard** layered profile (NOT the isothermal
+        exponential used only in the `spherical_cascade` research demo). For
+        seasonal/site tracking pass e.g. ``("MSIS00", ("SoudanMine", "January"))``.
+        """
         import crflux.models as crf
         from MCEq.core import MCEqRun
         import mceq_config as config
@@ -125,6 +131,8 @@ class MCEq3DFlux:
         self.mceq = MCEqRun(
             interaction_model=interaction_model, primary_model=pm, theta_deg=0.0
         )
+        if atmosphere is not None:
+            self.mceq.set_density_model(atmosphere)
         self.e = self.mceq.e_grid
         self._phi0_std = self.mceq._phi0.copy()
         p = self.mceq.pman[(2212, 0)]

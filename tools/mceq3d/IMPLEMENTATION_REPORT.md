@@ -56,13 +56,55 @@ plots, 4 companion docs.** Tooling: Black + flake8 clean, NumPy docstrings.
   1 GeV, matching Honda's 133–138 vs 122–130). The ~10–20% normalization offset is
   the SIBYLL23D/H3a-vs-Honda hadronic-model spread (anchorable to daemonflux's
   muon-calibrated base). The **flavour ratio (νe/νμ) matches Honda to 0.7–4%** —
-  the robust, model-independent test passes for all four species. **Trust
-  boundary:** the sub-GeV near-horizon carries a larger ~20% uncertainty from the
-  nucleus-rigidity approximation (documented).
+  the robust, model-independent test passes for all four species. (The earlier
+  sub-GeV-horizon shortfall from the nucleus-rigidity approximation is now resolved
+  by a proper per-nucleus rigidity cut — review item #1, §1b/§5.11.)
 * **Net message:** the value for sub-GeV daemonflux is overwhelmingly in the
   **geomagnetic layer** (production-ready as an admittance factor) plus muon
   bending; the deterministic-3D cascade machinery is validated as an architecture
   and quantifies that the remaining geometric/angular 3D corrections are small.
+
+---
+
+## 1b. Response to an independent review
+
+An external reviewer assessed this work; the substantive items have been addressed
+in code, with the remainder documented honestly:
+
+1. **Per-nucleus rigidity** (flagged *High*, ~20% sub-GeV horizon) — **fixed**. The
+   geomagnetic cut now splits the primary nucleon flux into free protons (A/Z=1,
+   R=E) and bound nucleons (He/CNO/Fe, A/Z≈2, R≈2E) using MCEq's own p,n fluxes
+   (free p = p−n by isospin), replacing the all-protons-R=E treatment. Bound
+   nucleons are no longer over-suppressed, so the Honda agreement *improves* across
+   the sky (0.5 GeV vertical 0.82→**0.86**, 1 GeV 0.91→**0.94**, up-going →**1.00**).
+   (§5.11.)
+2. **Muon-bending idealizations** — **improved**. (a) the fixed 15 km path is
+   replaced by the curved **zenith-dependent slant** (`path_length_km`: ~15 km
+   vertical → hundreds of km near the horizon); (b) the bending is now
+   **restricted to the muon-decay ν_μ channel** (weighted by
+   `muon_decay_numu_fraction = f/(1+f)`) instead of bleeding into every decay
+   neutrino. (§5.5.)
+3. **Atmosphere** — **clarified + extended**. The production engine (`mceq3d_flux`)
+   already uses MCEq's realistic **CORSIKA US-Standard layered** atmosphere, *not*
+   the isothermal exponential — that profile is only in the `spherical_cascade`
+   research demo (where the TeV-horizon overshoot lives). Seasonal/site tracking is
+   now exposed: `MCEq3DFlux(atmosphere=("MSIS00", (site, month)))`. (§5.11.)
+4. **K± validation** — still open, and the blocker is now precisely identified:
+   HEPData sits behind a **Cloudflare bot challenge** in this environment (not just
+   SSL — `curl` receives a JS-challenge 403), so the K± record cannot be fetched.
+   The kaon kinematics are cross-checked offline (`channel_comparison`: K ⟨p_T⟩
+   ≈0.5–0.65 GeV vs π ≈0.2–0.46, consistent with the established NA61 kaon scale);
+   the full per-bin HEPData K± fit remains the one open data cross-check. (§5.2.)
+5. **Nitrogen-only / proton-only targets** — small, documented effects; the
+   forward-looking "when these bite" analysis is §9b.
+
+**Migration (the reviewer's closing question).** The full-IGRF back-tracer is now
+**selectable through the package API**: `GeomagneticModel(cutoff_source=…)` accepts
+the back-traced cutoff via `geomag_backtrace.cutoff_source(lat, lon, date)`, so it
+is no longer a standalone-only utility. The intended path: keep the dependency-free
+Störmer as the default, ship the back-traced cutoff as the recommended
+`cutoff_source`, and (the remaining engineering step) precompute/cache per-site
+cutoff maps so the principled cutoff is fast enough to be the standard package path.
 
 ---
 
@@ -381,13 +423,18 @@ gyroradius); numerically ~3–5° for B~0.3–0.5 G. What is energy-dependent is
   the ν/ν̄ (charge-separated) flux carries a **~3° E–W split sub-GeV**, while the
   summed displacement is small (~0.3°, since the charge ratio R≈1.27 ≈ 1).
 
-**Simplifications / cheats.**
+**Improvements from the review (item #2).**
+* The decay path is now the **zenith-dependent curved slant** (`path_length_km`:
+  ~15 km vertical → hundreds of km near the horizon), not a fixed 15 km.
+* The bending spread is now **restricted to the muon-decay ν_μ channel** (weighted
+  by `muon_decay_numu_fraction = f/(1+f)`), so it no longer bleeds into the
+  direct-decay neutrinos.
+
+**Remaining simplifications.**
 * Coherent E–W uses a **vertical-muon approximation** (only the horizontal field
   bends it E–W); real muons arrive at all zeniths.
-* `E_μ ≈ 3 E_ν` (mean inelasticity), `path = 15 km`, `R = 1.27`, `B_north =
-  0.30 G` are fixed constants.
-* In `mceq3d_solver` the bending spread is added to *all* decay-ν (not only the
-  muon-decay channel) — a small over-inclusion, gated by the decay fraction.
+* `E_μ ≈ 3 E_ν` (mean inelasticity), `R = 1.27`, `B_north = 0.30 G` are fixed
+  constants.
 
 ### 5.6 Cascade engines — `mceq3d_solver.py` (parametrized), `mceq3d_production.py` (MCEq)
 
@@ -532,11 +579,15 @@ for *all four flavours* down to ~0.5 GeV, not just νμ.
 (`cos_zeniths` may be negative); `interp_flux(result, E, cosθ, azimuth, species)`
 evaluates it anywhere.
 
+**Atmosphere.** Uses MCEq's realistic **CORSIKA US-Standard layered** profile by
+default (not the isothermal exponential of the research demo); pass
+`atmosphere=("MSIS00", (site, month))` for seasonal/site tracking.
+
 **Simplifications / cheats (this engine).**
-* **Nucleus rigidity** handled by superposition with R≈(A/Z)E (protons R=E,
-  neutrons R≈2E). This over-suppresses where the cutoff is highest (sub-GeV
-  horizon East), the main residual at the sub-GeV horizon. Proper per-nucleus
-  rigidity is the fix (~20%).
+* **Nucleus rigidity** — now handled **properly** per nucleus: the cut splits the
+  nucleon flux into free protons (A/Z=1) and bound nucleons (A/Z≈2) via MCEq's p,n
+  fluxes (review item #1). Residual: the bound part uses ⟨A/Z⟩=2.0 (Fe is 2.08, a
+  ~1% sub-component) and the free/bound split is by isospin (bound p ≈ n).
 * **Absolute normalization** carries the SIBYLL23D/H3a hadronic-model systematic
   (~15–20%); the one-line fix is to use **daemonflux's muon-calibrated 1D flux as
   the base** (data-anchored; not done here as the spline data needs network).
@@ -650,10 +701,14 @@ Consolidated, so nothing is buried. Grouped by severity.
    *package-wired* admittance factor uses it.
 2. `N_chain = 2` (number of production generations) — a physical estimate, fixed,
    not derived per energy/species.
-3. Muon bending fixed constants: `E_μ=3E_ν`, `path=15 km`, `R=1.27`,
-   `B_north=0.30 G`, and the vertical-muon approximation for the E–W projection.
-4. Primary treated as **protons, R≈E** (no nuclei/rigidity-per-nucleon) in the
-   geomagnetic folding.
+3. Muon bending: the path is now zenith-dependent and the spread restricted to the
+   muon-decay channel (review item #2); remaining fixed constants are `E_μ=3E_ν`,
+   `R=1.27`, `B_north=0.30 G`, and the vertical-muon approximation for the E–W
+   projection.
+4. ~~Primary as protons R≈E~~ **resolved in `mceq3d_flux`** (review item #1):
+   per-nucleus rigidity via the free/bound split (free p = p−n, A/Z=1; bound,
+   A/Z≈2). The Störmer/back-trace *cutoff* itself is a rigidity, so it is
+   species-agnostic; only the primary *folding* needed the composition, now done.
 
 **B. Structural simplifications (physics omitted) — bounded/argued small:**
 5. Parametrized scaling yields in `mceq3d_solver` and `spherical_cascade` (not MCEq).
@@ -662,7 +717,9 @@ Consolidated, so nothing is buried. Grouped by severity.
    decay); no EM cascade; no neutrino energy losses.
 7. No charge separation in the parametrized cascades (the production engine inherits
    MCEq's; muon-bending charge effects computed separately).
-8. Isothermal exponential atmosphere (no temperature profile / seasonal).
+8. Isothermal exponential atmosphere **only in the `spherical_cascade` research
+   demo**; the production engine (`mceq3d_flux`) uses MCEq's realistic CORSIKA
+   US-Standard layered atmosphere, with MSIS00 seasonal/site profiles selectable.
 9. `spherical_cascade` primaries collimated per direction (isotropic-primary
    assumption); interacted mesons absorbed (no re-injection).
 10. Single pooled `θ²(E)` drives the angular layer in the solver (per-channel
@@ -747,8 +804,8 @@ self-contained off MCEq.
     up-going via the global far-side treatment), **validated absolutely against
     Honda** (~10–20% across the whole sky, reproducing the up/down asymmetry),
     usable to ~0.5 GeV via `interp_flux`. The recommended way to get a 3D
-    atmospheric-ν flux from this work. Its documented boundaries: sub-GeV-horizon
-    nucleus-rigidity systematic (~20%) and hadronic-model normalization (swap in
+    atmospheric-ν flux from this work. Its documented boundary: the hadronic-model
+    normalization (swap in
     daemonflux's muon-calibrated base to anchor it).
 * **Research-grade (architecture + validated ingredients):** the rest of
   `tools/mceq3d/` — quantifies effect sizes, proves feasibility, and supplies the
@@ -804,8 +861,8 @@ Kernel regeneration on a cluster: see `KERNEL_GENERATION.md`.
 2. **Data-anchored normalization** — use daemonflux's muon-calibrated 1D flux as
    the `mceq3d_flux` base instead of raw MCEq (one-line swap; removes the ~10–20%
    hadronic-model offset). Needs the spline data (network).
-3. **Per-nucleus rigidity** in the geomagnetic cut (retire the superposition
-   R≈(A/Z)E approximation) — the ~20% residual at the sub-GeV horizon.
+3. ~~Per-nucleus rigidity~~ **done** (review item #1, §5.11) — free/bound split
+   from MCEq's p,n fluxes; improved Honda agreement at the sub-GeV horizon.
 4. Finer cosθ grid near the horizon to resolve the sharp sec θ spike.
 5. NA61 **K±** HEPData fit (§5.2, needs network).
 6. (If ever needed) full-shape high-stat kernels + S_N yield transport — shown
