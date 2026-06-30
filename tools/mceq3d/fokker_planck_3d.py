@@ -80,7 +80,9 @@ def load_theta2(moments_npz: str):
         40,
     )
     pooled = pool_moments_by_energy(mom, e_edges)
-    good = np.isfinite(pooled["theta_sq"])
+    # drop the leading-particle / statistics-starved edge bins (see
+    # pool_moments_by_energy): they bias theta downward at the highest E_sec.
+    good = np.isfinite(pooled["theta_sq"]) & pooled["reliable"]
     return pooled["e_sec"][good], pooled["theta_sq"][good]
 
 

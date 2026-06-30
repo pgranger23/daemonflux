@@ -268,19 +268,31 @@ def pool_moments_by_energy(
     centers = np.sqrt(e_sec_edges[:-1] * e_sec_edges[1:])
     mean_th = np.full(nb, np.nan)
     mean_th2 = np.full(nb, np.nan)
+    weight = np.zeros(nb)
     for b in range(nb):
         sel = idx == b
         w = wt[sel]
         if sel.any() and w.sum() > 0:
             mean_th[b] = np.sum(th[sel] * w) / w.sum()
             mean_th2[b] = np.sum(th2[sel] * w) / w.sum()
+            weight[b] = w.sum()
     p_l = np.sqrt(np.maximum(centers**2 - mass**2, 1e-12))
+    # Reliability mask: the highest-E_sec bins are reached only via the x_L -> 1
+    # corner (the *leading particle*: p_T -> 0 by kinematics, vanishing yield), so
+    # they are leading-particle-biased and statistics-starved -- not physical. A
+    # bin is reliable only if lower-x_L (bulk-yield) projectiles can populate it,
+    # i.e. E_sec < E_proj_max / 8 (so x_L can reach <~0.12), with data present.
+    # ``e_sec.max() ~ x_L_max * E_proj_max``.
+    e_proj_max = float(mom["e_sec"].max())
+    reliable = np.isfinite(mean_th) & (centers < e_proj_max / 8.0) & (weight > 0)
     return {
         "e_sec": centers,
         "theta_mean": mean_th,
         "theta_sq": mean_th2,
         "d_theta": 0.5 * mean_th2,
         "pt_eff": mean_th * p_l,
+        "weight": weight,
+        "reliable": reliable,
     }
 
 
@@ -342,30 +354,42 @@ def _plot_moments(pooled, args):
     fig, (axL, axM, axR) = plt.subplots(1, 3, figsize=(15, 4.3))
     e = pooled["e_sec"]
     th = np.degrees(pooled["theta_mean"])
-    good = np.isfinite(th)
+    rel = pooled.get("reliable", np.isfinite(th))
+    edge = np.isfinite(th) & ~rel  # leading-particle / low-stat edge bins
+
+    def draw(ax, y, fmt, color, label, log=True):
+        """Plot reliable bins solid; grey the unreliable edge bins."""
+        plot = ax.loglog if log else ax.semilogx
+        plot(e[rel], y[rel], fmt, color=color, label=label)
+        if edge.any():
+            plot(
+                e[edge],
+                y[edge],
+                "x",
+                color="0.6",
+                ms=6,
+                label="edge bins ($x_L\\!\\to\\!1$, unreliable)",
+            )
 
     # Panel 1: <theta>(E). Deviates from the const-<pT> guide for real reasons.
-    axL.loglog(e[good], th[good], "o-", label=r"$\langle\theta\rangle$ (event moments)")
+    draw(axL, th, "o-", "C0", r"$\langle\theta\rangle$ (event moments)")
     axL.loglog(
-        e[good],
-        np.degrees(0.30 / e[good]),
+        e[rel],
+        np.degrees(0.30 / e[rel]),
         "k--",
         lw=1,
         label=r"const $\langle p_T\rangle{=}0.3$ (reference, not a fit)",
     )
     axL.axhline(args.threshold_deg, color="r", ls=":", lw=1)
-    axL.axvspan(e[good][0], 2.0, color="orange", alpha=0.15)
+    axL.axvspan(e[rel][0], 2.0, color="orange", alpha=0.15)
     axL.set_xlabel(r"secondary energy $E_{\rm sec}$ [GeV]")
     axL.set_ylabel(r"$\langle\theta\rangle$ [deg]")
-    axL.set_title("Gridless: clean 1/E, no high-E floor")
+    axL.set_title("Gridless: clean 1/E (edge bins greyed)")
     axL.legend()
 
     # Panel 2: the reason for the deviation -- <pT> rises with energy.
     pt = pooled["pt_eff"]
-    gp = np.isfinite(pt)
-    axM.semilogx(
-        e[gp], pt[gp], "s-", color="C1", label=r"$\langle p_T\rangle_{\rm eff}$"
-    )
+    draw(axM, pt, "s-", "C1", r"$\langle p_T\rangle_{\rm eff}$", log=False)
     axM.axhspan(0.30, 0.45, color="green", alpha=0.12, label="typical inclusive $\\pi$")
     axM.set_xlabel(r"secondary energy $E_{\rm sec}$ [GeV]")
     axM.set_ylabel(r"$\langle p_T\rangle_{\rm eff}=\langle\theta\rangle p_L$ [GeV]")
@@ -375,11 +399,8 @@ def _plot_moments(pooled, args):
 
     # Panel 3: Fokker-Planck diffusion coefficient -> 0 at high E.
     d = pooled["d_theta"]
-    gd = np.isfinite(d) & (d > 0)
-    axR.loglog(
-        e[gd], d[gd], "o-", color="C2", label=r"$D_\theta=\langle\theta^2\rangle/2$"
-    )
-    axR.loglog(e[gd], (0.30 / e[gd]) ** 2 / 2, "k--", lw=1, label=r"$\propto E^{-2}$")
+    draw(axR, d, "o-", "C2", r"$D_\theta=\langle\theta^2\rangle/2$")
+    axR.loglog(e[rel], (0.30 / e[rel]) ** 2 / 2, "k--", lw=1, label=r"$\propto E^{-2}$")
     axR.set_xlabel(r"secondary energy $E_{\rm sec}$ [GeV]")
     axR.set_ylabel(r"Fokker-Planck $D_\theta$ [rad$^2$]")
     axR.set_title(r"Diffusion coeff $\to 0$ at high E (recovers 1D)")

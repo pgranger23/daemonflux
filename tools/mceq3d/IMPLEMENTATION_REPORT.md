@@ -134,8 +134,8 @@ must reproduce MCEq's *own* stored `dN/dx_L`. This caught a real bug: MCEq store
 `hadr_yields` as `(dN/dx_L)·Δ(lnE)`; dividing by `Δ(lnE)=ln(c₁/c₀)≈0.2303` took
 the normalization from a spurious ~4.4× offset to **1.005** and the shape
 agreement from ~0% to good. Plots: `kernel_piplus.png`, `kernel_real_piplus.png`,
-`m_spliced.png`, `angular_smoothness_demo.png` (why direct-angle binning beats
-resampling a coarse p_T grid).
+`angular_smoothness_demo.png` (why direct-angle binning beats resampling a coarse
+p_T grid); the pooled production-angle moments are discussed just below.
 
 **Simplifications.**
 * **Nitrogen target only** — justified: the production *angle* is
@@ -145,6 +145,37 @@ resampling a coarse p_T grid).
   high-stat set.
 * The consistency **norm factor ≠ 1** is an MCEq storage convention; it cancels
   in every downstream angular quantity (documented, not "fixed").
+
+**Reading the moments plot (`m_spliced.png`).** The three panels are the
+production-angle moments pooled by secondary energy `E_sec`, and they answer a
+natural question — *why does `⟨θ⟩` track 1/E but sit off the "0.3" guide, and what
+is the odd behaviour of the highest-energy bin?*
+
+* **Panel 1 — `⟨θ⟩(E_sec)` vs the 0.3 guide.** Geometrically `⟨θ⟩ = ⟨p_T⟩/p_L ≈
+  ⟨p_T⟩/E_sec`. The dashed line is a *constant* `⟨p_T⟩ = 0.3 GeV` reference (a
+  guide, **not a fit**) — it is exactly `∝1/E`. The data follow `1/E` but sit
+  *above* the guide and with a slightly shallower slope, because the real `⟨p_T⟩`
+  is **not** constant.
+* **Panel 2 — why: `⟨p_T⟩` rises.** The effective `⟨p_T⟩ = ⟨θ⟩·p_L` climbs from
+  ~0.2 GeV sub-GeV (limited phase space) through ~0.3–0.5 GeV over GeV→TeV — the
+  well-known logarithmic growth of `⟨p_T⟩` (scaling violation). This is the
+  *physical* reason for the offset, and it is precisely the quantity validated
+  against NA61 (§5.2) — not against MCEq, whose 1D kernels carry no angle.
+* **Panel 3 — Fokker-Planck `D_θ = ⟨θ²⟩/2`.** Built from the *same* moments, so it
+  shows the same trend (`∝E⁻²`, →0 at high E, recovering 1D). Anything downstream
+  that reads these moments (the FP solver, `load_theta2`) inherits panels 1/3
+  identically — which is why a feature in the moments shows up "in Fokker-Planck"
+  too: it is literally the same data.
+* **The highest-`E_sec` bins are masked (greyed/dropped).** A secondary at the top
+  of the range can only come from the `x_L → 1` corner — the *leading particle*,
+  which by kinematics is forward (`p_T → 0`) and has vanishing yield. So those
+  bins are leading-particle-biased and statistics-starved; their `⟨p_T⟩` collapses
+  artificially toward the 0.3 guide. An earlier low-statistics kernel showed this
+  as a visible "snap-back" of the last point; the high-statistics kernels remove
+  it, and `pool_moments_by_energy` now additionally flags bins with
+  `E_sec > E_proj_max/8` as unreliable so they are greyed in the plot and dropped
+  by `load_theta2`. **The bins are physically irrelevant anyway** — there the
+  angle is ~0.005°, deep in the 1D limit.
 
 ### 5.2 NA61 validation — `validate_na61.py`
 
