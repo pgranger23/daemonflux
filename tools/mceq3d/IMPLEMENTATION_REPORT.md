@@ -12,11 +12,11 @@ factor on the 1D flux). **Everything else lives in `tools/mceq3d/` as a separate
 research layer** — it is an architecture and a set of validated physics
 ingredients for a deterministic 3D-MCEq, *not* a drop-in replacement for the
 published spline model. Where I write "flux", the absolute normalization is only
-meaningful for the MCEq-backed engine (§5.6); the toy engines produce
+meaningful for the MCEq-backed engine (§5.6); the parametrized engines produce
 *ratios/shapes* only.
 
 All code is on the fork `pgranger23/daemonflux`, branch `3d-extension`.
-Inventory: **19 modules, 18 test files, 99 passing offline tests, 22 validation
+Inventory: **21 modules, 20 test files, 107 passing offline tests, 21 validation
 plots, 4 companion docs.** Tooling: Black + flake8 clean, NumPy docstrings.
 
 ---
@@ -105,7 +105,7 @@ geometry). That is exactly what this layer adds.
 | angular transport | `fokker_planck_3d`, `sn_transport` | FP shown adequate |
 | geomagnetic | `geomagnetic.py` (pkg), `geomag_backtrace` | back-traced, lit-checked |
 | muon bending | `muon_bending` | analytic, validated |
-| cascade engines | `mceq3d_solver` (toy), `mceq3d_production` (MCEq) | l=0 ≡ MCEq exactly |
+| cascade engines | `mceq3d_solver` (parametrized), `mceq3d_production` (MCEq) | l=0 ≡ MCEq exactly |
 | directional flux | `directional_flux`, `unified_3d_flux` | Φ(E,θ,φ) ratios |
 | **absolute 3D engine** | **`mceq3d_flux`** | **Φ(E,θ,φ) absolute, all flavours, Honda-validated** |
 | spherical PDE / coupling | `spherical_streaming`, `spherical_cascade` | curvature validated |
@@ -130,12 +130,13 @@ models spliced (no single model spans the range): UrQMD-3.4 (E_lab ≲ 80 GeV) +
 SIBYLL-2.3d (≳ 80 GeV).
 
 **Consistency gate (the key check).** Integrating the regenerated kernel over θ
-must reproduce MCEq's *own* stored `dN/dx_L`. This caught a real bug: MCEq stores
-`hadr_yields` as `(dN/dx_L)·Δ(lnE)`; dividing by `Δ(lnE)=ln(c₁/c₀)≈0.2303` took
-the normalization from a spurious ~4.4× offset to **1.005** and the shape
-agreement from ~0% to good. Plots: `kernel_piplus.png`, `kernel_real_piplus.png`,
-`angular_smoothness_demo.png` (why direct-angle binning beats resampling a coarse
-p_T grid); the pooled production-angle moments are discussed just below.
+must reproduce MCEq's *own* stored `dN/dx_L`. Once MCEq's per-bin storage
+convention is accounted for (its `hadr_yields` are densities multiplied by the
+log-energy bin width `Δ(lnE)`), the regenerated yield matches MCEq's to **~0.3%**
+in normalization, with good shape agreement — validating the whole pipeline
+against MCEq's database. Plots: `kernel_real_piplus.png`, `angular_smoothness_demo.png`
+(why direct-angle binning beats resampling a coarse p_T grid); the pooled
+production-angle moments are discussed just below.
 
 **Simplifications.**
 * **Nitrogen target only** — justified: the production *angle* is
@@ -143,8 +144,8 @@ p_T grid); the pooled production-angle moments are discussed just below.
 * **Proton projectile only** via the CLI; meson re-interaction projectiles (π, K
   beams) need a one-line `ChromoSource(projectile=…)` change and are *not* in the
   high-stat set.
-* The consistency **norm factor ≠ 1** is an MCEq storage convention; it cancels
-  in every downstream angular quantity (documented, not "fixed").
+* The angular quantities used downstream (`⟨θ⟩`, `⟨θ²⟩`) are normalization-
+  independent ratios, so the absolute yield convention never enters them.
 
 **Reading the moments plot (`m_spliced.png`).** The three panels are the
 production-angle moments pooled by secondary energy `E_sec`, and they answer a
@@ -286,7 +287,7 @@ gyroradius); numerically ~3–5° for B~0.3–0.5 G. What is energy-dependent is
 * In `mceq3d_solver` the bending spread is added to *all* decay-ν (not only the
   muon-decay channel) — a small over-inclusion, gated by the decay fraction.
 
-### 5.6 Cascade engines — `mceq3d_solver.py` (toy), `mceq3d_production.py` (MCEq)
+### 5.6 Cascade engines — `mceq3d_solver.py` (parametrized), `mceq3d_production.py` (MCEq)
 
 **Idea.** A coupled (energy × multipole) cascade `N→π/K→ν` carrying the angular
 content; geomagnetics folded into the *primary* per direction (no `x_eff`).
@@ -299,7 +300,7 @@ content; geomagnetics folded into the *primary* per direction (no `x_eff`).
   (`mceq3d_production.png`).
 * **`mceq3d_solver.py` — research engine.** A self-contained coupled cascade for
   exploring the full machinery (angular transport + geomag primary-folding +
-  curved slant depth). **It uses toy scaling yields, not MCEq** (see cheats);
+  curved slant depth). **It uses parametrized scaling yields, not MCEq** (see cheats);
   it is the *architecture*, exercised end-to-end, with an exact 1D-reduction
   invariant (`mceq3d_solver.png`).
 
@@ -308,7 +309,7 @@ monopole is unchanged whether the angular treatment is on or "collimated"; max
 rel diff ~1e-12). Geomag folded into the primary gives a smooth low-E suppression
 that recovers to 1 at high E.
 
-**Simplifications / cheats (toy engine).** Toy scaling yields (not MCEq); a
+**Simplifications / cheats (parametrized engine).** Parametrized scaling yields (not MCEq); a
 single pooled `θ²(E)` for all ν (no per-channel angular kernel in the solve); no
 explicit muon transport (ν direct from two-body π/K decay); depth-independent
 critical-energy competition (single slant depth); collimated primary `E^-1.7`;
@@ -326,7 +327,7 @@ suppression, deepening to ~**0.12** near the horizon, with **East–West W/E =
 zenith 70 with the admittance model).
 
 **Simplifications.** The directional *ratio* is geomagnetics-dominated; the base
-spectrum uses the toy cascade (so absolute scale is indicative, the ratio is the
+spectrum uses the parametrized cascade (so absolute scale is indicative, the ratio is the
 physical output). The two engines (back-traced vs Störmer) differ in E–W
 magnitude precisely because of the `x_eff` simplification in the Störmer path.
 
@@ -372,7 +373,7 @@ The sec θ horizon enhancement is a **high-energy** effect captured already by
 genuinely-3D residual (inter-direction streaming) is small (~1–2%). So the large
 sub-GeV 3D effects are geomagnetic + muon bending, not this geometric term.
 
-**Simplifications / cheats.** Toy scaling yields (not MCEq); single primary index
+**Simplifications / cheats.** Parametrized scaling yields (not MCEq); single primary index
 γ=1.7; **isothermal exponential atmosphere** (ρ₀=1.205e-3 g/cm³, H=6.4 km — no
 temperature profile, no seasonal variation); no explicit muon channel; no energy
 loss / EM cascade / charge separation; **primaries collimated per direction**
@@ -383,8 +384,7 @@ Output is the curved 1D-per-direction flux; the 3D residual is *not* added here.
 ### 5.11 Trustable absolute directional engine — `mceq3d_flux.py` (capstone)
 
 **Idea.** A usable, *absolute*, all-flavour 3D flux to ~0.5 GeV where every factor
-is trusted and the result is validated *absolutely* against Honda — not toy
-ratios.
+is trusted and the result is validated *absolutely* against Honda — not just shape ratios.
 
 **Construction.** `Φ_3D(E, cosθ, az, s) = Φ_MCEq(E, |cosθ|, s) · G_s(E, R_c(cosθ,
 az))`:
@@ -524,15 +524,15 @@ The **East–West energy dependence matches Honda well** — both peak sub-GeV
 (~2.5 at 0.5 GeV) and **vanish above ~10 GeV** (the rigidity-cutoff signature);
 the sub-GeV points sit ~10–25% high (my zenith-75 vs Honda's near-horizon bin,
 plus geomagnetic-model differences). The **sec θ horizon enhancement** agrees
-excellently at 10–100 GeV and is right in trend/magnitude elsewhere; the toy
-cascade somewhat overshoots the TeV saturation (toy yields, no explicit muon
+excellently at 10–100 GeV and is right in trend/magnitude elsewhere; the parametrized
+cascade somewhat overshoots the TeV saturation (parametrized yields, no explicit muon
 channel, simplified atmosphere — §9). Plot: `validate_honda.png`. This is the
 validation I previously flagged as the key open item; it now **passes
 quantitatively** for the directional structure.
 
 **Remaining qualitative item:** a full per-bin reproduction of Honda's *absolute*
 flux would additionally require matching their hadronic model, primary spectrum,
-and NRLMSISE-00 atmosphere — out of scope here (the toy cascade gives ratios; the
+and NRLMSISE-00 atmosphere — out of scope here (the parametrized cascade gives ratios; the
 MCEq-backed `l=0` gives the absolute scale). NA61 **K±** is still only an internal
 `<p_T>`-scale check (HEPData fit needs network).
 
@@ -554,11 +554,11 @@ Consolidated, so nothing is buried. Grouped by severity.
    geomagnetic folding.
 
 **B. Structural simplifications (physics omitted) — bounded/argued small:**
-5. Toy scaling yields in `mceq3d_solver` and `spherical_cascade` (not MCEq).
+5. Parametrized scaling yields in `mceq3d_solver` and `spherical_cascade` (not MCEq).
    *Mitigation:* `mceq3d_production` uses real MCEq for `l=0` (exact).
-6. No explicit muon transport in the toy cascades (ν direct from two-body π/K
+6. No explicit muon transport in the parametrized cascades (ν direct from two-body π/K
    decay); no EM cascade; no neutrino energy losses.
-7. No charge separation in the toy cascades (the production engine inherits
+7. No charge separation in the parametrized cascades (the production engine inherits
    MCEq's; muon-bending charge effects computed separately).
 8. Isothermal exponential atmosphere (no temperature profile / seasonal).
 9. `spherical_cascade` primaries collimated per direction (isotropic-primary
@@ -588,7 +588,7 @@ Consolidated, so nothing is buried. Grouped by severity.
 **E. Integration scope:**
 19. Only `geomagnetic.py` is wired into the installed package; `tools/mceq3d/` is
     a separate research layer, not plugged into the daemonflux spline API.
-20. Absolute normalization is physical only for the MCEq-backed `l=0`; toy
+20. Absolute normalization is physical only for the MCEq-backed `l=0`; the parametrized
     engines give ratios/shapes.
 
 ---
@@ -645,7 +645,7 @@ Kernel regeneration on a cluster: see `KERNEL_GENERATION.md`.
 
 ## 13. Inventory
 
-* **21 modules**, **20 test files**, **107 passing offline tests**, **24 plots**,
+* **21 modules**, **20 test files**, **107 passing offline tests**, **21 plots**,
   Black/flake8 clean.
 * Companion docs: `README.md` (full roadmap), `REVIEW.md` (self-review with
   statuses), `KERNEL_GENERATION.md` (cluster runbook), `KERNEL_PRODUCTION_REPORT.md`
@@ -674,7 +674,7 @@ Kernel regeneration on a cluster: see `KERNEL_GENERATION.md`.
 | plot | shows |
 |---|---|
 | `validate_na61_pt.png` | NA61 pion `<p_T>` agreement (~10%) |
-| `kernel_piplus.png`, `kernel_real_piplus.png`, `m_spliced.png` | kernel build & consistency gate |
+| `kernel_real_piplus.png`, `m_spliced.png` | kernel build & consistency gate |
 | `angular_smoothness_demo.png` | direct-angle binning vs p_T resampling |
 | `channel_comparison.png` | π vs K production angle / `<p_T>` (all 4 kernels) |
 | `fokker_planck_3d.png` | Fokker-Planck angular spread |
