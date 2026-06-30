@@ -223,6 +223,19 @@ No other correctness issues were found: the per-nucleus free/bound split, the
 cascade-correct `G_s` ratio, the far-side up-going geometry, the species
 reconstruction, and `interp_flux` (which sorts cosθ and wraps azimuth) all check out.
 
+**Performance (`profile_3d.py`, single core).** One MCEq cascade solve ≈ **1.5 s**
+(the atomic unit). A full directional `solve()` over a 6×8 = 48-direction sky grid
+≈ **6 min**, i.e. **~240× one MCEq solve** (~14× the equivalent 1D MCEq flux at the
+same zeniths). Breakdown: cutoff back-tracing **~315 s (~85 %, dominant)**, `G_s`
+response ~21 s (13 cascade solves), 1D base ~26 s (MCEq base) or **~10 ms
+(daemonflux base)**. Both heavy terms are **reusable**: the cutoff map is a
+one-time per-site precompute (`cached_cutoff_source`; warm re-evaluation
+**~0.3 µs/direction**), and `G_s` is site- and zenith-independent (computable once).
+So the engine is a one-time per-site precompute then near-instant evaluation —
+vs the CPU-weeks of a full 3D Monte-Carlo. *Open optimisation:* `solve()` currently
+re-runs the back-trace and `G_s` each call; wiring it to the caches would cut the
+recurring cost to the base term (seconds for MCEq, ms for daemonflux).
+
 ---
 
 ## 2. Motivation and scope
