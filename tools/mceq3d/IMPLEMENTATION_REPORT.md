@@ -214,31 +214,80 @@ matter only for a high-precision charge-resolved directional study.
 
 ### 5.3 Angular transport — `fokker_planck_3d.py`, `sn_transport.py`
 
-**Idea.** Propagate the angular distribution with depth. Two methods, to bound
-the approximation: small-angle **Fokker-Planck** (Gaussian) and the full-angle
-**P_N / S_N** spherical convolution (bounded by isotropy).
+**What it does.** MCEq gives the flux vs energy assuming everything is collinear
+(1D). This layer adds back the small spread of the neutrino's arrival direction
+about the incoming cosmic-ray direction, which 1D discards. The spread comes from
+a **transverse-momentum kick at each production vertex** (`θ ≈ p_T/p_L`, the
+NA61-validated quantity).
 
-**Method.** In the multipole basis a forward production step is a heat kernel
-`c_l = exp(−l(l+1)θ₁²/4)`; N production generations multiply coefficients
-(`c_l^N`), so `<cos θ> = c₁^N` in closed form. The single-step variance is the
-**NA61-validated `<θ²>(E)`**. The number of generations is the **finite parent
-chain `N_chain ≈ 2`** (see the "cheats" §9 — this replaced an earlier unphysical
-`N_gen = slant/λ`).
+**The parent chain and `N_chain`.** A neutrino is made by a *short chain of
+vertices*, each giving one angular kick:
 
-**Validation (`sn_transport.png`).**
-* P_N (bounded) agrees with FP (`√N·θ₁`) for `N_chain≈2`; they only diverge at an
-  *unphysical* large N — confirming **FP is adequate** in this regime.
-* **Full-shape cross-check (this round):** `realshape_sn_spread` builds the
-  single-production density directly from a measured `d²N/(dx_L dθ)` kernel and
-  compares it to a Gaussian of the **same variance**. **Pure-shape median rel
-  diff ≈ 0** → for the forward production distribution `arccos<cos θ>` is set by
-  the *variance alone*, so the variance-only FP input is sufficient and the
-  (heavier-tailed) full-shape kernel is **not needed for the angular spread**.
-  (Demo kernel `k_local_demo.npz`, UrQMD-3.4 low-E.)
+```
+primary nucleon ──(interaction)──► meson (π/K) ──(decay)──► ν
+                   kick #1: production           kick #2: decay
+```
+
+`N_chain` is **how many kick-giving generations feed one neutrino**, and the kicks
+add in quadrature: `σ_θ ≈ √(N_chain)·θ₁`. For a conventional ν that is **~2** (a
+production kick, the big one at `⟨p_T⟩`~0.3 GeV, plus a decay kick, small at
+~0.03 GeV). It is *not* `slant_depth/λ` (the interaction lengths the shower
+crosses, ~10–20 and growing toward the horizon): each neutrino traces back through
+only those ~2 vertices, and the leading particles stay nearly collinear, so
+crossing more atmosphere does **not** keep adding angle. Using `slant/λ` produced
+an earlier runaway, zenith-growing spread; `N_chain≈2` makes it finite and
+~zenith-independent (set by production *kinematics*, not column *depth*).
+
+**Is 2 reasonable?** Yes. Direct π/K→ν is production+decay = 2; muon-decay ν
+(π→μ→ν) is one step longer (≈3) but its extra physics (muon bending) is handled
+separately and the conventional ν is direct-decay-dominated. Since `σ_θ∝√N`, 2 vs
+3 is a `√(3/2)≈1.22` (~22%) change in an effect that is itself only ~1–2% of the
+flux — i.e. ~0.3% on the flux. So 2 is sound and slightly conservative; the exact
+value barely matters.
+
+**The two methods, and how they relate.**
+* **Fokker-Planck (FP)** — the small-angle limit: the spread is a Gaussian that
+  diffuses with depth, `σ_θ = √N·θ₁`. Analytic, fast; valid while the spread ≪ 1
+  rad; **unbounded** (would grow past isotropy at large spread).
+* **P_N / S_N** — the *full* angular distribution on the sphere: the single-
+  production kernel is self-convolved `N` times (a product in Legendre space,
+  `c_l → c_l^N`, so `<cos θ> = c₁^N` in closed form). Exact at any angle and
+  **bounded**: the spread `arccos<cos θ>` saturates at 90° (isotropy), never
+  unphysical.
+
+**P_N is the principled one; FP is what we use** — because Fokker-Planck is
+*literally the small-angle limit of P_N*, and in our regime (`N_chain=2`, the
+measured `θ₁`) the spread is moderate (~30–35° at ~0.5 GeV, sub-degree above a few
+GeV), where the two coincide. P_N's job is to **bound FP's error and prove it
+adequate**: they only diverge at an *unphysical* large `N`. A further pure-shape
+test (`realshape_sn_spread`: the real measured kernel vs a Gaussian of the *same
+variance*, median rel diff ≈ 0) shows the answer depends on the **variance only**,
+not the kernel shape — so FP's variance-only input (`<θ²>(E)`) is sufficient and
+the full-shape kernel is not needed.
+
+**How to read `sn_transport.png`** (the validation, spread `arccos<cos θ>` vs E):
+
+* **Blue line+dots** = P_N from the high-stat moments; **red dashed** = the
+  small-angle FP `√N·θ₁`. They lie *on top of each other* — that overlap is the
+  headline: **FP ≡ P_N in this regime, so FP is adequate.**
+* The **grey dotted line at 90°** is full randomization (isotropy). Both curves
+  stay far below it (≤~35°, falling to ≪1° above a few GeV) — i.e. we are always
+  in the small-angle regime, never near the bound, so FP cannot misbehave here.
+* The **green open squares** (P_N from the *real* measured kernel shape) lie on
+  the **green line** (P_N from a Gaussian of the *same variance*) — that overlap
+  means **shape doesn't matter, only the variance does**. The green pair sits a
+  bit *above* the blue only because the small demo kernel (`k_local_demo.npz`,
+  low-E UrQMD) has a larger variance than the high-stat moments — a kernel
+  difference, **not** a method discrepancy.
+* **Conclusions:** (1) FP = P_N → use the cheap Gaussian; (2) the spread never
+  approaches isotropy → small-angle is safe; (3) variance alone suffices →
+  no full-shape kernel needed; (4) the spread falls ~1/E → the 3D angular effect
+  vanishes at high E (1D recovered). `fokker_planck_3d.png` shows the resulting
+  detector angular distribution (a narrow forward peak, narrowing with E).
 
 **Simplifications.** Heat-kernel (forward-Gaussian) single-step *shape* — now
 justified by the pure-shape test. `N_chain` is a fixed integer, not derived
-per-energy.
+per-energy (its ~22% effect on a ~1–2% correction is negligible).
 
 ### 5.4 Geomagnetic cutoff — `src/daemonflux/geomagnetic.py`, `geomag_backtrace.py`
 
