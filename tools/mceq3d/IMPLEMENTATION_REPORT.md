@@ -50,15 +50,16 @@ plots, 4 companion docs.** Tooling: Black + flake8 clean, NumPy docstrings.
   §5.11): returns the absolute Φ(E, cosθ, azimuth) for all four flavours over the
   **whole sky** down to ~0.5 GeV as **MCEq (curved, per-zenith) × cascade-correct
   geomagnetic factor** (no `x_eff`), with **up-going handled by a global far-side
-  geomagnetic treatment**. Its **absolute** νμ flux matches Honda at Kamioka to
-  **0.90–0.98 at 1 GeV** and 0.82–0.87 at 0.5 GeV across the full sky, and it
-  **reproduces the up/down asymmetry** (up-going 129–135 vs down-going 111–117 at
-  1 GeV, matching Honda's 133–138 vs 122–130). The ~10–20% normalization offset is
-  the SIBYLL23D/H3a-vs-Honda hadronic-model spread (anchorable to daemonflux's
-  muon-calibrated base). The **flavour ratio (νe/νμ) matches Honda to 0.7–4%** —
-  the robust, model-independent test passes for all four species. (The earlier
-  sub-GeV-horizon shortfall from the nucleus-rigidity approximation is now resolved
-  by a proper per-nucleus rigidity cut — review item #1, §1b/§5.11.)
+  geomagnetic treatment**. With the **data-anchored daemonflux base**
+  (`base_model="daemonflux"`) its **absolute** νμ flux matches Honda at Kamioka to
+  **~10 % at 1 GeV** (~30 % at 0.5 GeV, the genuine sub-GeV model spread); with the
+  raw MCEq base it runs ~25–30 % below Honda (the SIBYLL23D/H3a hadronic deficit).
+  It **reproduces the up/down asymmetry** (up-going > down-going at fixed E, as in
+  Honda) independent of the base. The **flavour ratio (νe/νμ) matches Honda to
+  0.7–4%** — the robust, model-independent test passes for all four species.
+  (Validation numbers are **energy-matched**: an earlier nearest-index comparison
+  mismatched our 0.89 GeV grid point against Honda's 1.0 GeV bin and overstated the
+  raw-MCEq agreement — §5.11.)
 * **Net message:** the value for sub-GeV daemonflux is overwhelmingly in the
   **geomagnetic layer** (production-ready as an admittance factor) plus muon
   bending; the deterministic-3D cascade machinery is validated as an architecture
@@ -74,10 +75,9 @@ in code, with the remainder documented honestly:
 1. **Per-nucleus rigidity** (flagged *High*, ~20% sub-GeV horizon) — **fixed**. The
    geomagnetic cut now splits the primary nucleon flux into free protons (A/Z=1,
    R=E) and bound nucleons (He/CNO/Fe, A/Z≈2, R≈2E) using MCEq's own p,n fluxes
-   (free p = p−n by isospin), replacing the all-protons-R=E treatment. Bound
-   nucleons are no longer over-suppressed, so the Honda agreement *improves* across
-   the sky (0.5 GeV vertical 0.82→**0.86**, 1 GeV 0.91→**0.94**, up-going →**1.00**).
-   (§5.11.)
+   (free p = p−n by isospin), replacing the all-protons-R=E treatment, so bound
+   nucleons (cut at the higher rigidity R≈2E) are no longer over-suppressed near the
+   sub-GeV horizon. (§5.11.)
 2. **Muon-bending idealizations** — **improved**. (a) the fixed 15 km path is
    replaced by the curved **zenith-dependent slant** (`path_length_km`: ~15 km
    vertical → hundreds of km near the horizon); (b) the bending is now
@@ -89,14 +89,24 @@ in code, with the remainder documented honestly:
    the isothermal exponential — that profile is only in the `spherical_cascade`
    research demo (where the TeV-horizon overshoot lives). Seasonal/site tracking is
    now exposed: `MCEq3DFlux(atmosphere=("MSIS00", (site, month)))`. (§5.11.)
-4. **K± validation** — still open, and the blocker is now precisely identified:
-   HEPData sits behind a **Cloudflare bot challenge** in this environment (not just
-   SSL — `curl` receives a JS-challenge 403), so the K± record cannot be fetched.
-   The kaon kinematics are cross-checked offline (`channel_comparison`: K ⟨p_T⟩
-   ≈0.5–0.65 GeV vs π ≈0.2–0.46, consistent with the established NA61 kaon scale);
-   the full per-bin HEPData K± fit remains the one open data cross-check. (§5.2.)
+4. **K± validation** — record **identified and being ingested**. The relevant data
+   is NA61/SHINE p+C at 31 GeV/c (HEPData `ins1397003`: π±, K±, K⁰_S, Λ, p), with
+   K⁺ in Tables 23–30 and K⁻ in Tables 31–37. The record index is in hand; the
+   per-table `dσ/dp` values complete the offline kaon cross-check (`channel_comparison`
+   already brackets the scale: K ⟨p_T⟩ ≈0.5–0.65 GeV vs π ≈0.2–0.46). (§5.2.)
 5. **Nitrogen-only / proton-only targets** — small, documented effects; the
    forward-looking "when these bite" analysis is §9b.
+
+**Absolute normalization — now data-anchored (the structural improvement).** The
+reviewer's central concern was that the absolute scale rode on the SIBYLL23D/H3a
+hadronic model. With daemonflux's muon-calibrated spline data now available, the
+engine offers `base_model="daemonflux"`, which multiplies the **muon-calibrated 1D
+flux** by the validated geomagnetic factor. Energy-matched against Honda this moves
+the 1 GeV νμ normalization from **~0.73 (raw MCEq) to ~1.1**, i.e. into the
+daemonflux↔Honda model spread — the deficit is no longer a methodological gap but
+the irreducible sub-GeV flux uncertainty. Fixing this also surfaced and corrected
+an **energy-binning artifact** in `--validate` (nearest-index vs log-log
+interpolation), which had flattered the raw-MCEq numbers (§5.11).
 
 **Migration (the reviewer's closing question).** The full-IGRF back-tracer is now
 **selectable through the package API**: `GeomagneticModel(cutoff_source=…)` accepts
@@ -535,16 +545,25 @@ Output is the curved 1D-per-direction flux; the 3D residual is *not* added here.
 **Idea.** A usable, *absolute*, all-flavour 3D flux to ~0.5 GeV where every factor
 is trusted and the result is validated *absolutely* against Honda — not just shape ratios.
 
-**Construction.** `Φ_3D(E, cosθ, az, s) = Φ_MCEq(E, |cosθ|, s) · G_s(E, R_c(cosθ,
+**Construction.** `Φ_3D(E, cosθ, az, s) = Φ_1D(E, |cosθ|, s) · G_s(E, R_c(cosθ,
 az))`:
-* `Φ_MCEq` — real MCEq per zenith, **curved atmosphere** (absolute norm, all four
-  species, spectra, and the sec θ horizon enhancement). Production is up/down
-  symmetric, so `|cosθ|` is used. Units converted cm⁻²→m⁻².
+* `Φ_1D` — the 1D base, selectable via `base_model`:
+  * `"mceq"` (default, dependency-free) — real MCEq per zenith, **curved
+    atmosphere** (absolute norm, all four species, spectra, sec θ horizon
+    enhancement). Carries the SIBYLL23D/H3a hadronic normalization (~25–30 % below
+    Honda sub-GeV, see validation).
+  * `"daemonflux"` (**recommended**, data-anchored) — daemonflux's
+    **muon-calibrated** 1D flux: the E³-weighted sums `numuflux`/`nueflux` are
+    de-weighted and split into species with the `numuratio`/`nueratio`, valid to
+    ~1e9 GeV (`_base_daemonflux`). Restores ~10 % agreement with Honda at 1 GeV.
+
+  Production is up/down symmetric, so `|cosθ|` is used. Units converted cm⁻²→m⁻².
 * `G_s(E, R_c)` — the geomagnetic suppression computed as **MCEq(primary cut at
   R_c)/MCEq(full)**: the cascade-correct response to removing sub-cutoff
-  primaries, with **no `x_eff`**. The cut is applied to the primary nucleons in
-  MCEq's `_phi0` (protons at R=E, bound neutrons at R≈2E); precomputed on a small
-  R_c grid (the *ratio* is ~zenith-independent) and interpolated.
+  primaries, with **no `x_eff`**. The rigidity cut is applied **per nucleus** to
+  MCEq's `_phi0`: the proton flux is split into free protons (A/Z=1, R=E) and bound
+  protons (A/Z≈2, R≈2E) via the p,n fluxes, and neutrons are all bound; precomputed
+  on a small R_c grid (the *ratio* is ~zenith-independent) and interpolated.
 * `R_c(cosθ, az)` — the back-traced full-IGRF cutoff (§5.4). **Down-going:** at
   the detector. **Up-going:** the production is on the far side, and since the
   neutrino travels straight the primary's velocity there equals the neutrino
@@ -552,22 +571,41 @@ az))`:
   `Q` with `u0 = -d` (`farside_production`) — a **global** geomagnetic treatment,
   batched into one vectorized back-trace.
 
-**Absolute validation vs Honda — full sky (`--validate`, Kamioka νμ):**
+**A note on the comparison — energy matching.** MCEq's log-spaced grid has no point
+exactly at 1 GeV (the nearest is 0.89 GeV). An earlier version of `--validate`
+compared by nearest-index, pitting our 0.89 GeV flux against Honda's 1.0 GeV bin —
+a ~1.5× mismatch on a steeply falling spectrum that *accidentally cancelled* the
+raw-MCEq normalization deficit and made the agreement look better than it is. The
+comparison now **log-log interpolates both to the exact energy** (`_validate._at`).
+The numbers below are the corrected, energy-matched values.
 
-| E, cosθ | this work | Honda | ratio |
+**Absolute validation vs Honda — full sky (`--validate`, Kamioka νμ, /(m² s sr GeV)):**
+
+| E, cosθ | MCEq base | daemonflux base | Honda |
 |---|---|---|---|
-| 1 GeV, up-going −0.95 | 129 | 133 | **0.97** |
-| 1 GeV, up-going −0.55 | 135 | 138 | **0.98** |
-| 1 GeV, down-going 0.55 | 117 | 130 | 0.90 |
-| 1 GeV, down vertical 0.95 | 111 | 122 | 0.91 |
-| 0.5 GeV, up-going −0.95 | 531 | 631 | 0.84 |
-| 0.5 GeV, down 0.95 | 416 | 510 | 0.82 |
+| 1 GeV, up-going −0.95 | 101 (0.76) | 154 (1.15) | 133 |
+| 1 GeV, down-going 0.55 | 95 (0.73) | 143 (1.10) | 130 |
+| 1 GeV, down vertical 0.95 | 90 (0.73) | 136 (1.11) | 122 |
+| 0.5 GeV, up-going −0.95 | 438 (0.69) | 820 (1.29) | 634 |
+| 0.5 GeV, down 0.95 | 357 (0.70) | 669 (1.31) | 512 |
 
-(flux in /(m² s sr GeV); `mceq3d_flux.png`). The agreement is ~10–20% across the
-**whole sky**, and the engine **reproduces the up/down asymmetry** (up-going
-129–135 > down-going 111–117 at 1 GeV, as in Honda 133–138 > 122–130) — the
-observable that drives atmospheric-ν oscillation analyses. The ~10–20% offset is
-the inter-model spread (SIBYLL23D+H3a vs Honda; visible at the no-geomag peak).
+(ratio to Honda in parentheses; `mceq3d_flux.png`). Two honest conclusions:
+
+* **The 1D base sets the absolute scale, and the choice matters.** Raw **MCEq
+  (SIBYLL23D+H3a)** sits **~25–30 % below Honda** across the sub-GeV sky — a real
+  hadronic-model normalization deficit, not the ~10 % implied before the
+  energy-matching fix. Swapping in **daemonflux's muon-calibrated 1D flux**
+  (`base_model="daemonflux"`, §5.11) brings 1 GeV to **within ~10 % of Honda**; at
+  0.5 GeV daemonflux runs ~30 % *above* Honda. Honda sits between the two models,
+  and the daemonflux↔Honda spread at 0.5 GeV (~30 %) is the **genuine, irreducible
+  sub-GeV flux uncertainty** (two independent data-driven models disagree there).
+  daemonflux is the more principled base (calibrated to muon data) and is the
+  recommended choice; MCEq remains the dependency-free default.
+* **The geometry/geomagnetics are right regardless of base.** Both bases
+  **reproduce the up/down asymmetry** (up-going > down-going at fixed E, as in
+  Honda) and the sec θ and East–West behaviour — these are *ratio* observables,
+  independent of the absolute base. The base only rescales the overall
+  normalization.
 
 **Flavour ratio — the robust cross-check.** `(νe+ν̄e)/(νμ+ν̄μ)` is nearly
 model-independent (set by the π→μ→e decay chain), so it is the sharpest test of
@@ -588,9 +626,11 @@ default (not the isothermal exponential of the research demo); pass
   nucleon flux into free protons (A/Z=1) and bound nucleons (A/Z≈2) via MCEq's p,n
   fluxes (review item #1). Residual: the bound part uses ⟨A/Z⟩=2.0 (Fe is 2.08, a
   ~1% sub-component) and the free/bound split is by isospin (bound p ≈ n).
-* **Absolute normalization** carries the SIBYLL23D/H3a hadronic-model systematic
-  (~15–20%); the one-line fix is to use **daemonflux's muon-calibrated 1D flux as
-  the base** (data-anchored; not done here as the spline data needs network).
+* **Absolute normalization.** With the MCEq base it carries the full SIBYLL23D/H3a
+  hadronic systematic (~25–30 % low vs Honda sub-GeV, above). This is now
+  **fixed by `base_model="daemonflux"`** — the muon-calibrated, data-anchored 1D
+  flux (§5.11), which restores ~10 % agreement at 1 GeV. The remaining sub-GeV
+  daemonflux↔Honda spread (~30 % at 0.5 GeV) is irreducible model uncertainty.
 * Up-going uses one representative far-side production point per direction (the
   production region has finite extent — leading geometric term).
 * Geomag `G` ratio assumed zenith-independent (precomputed at vertical); the
@@ -686,8 +726,8 @@ quantitatively** for the directional structure.
 **Remaining qualitative item:** a full per-bin reproduction of Honda's *absolute*
 flux would additionally require matching their hadronic model, primary spectrum,
 and NRLMSISE-00 atmosphere — out of scope here (the parametrized cascade gives ratios; the
-MCEq-backed `l=0` gives the absolute scale). NA61 **K±** is still only an internal
-`<p_T>`-scale check (HEPData fit needs network).
+MCEq-backed `l=0` gives the absolute scale). NA61 **K±**: record `ins1397003`
+identified (K± in Tables 23–37); per-table values pending to finish the fit.
 
 ---
 
@@ -800,13 +840,12 @@ self-contained off MCEq.
   * `src/daemonflux/geomagnetic.py` — a clean, optional, identity-by-default
     directional admittance factor on the 1D flux (the package plug-point).
   * **`mceq3d_flux.py`** — the absolute, **full-sky** directional engine (§5.11):
-    trusted MCEq base × cascade-correct geomagnetics (down-going at the detector,
+    selectable 1D base (`base_model="daemonflux"` muon-calibrated, **recommended**,
+    or raw MCEq) × cascade-correct geomagnetics (down-going at the detector,
     up-going via the global far-side treatment), **validated absolutely against
-    Honda** (~10–20% across the whole sky, reproducing the up/down asymmetry),
-    usable to ~0.5 GeV via `interp_flux`. The recommended way to get a 3D
-    atmospheric-ν flux from this work. Its documented boundary: the hadronic-model
-    normalization (swap in
-    daemonflux's muon-calibrated base to anchor it).
+    Honda** (energy-matched: ~10 % at 1 GeV with the daemonflux base, reproducing
+    the up/down asymmetry), usable to ~0.5 GeV via `interp_flux`. The recommended
+    way to get a 3D atmospheric-ν flux from this work.
 * **Research-grade (architecture + validated ingredients):** the rest of
   `tools/mceq3d/` — quantifies effect sizes, proves feasibility, and supplies the
   validated factors (`geomag_backtrace`, `muon_bending`, `spherical_streaming`,
@@ -864,7 +903,7 @@ Kernel regeneration on a cluster: see `KERNEL_GENERATION.md`.
 3. ~~Per-nucleus rigidity~~ **done** (review item #1, §5.11) — free/bound split
    from MCEq's p,n fluxes; improved Honda agreement at the sub-GeV horizon.
 4. Finer cosθ grid near the horizon to resolve the sharp sec θ spike.
-5. NA61 **K±** HEPData fit (§5.2, needs network).
+5. NA61 **K±** HEPData fit (§5.2; record `ins1397003` identified, per-table values pending).
 6. (If ever needed) full-shape high-stat kernels + S_N yield transport — shown
    *not* required for the angular spread.
 

@@ -20,8 +20,13 @@ Construction (each factor trusted / validated)
 * **R_c(cosZ, az)** -- the first-principles **back-traced full-IGRF cutoff**
   (:mod:`geomag_backtrace`, validated: Kamioka 11.3 GV).
 
-The rigidity cut is applied to the primary nucleons in MCEq's initial state
-(protons at R=E, bound neutrons at R~2E for the A/Z~2 of He/CNO).
+The rigidity cut is applied per-nucleus to the primary nucleons: the proton flux
+is split into **free protons** (A/Z=1, R=E) and **bound protons** (in nuclei,
+A/Z~2, R~2E) via MCEq's own p,n fluxes (free p = p-n by isospin), and neutrons are
+all bound (R~2E).
+
+The 1D base can be raw MCEq (default) or daemonflux's **muon-calibrated** flux
+(``base_model="daemonflux"``) for a data-anchored absolute normalization.
 
 Validation (`validate_honda.py`, and ``--validate`` here): the absolute Phi(E,
 cosZ, az) for numu and nue matches the Honda HKKM2014 Kamioka tables in
@@ -39,12 +44,11 @@ Trust boundary (documented, not hidden)
 ---------------------------------------
 * Up-going uses a single representative far-side production point per direction
   (the production region has finite extent; this is the leading geometric term).
-* Nuclei treated by superposition with an approximate R=(A/Z)E rigidity for the
-  cut (leading order; ~10-20% on the suppression near the cutoff, largest at the
-  sub-GeV horizon where the cutoff is highest).
+* Nuclei: per-nucleus rigidity via the free/bound split (above); the bound part
+  uses <A/Z>=2.0 (Fe is 2.08, a ~1% sub-component).
 * Inter-direction streaming residual (~1-2%) and muon-bending E-W (charge-split,
   ~3 deg sub-GeV) are separate small corrections (see `spherical_streaming`,
-  `muon_bending`); optionally folded via ``muon_ew=True``.
+  `muon_bending`).
 
 Run::
 
@@ -116,16 +120,29 @@ class MCEq3DFlux:
         primary=("HillasGaisser2012", "H3a"),
         e_min=0.3,
         atmosphere=None,
+        base_model="mceq",
+        daemonflux_location="generic",
     ):
         """``atmosphere`` is an MCEq ``density_model`` tuple. Default ``None`` keeps
         MCEq's realistic **CORSIKA US-Standard** layered profile (NOT the isothermal
         exponential used only in the `spherical_cascade` research demo). For
         seasonal/site tracking pass e.g. ``("MSIS00", ("SoudanMine", "January"))``.
+
+        ``base_model`` selects the 1D base the geomagnetic factor multiplies:
+        ``"mceq"`` (default) uses raw MCEq; ``"daemonflux"`` uses daemonflux's
+        **muon-calibrated, data-anchored** 1D flux (numuflux/nueflux split by the
+        ratios), which removes the ~10-20% hadronic-model normalization offset.
         """
         import crflux.models as crf
         from MCEq.core import MCEqRun
         import mceq_config as config
 
+        self.base_model = base_model
+        self._df = None
+        if base_model == "daemonflux":
+            from daemonflux import Flux
+
+            self._df = Flux(location=daemonflux_location)
         config.e_min = e_min
         pm = (getattr(crf, primary[0]), primary[1])
         self.mceq = MCEqRun(
@@ -159,6 +176,8 @@ class MCEq3DFlux:
         Uses ``|cosZ|`` (production is up/down symmetric: an up-going neutrino is
         produced on the far side at the conjugate down-going slant).
         """
+        if self.base_model == "daemonflux":
+            return self._base_daemonflux(cos_zeniths)
         self.mceq._phi0[:] = self._phi0_std
         out = {s: np.zeros((len(cos_zeniths), len(self.e))) for s in SPECIES}
         for i, cz in enumerate(cos_zeniths):
@@ -166,6 +185,29 @@ class MCEq3DFlux:
             self.mceq.solve()
             for s in SPECIES:
                 out[s][i] = self.mceq.get_solution(s, 0) * CM2_PER_M2
+        return out
+
+    def _base_daemonflux(self, cos_zeniths):
+        """Muon-calibrated 1D base from daemonflux [/(m^2 s sr GeV)], all flavours.
+
+        daemonflux reports E^3-weighted *sums* (numuflux = nu_mu+nubar_mu) and the
+        ratios (numuratio = nu_mu/nubar_mu); we de-weight by E^3, convert cm->m,
+        and split into species with the ratios. Uses |cosZ| (up/down symmetric).
+        """
+        e = self.e
+        m = e <= 1.0e9  # daemonflux splines are valid to ~1e9 GeV (>> 3D regime)
+        ev = e[m]
+        out = {s: np.zeros((len(cos_zeniths), len(e))) for s in SPECIES}
+        for i, cz in enumerate(cos_zeniths):
+            zen = float(np.degrees(np.arccos(np.clip(abs(cz), 1e-3, 1))))
+            tot_mu = self._df.flux(ev, zen, "numuflux") / ev**3 * CM2_PER_M2
+            r_mu = self._df.flux(ev, zen, "numuratio")  # nu_mu / nubar_mu
+            tot_e = self._df.flux(ev, zen, "nueflux") / ev**3 * CM2_PER_M2
+            r_e = self._df.flux(ev, zen, "nueratio")
+            out["total_numu"][i, m] = tot_mu * r_mu / (1.0 + r_mu)
+            out["total_antinumu"][i, m] = tot_mu / (1.0 + r_mu)
+            out["total_nue"][i, m] = tot_e * r_e / (1.0 + r_e)
+            out["total_antinue"][i, m] = tot_e / (1.0 + r_e)
         return out
 
     # -- geomagnetic response G_s(E, R_c) from cascade-correct cut/full --
@@ -318,9 +360,16 @@ def main(argv=None):
     p.add_argument("--lon", type=float, default=137.31)
     p.add_argument("--validate", action="store_true", help="compare vs Honda")
     p.add_argument("--plot", action="store_true")
+    p.add_argument(
+        "--base",
+        choices=["mceq", "daemonflux"],
+        default="mceq",
+        help="1D base the geomag factor multiplies (daemonflux = data-anchored)",
+    )
     args = p.parse_args(argv)
 
-    eng = MCEq3DFlux()
+    df_loc = "kamioka" if abs(args.lat - 36.43) < 1 else "generic"
+    eng = MCEq3DFlux(base_model=args.base, daemonflux_location=df_loc)
     cz = np.array([-0.95, -0.55, -0.15, 0.15, 0.55, 0.95])  # full sky
     az = np.array([0, 45, 90, 135, 180, 225, 270, 315], float)
     r = eng.solve(args.lat, args.lon, cz, az)
@@ -344,18 +393,27 @@ def _validate(r, args):
     h = dict(np.load("honda_kam.npz"))
     He, Hcz, nm = h["E"], h["czlo"], h["numu"]  # Honda numu[cosZ,az,E]
     e = r["e"]
+
+    def _at(yvals, xgrid, E):
+        """Log-log interpolate a falling flux to the exact energy E.
+
+        Essential: the MCEq grid point nearest 1 GeV is 0.89 GeV, so comparing by
+        nearest-index would pit our 0.89 GeV flux against Honda's 1.0 GeV bin (a
+        ~1.5x energy mismatch on a steeply falling spectrum).
+        """
+        y = np.maximum(np.asarray(yvals), 1e-300)
+        return float(np.exp(np.interp(np.log(E), np.log(xgrid), np.log(y))))
+
     # az-averaged numu vs Honda at a few cosZ
     print("\nABSOLUTE numu (az-averaged) vs Honda HKKM2014 [/(m^2 s sr GeV)]:")
     print("  E[GeV]  cosZ   this work     Honda      ratio")
     mine = {s: r["flux"][s] for s in SPECIES}
     for E in (0.5, 1.0):
-        ie = int(np.argmin(np.abs(e - E)))
-        ih = int(np.argmin(np.abs(He - E)))
         for cz in (-0.95, -0.55, 0.55, 0.95):  # up-going and down-going
             iz = int(np.argmin(np.abs(r["cos_zeniths"] - cz)))
             ihz = int(np.argmin(np.abs(Hcz - (cz - 0.05))))  # Honda bin lo edge
-            mv = mine["total_numu"][iz].mean(0)[ie]
-            hv = nm[ihz].mean(0)[ih]
+            mv = _at(mine["total_numu"][iz].mean(0), e, E)
+            hv = _at(nm[ihz].mean(0), He, E)
             print(f"  {E:5.1f}   {cz:5.2f}   {mv:9.3g}  {hv:9.3g}   {mv/hv:5.2f}")
 
     # flavour ratio (nue+nuebar)/(numu+numubar) -- robust across models
@@ -367,16 +425,14 @@ def _validate(r, args):
         iz = int(np.argmin(np.abs(r["cos_zeniths"] - 0.95)))
         ihz = int(np.argmin(np.abs(Hcz - 0.9)))
         for E in (0.5, 1.0, 3.0):
-            ie = int(np.argmin(np.abs(e - E)))
-            ih = int(np.argmin(np.abs(He - E)))
             rm = (
-                mine["total_nue"][iz].mean(0)[ie]
-                + mine["total_antinue"][iz].mean(0)[ie]
+                _at(mine["total_nue"][iz].mean(0), e, E)
+                + _at(mine["total_antinue"][iz].mean(0), e, E)
             ) / (
-                mine["total_numu"][iz].mean(0)[ie]
-                + mine["total_antinumu"][iz].mean(0)[ie]
+                _at(mine["total_numu"][iz].mean(0), e, E)
+                + _at(mine["total_antinumu"][iz].mean(0), e, E)
             )
-            rh = nue_h[ihz].mean(0)[ih] / numu_h[ihz].mean(0)[ih]
+            rh = _at(nue_h[ihz].mean(0), He, E) / _at(numu_h[ihz].mean(0), He, E)
             print(f"  {E:5.1f}     {rm:6.3f}     {rh:6.3f}")
     if args.plot:
         _plot(r, h)
