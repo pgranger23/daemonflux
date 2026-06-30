@@ -297,17 +297,51 @@ per-energy (its ~22% effect on a ~1–2% correction is negligible).
 **Idea.** Below the local rigidity cutoff, primaries are excluded — direction- and
 charge-dependent (the East–West effect). This is the dominant sub-GeV 3D effect.
 
-**Two implementations.**
-1. **Analytic Störmer admittance** (`geomagnetic.py`, *the one wired into the
-   package*): `G(E, zenith, azimuth) ∈ [0,1]` multiplies the 1D flux/error;
-   identity when no model is attached. Validated: equatorial vertical cutoff
-   **14.84 GV** (Störmer 14.9), cos⁴λ latitude fall-off, East–West sign.
+**Two implementations — both are implemented, and the code lets you use either.**
+They sit at different levels of rigour, and the API exposes a clean switch between
+them rather than forcing one:
+1. **Analytic Störmer admittance** (`geomagnetic.py`, *wired into the package*):
+   a closed-form dipole cutoff
+   `R_c = 59.6 cos⁴λ / [1+√(1−sin ε sin ξ cos³λ)]²` wrapped into an admittance
+   `G(E, zenith, azimuth) ∈ [0,1]` that multiplies the 1D flux/error (identity
+   when no model is attached). Fast, dependency-free. Validated: equatorial
+   vertical cutoff **14.9 GV**, cos⁴λ fall-off, East–West sign.
 2. **First-principles back-tracing** (`geomag_backtrace.py`): integrate a charged
    trajectory (RK4) in the **full IGRF field** (degree 13 via `ppigrf`) near the
-   surface + tilted dipole far out; allowed iff the back-traced particle escapes.
-   **Kamioka vertical cutoff = 11.31 GV (literature ~11.3 GV)** — a genuine
-   quantitative literature agreement. Produces a sky map `cutoff_map`
-   (`geomag_cutoff_map.png`).
+   surface + tilted dipole far out; a rigidity is allowed iff the back-traced
+   particle escapes. The real field, the penumbra, and the East–West come out
+   exactly. **Kamioka vertical cutoff = 11.31 GV (literature ~11.3 GV)** — which
+   the pure-dipole formula cannot reproduce. The back-tracer also reproduces the
+   Störmer formula in the aligned-dipole limit (**14.84 vs 14.9 GV**), so it is
+   validated *both* ways. Produces a sky map `cutoff_map` (`geomag_cutoff_map.png`).
+
+**Using either through one interface (they are interchangeable in the code).**
+`GeomagneticModel` takes an optional `cutoff_source=` callable: leave it `None`
+for the analytic Störmer cutoff (default), or pass the back-traced cutoff to drive
+the *same* admittance machinery with the real-field cutoff —
+`geomag_backtrace.cutoff_source(lat, lon, date)` returns exactly such a callable:
+
+```python
+from daemonflux.geomagnetic import GeomagneticModel
+from geomag_backtrace import cutoff_source
+import datetime
+gm = GeomagneticModel("kamioka",
+                      cutoff_source=cutoff_source(36.43, 137.31,
+                                                  datetime.datetime(2020, 1, 1)))
+```
+
+So the choice is one argument. The same back-traced cutoff is also what the
+absolute engine (`mceq3d_flux`, §5.11) and the research solver (`mceq3d_solver`,
+via `geomag_site` for Störmer or `cutoff_GV` for an explicit/back-traced value)
+consume — i.e. **every consumer can take either source.**
+
+**Which to use.** Back-tracing is the principled one (real field, exact
+penumbra/East–West, matches the literature site cutoffs) and is what drives all
+the Honda-validated results; the Störmer admittance is the lightweight,
+dependency-free default. The recommended production path is **back-traced `R_c`
+folded into the primary through the cascade** (`mceq3d_flux`), which additionally
+retires `x_eff`; the package admittance, fed via `cutoff_source`, is the
+convenient drop-in for a quick directional factor on the 1D flux.
 
 **A real bug found & fixed.** The East–West initially came out *reversed*; the
 cause was (a) the analytic dipole `bfield` pointing south not north, and (b)

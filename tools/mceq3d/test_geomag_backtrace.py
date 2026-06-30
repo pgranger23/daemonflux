@@ -51,6 +51,18 @@ def test_high_rigidity_allowed_low_forbidden():
     assert is_allowed(0.0, 0.0, 0.0, 0.0, 3.0, **kw) is False
 
 
+def test_cutoff_source_factory(monkeypatch):
+    # cutoff_source returns a (zenith, azimuth) -> R_c callable that broadcasts.
+    # Mock the slow trajectory back-trace; test the factory wiring/shape only.
+    import geomag_backtrace as gb
+
+    monkeypatch.setattr(gb, "cutoff_igrf", lambda la, lo, z, a, d, **k: 10.0 + 0.01 * z)
+    f = gb.cutoff_source(36.43, 137.31, "2020-01-01")
+    out = f(np.array([0.0, 50.0, 80.0]), np.array([90.0, 180.0, 270.0]))
+    assert out.shape == (3,)
+    assert np.allclose(out, [10.0, 10.5, 10.8])
+
+
 def test_igrf_field_magnitude():
     # Full-IGRF field (ppigrf) at the surface has a realistic magnitude
     # (~25-65 uT depending on location); check a near-surface point.

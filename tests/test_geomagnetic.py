@@ -39,6 +39,24 @@ def test_east_west_cutoff_asymmetry():
     assert rc_west < rc_east
 
 
+def test_cutoff_source_selects_backtraced_cutoff():
+    # The model supports BOTH cutoff implementations: the analytic Stoermer
+    # default, or an injected (e.g. back-traced IGRF) cutoff via cutoff_source.
+    default = GeomagneticModel("kamioka")
+    injected = GeomagneticModel(
+        "kamioka", cutoff_source=lambda zen, az: 11.3 + 0.0 * np.asarray(zen, float)
+    )
+    rc_def = float(default.cutoff_rigidity_GV(60.0, 270.0))
+    rc_inj = float(injected.cutoff_rigidity_GV(60.0, 270.0))
+    assert abs(rc_inj - 11.3) < 1e-9 and abs(rc_def - 11.3) > 0.5  # source overrides
+    # the injected cutoff flows through the same admittance machinery
+    E = np.array([1.0, 5.0, 100.0])
+    a_def = default.admittance("numuflux", E, 60.0, 270.0)
+    a_inj = injected.admittance("numuflux", E, 60.0, 270.0)
+    assert not np.allclose(a_def, a_inj)  # different cutoff -> different admittance
+    npt.assert_allclose(a_inj[-1], 1.0, atol=1e-3)  # both -> 1 at high E
+
+
 def test_east_west_flux_asymmetry():
     # The admittance (hence the flux) is larger from the West at low energy and
     # symmetric (ratio -> 1) at high energy.

@@ -266,6 +266,38 @@ def cutoff_igrf(
     return r_hi if i == 0 else 0.5 * (rs[i - 1] + rs[i])
 
 
+def cutoff_source(lat_deg, lon_deg, date, **kw):
+    """Return a ``f(zenith_deg, azimuth_deg) -> R_c [GV]`` back-traced cutoff.
+
+    Convenience factory so the first-principles IGRF cutoff can be dropped
+    straight into the package model::
+
+        from geomag_backtrace import cutoff_source
+        import datetime
+        gm = GeomagneticModel("kamioka",
+                              cutoff_source=cutoff_source(36.43, 137.31,
+                                                          datetime.datetime(2020, 1, 1)))
+
+    The returned callable broadcasts over array (zenith, azimuth) inputs. (It is
+    slow -- one trajectory back-trace per direction -- so cache/precompute a map
+    for production grids; this is the drop-in *selector*, not a fast path.)
+    """
+
+    def f(zenith_deg, azimuth_deg):
+        z = np.atleast_1d(np.asarray(zenith_deg, dtype=float))
+        a = np.atleast_1d(np.asarray(azimuth_deg, dtype=float))
+        zb, ab = np.broadcast_arrays(z, a)
+        out = np.array(
+            [
+                cutoff_igrf(lat_deg, lon_deg, float(zz), float(aa), date, **kw)
+                for zz, aa in zip(zb.ravel(), ab.ravel())
+            ]
+        )
+        return out.reshape(zb.shape)
+
+    return f
+
+
 def cutoff_rigidity(
     lat_deg,
     lon_deg=0.0,

@@ -23,10 +23,14 @@ the published 1D result above the cutoff region.
 
 Physics scope and limitations
 -----------------------------
-* The cutoff is the **Stoermer** approximation (dipole field). It captures the
-  latitude dependence and the East--West asymmetry but is only approximate near
-  the cutoff (the real penumbra requires trajectory back-tracing in the IGRF
-  field).
+* **Two cutoff implementations are available and selectable.** By default the
+  cutoff is the analytic **Stoermer** approximation (dipole field): fast,
+  dependency-free, capturing the latitude dependence and East--West asymmetry but
+  only approximate near the cutoff. Passing ``cutoff_source=`` to
+  :class:`GeomagneticModel` instead uses a **first-principles back-traced cutoff**
+  in the real **IGRF** field (``tools/mceq3d/geomag_backtrace.py``), which resolves
+  the real-field structure and penumbra and matches the literature site cutoffs
+  (e.g. Kamioka 11.3 GV). Both feed the same admittance machinery.
 * The mapping from a *lepton* energy to the *primary* rigidity that produced it
   uses a single effective inelasticity ``x_eff`` (the mean fraction of the
   primary energy carried by the observed lepton). A full treatment folds the
@@ -120,6 +124,15 @@ class GeomagneticModel:
     n_azimuth_avg : int, optional
         Number of azimuth samples used when computing the azimuth-averaged
         admittance (``azimuth_deg=None``). Default 24.
+    cutoff_source : callable, optional
+        Selects **which cutoff implementation** to use. If ``None`` (default) the
+        analytic **Stoermer** dipole formula (:meth:`cutoff_rigidity_GV`) is used.
+        Pass a callable ``f(zenith_deg, azimuth_deg) -> R_c [GV]`` to use a
+        **first-principles back-traced** (or Monte-Carlo) cutoff instead -- e.g. a
+        closure around ``geomag_backtrace.cutoff_igrf`` for this site/epoch. This
+        is the documented plug-point: the real-field cutoff then drives the same
+        admittance machinery (the only remaining approximation being ``x_eff``;
+        for the fully cascade-folded treatment use ``tools/mceq3d/mceq3d_flux``).
     """
 
     def __init__(
@@ -128,6 +141,7 @@ class GeomagneticModel:
         x_eff: float = 0.1,
         penumbra_width: float = 0.5,
         n_azimuth_avg: int = 24,
+        cutoff_source=None,
     ) -> None:
         if isinstance(site, str):
             key = site.lower()
@@ -142,6 +156,7 @@ class GeomagneticModel:
         self.x_eff = float(x_eff)
         self.penumbra_width = float(penumbra_width)
         self.n_azimuth_avg = int(n_azimuth_avg)
+        self.cutoff_source = cutoff_source
 
     def __repr__(self) -> str:
         return (
@@ -185,7 +200,12 @@ class GeomagneticModel:
         geomagnetic south, positive towards the East. Because primaries are
         positively charged, the cutoff is lowest for arrival from the West,
         which is the origin of the East--West effect.
+
+        If a ``cutoff_source`` was supplied (e.g. a back-traced IGRF cutoff), it
+        is used instead of the analytic Stoermer formula below.
         """
+        if self.cutoff_source is not None:
+            return np.asarray(self.cutoff_source(zenith_deg, azimuth_deg), dtype=float)
         lat = np.deg2rad(self.site.geomagnetic_latitude_deg)
         eps = np.deg2rad(np.asarray(zenith_deg, dtype=float))
         # Geographic azimuth (from North, +East) -> angle from geomagnetic
