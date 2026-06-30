@@ -118,7 +118,7 @@ class MCEq3DFlux:
         self,
         interaction_model="SIBYLL23D",
         primary=("HillasGaisser2012", "H3a"),
-        e_min=0.3,
+        e_min=0.1,
         atmosphere=None,
         base_model="mceq",
         daemonflux_location="generic",
@@ -193,6 +193,12 @@ class MCEq3DFlux:
         daemonflux reports E^3-weighted *sums* (numuflux = nu_mu+nubar_mu) and the
         ratios (numuratio = nu_mu/nubar_mu); we de-weight by E^3, convert cm->m,
         and split into species with the ratios. Uses |cosZ| (up/down symmetric).
+
+        Validity: this base matches Honda to ~10 % for E >~ 1 GeV but
+        **over-predicts below ~0.3 GeV** (up to ~2x at 0.1 GeV), where it
+        extrapolates past daemonflux's muon-calibration region; there the raw MCEq
+        base is closer to Honda (see `base_comparison.py`). For sub-0.3-GeV work,
+        cross-check both bases.
         """
         e = self.e
         m = e <= 1.0e9  # daemonflux splines are valid to ~1e9 GeV (>> 3D regime)
@@ -404,17 +410,26 @@ def _validate(r, args):
         y = np.maximum(np.asarray(yvals), 1e-300)
         return float(np.exp(np.interp(np.log(E), np.log(xgrid), np.log(y))))
 
-    # az-averaged numu vs Honda at a few cosZ
-    print("\nABSOLUTE numu (az-averaged) vs Honda HKKM2014 [/(m^2 s sr GeV)]:")
-    print("  E[GeV]  cosZ   this work     Honda      ratio")
+    # Dense low-E grid: 0.1-100 GeV is the region that matters (sub-GeV oscillation
+    # physics), with extra points below 1 GeV.
+    EGRID = (0.1, 0.15, 0.2, 0.3, 0.5, 0.7, 1.0, 2.0, 3.0, 5.0, 10.0, 30.0, 100.0)
+    # az-averaged numu vs Honda: vertical (down 0.95) and up-going (-0.95)
+    print("\nABSOLUTE numu (az-avg) vs Honda HKKM2014 [/(m^2 s sr GeV)], 0.1-100 GeV:")
+    print("  E[GeV]   vert(this)   vert(Honda)  ratio | up(this) up(Honda) ratio")
     mine = {s: r["flux"][s] for s in SPECIES}
-    for E in (0.5, 1.0):
-        for cz in (-0.95, -0.55, 0.55, 0.95):  # up-going and down-going
-            iz = int(np.argmin(np.abs(r["cos_zeniths"] - cz)))
-            ihz = int(np.argmin(np.abs(Hcz - (cz - 0.05))))  # Honda bin lo edge
-            mv = _at(mine["total_numu"][iz].mean(0), e, E)
-            hv = _at(nm[ihz].mean(0), He, E)
-            print(f"  {E:5.1f}   {cz:5.2f}   {mv:9.3g}  {hv:9.3g}   {mv/hv:5.2f}")
+    izd = int(np.argmin(np.abs(r["cos_zeniths"] - 0.95)))
+    izu = int(np.argmin(np.abs(r["cos_zeniths"] + 0.95)))
+    ihzd = int(np.argmin(np.abs(Hcz - 0.9)))  # Honda down bin lo edge
+    ihzu = int(np.argmin(np.abs(Hcz - (-1.0))))  # Honda up bin lo edge
+    for E in EGRID:
+        md = _at(mine["total_numu"][izd].mean(0), e, E)
+        hd = _at(nm[ihzd].mean(0), He, E)
+        mu = _at(mine["total_numu"][izu].mean(0), e, E)
+        hu = _at(nm[ihzu].mean(0), He, E)
+        print(
+            f"  {E:6.2f}  {md:10.3g}  {hd:10.3g}  {md/hd:5.2f} |"
+            f" {mu:8.3g} {hu:8.3g} {mu/hu:5.2f}"
+        )
 
     # flavour ratio (nue+nuebar)/(numu+numubar) -- robust across models
     if "nue" in h:
@@ -424,7 +439,7 @@ def _validate(r, args):
         print("  E[GeV]   this work   Honda")
         iz = int(np.argmin(np.abs(r["cos_zeniths"] - 0.95)))
         ihz = int(np.argmin(np.abs(Hcz - 0.9)))
-        for E in (0.5, 1.0, 3.0):
+        for E in (0.1, 0.2, 0.3, 0.5, 1.0, 3.0, 10.0):
             rm = (
                 _at(mine["total_nue"][iz].mean(0), e, E)
                 + _at(mine["total_antinue"][iz].mean(0), e, E)
@@ -447,13 +462,13 @@ def _plot(r, h):
     e = r["e"]
     He, Hcz, nm = h["E"], h["czlo"], h["numu"]
     fig, (axL, axR) = plt.subplots(1, 2, figsize=(12, 4.4))
-    # spectrum vertical: this work vs Honda
-    iz = 0
+    # spectrum, down-going vertical: this work vs Honda, focused on 0.1-100 GeV
+    iz = int(np.argmin(np.abs(r["cos_zeniths"] - 0.95)))
     mv = r["flux"]["total_numu"][iz].mean(0)
     ihz = int(np.argmin(np.abs(Hcz - 0.9)))
-    s = (e > 0.3) & (e < 1e3)
-    axL.loglog(e[s], (mv * e**3)[s], "C3-", label="this work (MCEq+geomag)")
-    sH = (He > 0.3) & (He < 1e3)
+    s = (e >= 0.1) & (e <= 100)
+    axL.loglog(e[s], (mv * e**3)[s], "C3o-", ms=3, label="this work (3D engine)")
+    sH = (He >= 0.1) & (He <= 100)
     axL.loglog(He[sH], (nm[ihz].mean(0) * He**3)[sH], "k--", label="Honda HKKM2014")
     axL.set_xlabel("E [GeV]")
     axL.set_ylabel(r"$E^3\,\Phi_{\nu_\mu}$  [GeV$^2$/(m$^2$ s sr)]")

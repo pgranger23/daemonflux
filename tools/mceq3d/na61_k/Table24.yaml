@@ -1,0 +1,80 @@
+dependent_variables:
+- header: {name: $d^2 \sigma /d p /d \theta$, units: '[mb/rad/(GeV/c)]'}
+  qualifiers:
+  - {name: PLAB, units: GeV c^-1, value: '31.0'}
+  - {name: RE, value: P C --> K+ X}
+  - {name: THETA, units: mrad, value: 20.0-40.0}
+  values:
+  - errors:
+    - {label: stat, symerror: 0.6}
+    - {label: sys, symerror: 0.2}
+    value: 4.3
+  - errors:
+    - {label: stat, symerror: 0.6}
+    - {label: sys, symerror: 0.3}
+    value: 7.6
+  - errors:
+    - {label: stat, symerror: 0.8}
+    - {label: sys, symerror: 0.4}
+    value: 10.6
+  - errors:
+    - {label: stat, symerror: 0.9}
+    - {label: sys, symerror: 0.5}
+    value: 11.9
+  - errors:
+    - {label: stat, symerror: 1.0}
+    - {label: sys, symerror: 0.5}
+    value: 12.2
+  - errors:
+    - {label: stat, symerror: 1.1}
+    - {label: sys, symerror: 0.6}
+    value: 12.9
+  - errors:
+    - {label: stat, symerror: 1.1}
+    - {label: sys, symerror: 0.5}
+    value: 10.3
+  - errors:
+    - {label: stat, symerror: 0.9}
+    - {label: sys, symerror: 0.5}
+    value: 9.7
+  - errors:
+    - {label: stat, symerror: 0.9}
+    - {label: sys, symerror: 0.6}
+    value: 8.6
+  - errors:
+    - {label: stat, symerror: 0.8}
+    - {label: sys, symerror: 0.8}
+    value: 8.5
+  - errors:
+    - {label: stat, symerror: 0.7}
+    - {label: sys, symerror: 0.8}
+    value: 5.8
+  - errors:
+    - {label: stat, symerror: 0.7}
+    - {label: sys, symerror: 0.7}
+    value: 4.1
+  - errors:
+    - {label: stat, symerror: 0.7}
+    - {label: sys, symerror: 0.8}
+    value: 3.7
+  - errors:
+    - {label: stat, symerror: 0.6}
+    - {label: sys, symerror: 0.5}
+    value: 2.4
+independent_variables:
+- header: {name: p, units: GeV/c}
+  values:
+  - {high: 1.6, low: 0.8}
+  - {high: 2.4, low: 1.6}
+  - {high: 3.2, low: 2.4}
+  - {high: 4.0, low: 3.2}
+  - {high: 4.8, low: 4.0}
+  - {high: 5.6, low: 4.8}
+  - {high: 6.4, low: 5.6}
+  - {high: 7.6, low: 6.4}
+  - {high: 8.8, low: 7.6}
+  - {high: 10.0, low: 8.8}
+  - {high: 11.6, low: 10.0}
+  - {high: 13.2, low: 11.6}
+  - {high: 14.8, low: 13.2}
+  - {high: 16.4, low: 14.8}
