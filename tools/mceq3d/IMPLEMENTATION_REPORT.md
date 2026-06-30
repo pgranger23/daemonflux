@@ -265,25 +265,28 @@ variance*, median rel diff ≈ 0) shows the answer depends on the **variance onl
 not the kernel shape — so FP's variance-only input (`<θ²>(E)`) is sufficient and
 the full-shape kernel is not needed.
 
-**How to read `sn_transport.png`** (the validation, spread `arccos<cos θ>` vs E):
+**How to read `sn_transport.png`** — it is **two independent overlap-tests, one
+per panel** (the spread `arccos<cos θ>` vs E). In each panel the *two curves lying
+on top of each other is the result*; the two panels are separate checks on
+*different* kernels, so **read each panel on its own** — their absolute heights are
+not meant to match.
 
-* **Blue line+dots** = P_N from the high-stat moments; **red dashed** = the
-  small-angle FP `√N·θ₁`. They lie *on top of each other* — that overlap is the
-  headline: **FP ≡ P_N in this regime, so FP is adequate.**
-* The **grey dotted line at 90°** is full randomization (isotropy). Both curves
-  stay far below it (≤~35°, falling to ≪1° above a few GeV) — i.e. we are always
-  in the small-angle regime, never near the bound, so FP cannot misbehave here.
-* The **green open squares** (P_N from the *real* measured kernel shape) lie on
-  the **green line** (P_N from a Gaussian of the *same variance*) — that overlap
-  means **shape doesn't matter, only the variance does**. The green pair sits a
-  bit *above* the blue only because the small demo kernel (`k_local_demo.npz`,
-  low-E UrQMD) has a larger variance than the high-stat moments — a kernel
-  difference, **not** a method discrepancy.
-* **Conclusions:** (1) FP = P_N → use the cheap Gaussian; (2) the spread never
-  approaches isotropy → small-angle is safe; (3) variance alone suffices →
-  no full-shape kernel needed; (4) the spread falls ~1/E → the 3D angular effect
-  vanishes at high E (1D recovered). `fokker_planck_3d.png` shows the resulting
-  detector angular distribution (a narrow forward peak, narrowing with E).
+* **Left panel — the *method* test** (same input: the production moments). Red
+  dashed = Fokker-Planck (small-angle `√N·θ₁`); blue dots = P_N (full-angle). They
+  **overlap** → `FP ≡ P_N`, so **Fokker-Planck is adequate**. The grey 90° line is
+  the isotropy bound; the curves stay far below it (≤~35° at 0.5 GeV, ≪1° above a
+  few GeV), i.e. always small-angle, so FP cannot misbehave here.
+* **Right panel — the *shape* test** (on a demo kernel, `k_local_demo.npz`). Green
+  squares = the *real measured* angular shape; green line = a Gaussian of the
+  **same variance**. They **overlap** → the **shape is irrelevant, only the
+  variance matters**, so FP's variance-only input (`<θ²>(E)`) suffices. This panel
+  uses a different, lower-energy kernel than the left, so it sits higher — that is
+  expected and carries no meaning (it is not a disagreement with the left panel).
+* **Together:** use the cheap Gaussian Fokker-Planck driven by the validated
+  `<θ²>(E)` — both the *method* (left) and the *shape* (right) approximations are
+  justified. The spread falls ~1/E, so the 3D angular effect vanishes at high E
+  (1D recovered); `fokker_planck_3d.png` shows the resulting forward-peaked
+  detector distribution.
 
 **Simplifications.** Heat-kernel (forward-Gaussian) single-step *shape* — now
 justified by the pure-shape test. `N_chain` is a fixed integer, not derived

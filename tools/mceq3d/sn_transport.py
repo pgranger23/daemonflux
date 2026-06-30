@@ -255,41 +255,77 @@ def main(argv=None):
 
 
 def _plot(energies, sn, sa, args, real=None, matched=None):
+    """Two independent overlap-tests, one per panel (each: curves agree -> pass).
+
+    Left  -- *method* test, on the production moments: Fokker-Planck (small-angle)
+             vs P_N (full-angle). Same input, two methods -> overlap means FP is
+             adequate. Right -- *shape* test, on a demo kernel: its real angular
+             shape vs a Gaussian of the SAME variance -> overlap means only the
+             variance matters. The two panels use different kernels, so their
+             absolute heights are not meant to match -- read each panel on its own.
+    """
     import matplotlib
 
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    fig, ax = plt.subplots(figsize=(6.8, 4.6))
-    ax.loglog(
-        energies, sa, "C3--", lw=2, label=r"small-angle $\sqrt{N}\,\theta_1$ (FP)"
+    have_shape = real is not None and np.isfinite(real).any()
+    fig, axes = plt.subplots(
+        1,
+        2 if have_shape else 1,
+        figsize=(12 if have_shape else 6.6, 4.6),
+        squeeze=False,
     )
-    ax.loglog(energies, sn, "C0o-", lw=2, label=r"$P_N$ Gaussian (high-stat moments)")
-    if real is not None and np.isfinite(real).any():
-        m = np.isfinite(real)
-        if matched is not None:
-            ax.loglog(
-                energies[m],
-                matched[m],
-                "C2-",
-                lw=3,
-                alpha=0.5,
-                label=r"$P_N$ Gaussian, same var as kernel",
-            )
-        ax.loglog(
+    axL = axes[0, 0]
+    # -- Panel 1: method test (FP vs P_N), same input (production moments) --
+    axL.loglog(
+        energies,
+        sa,
+        "C3--",
+        lw=2.5,
+        label=r"Fokker-Planck (small-angle $\sqrt{N}\,\theta_1$)",
+    )
+    axL.loglog(energies, sn, "C0o-", lw=1.5, ms=5, label=r"$P_N$ (full-angle)")
+    axL.axhline(90.0, color="gray", ls=":", label="90° isotropy bound")
+    axL.axvspan(energies[0], 2.0, color="orange", alpha=0.15)
+    axL.set_xlabel("neutrino energy [GeV]")
+    axL.set_ylabel(r"angular spread $\arccos\langle\cos\theta\rangle$ [deg]")
+    axL.set_title(r"Method test: FP $\equiv$ P$_N$ $\Rightarrow$ FP adequate")
+    axL.legend()
+
+    if have_shape:
+        axR = axes[0, 1]
+        m = np.isfinite(real) & np.isfinite(matched)
+        axR.loglog(
+            energies[m],
+            matched[m],
+            "C2-",
+            lw=4,
+            alpha=0.4,
+            label="Gaussian of the same variance",
+        )
+        axR.loglog(
             energies[m],
             real[m],
             "C2s",
-            ms=7,
+            ms=8,
             mfc="none",
-            label=r"$P_N$ real kernel shape (lies on it)",
+            label="real measured kernel shape",
         )
-    ax.axhline(90.0, color="gray", ls=":", label="90 deg (fully randomized)")
-    ax.axvspan(energies[0], 2.0, color="orange", alpha=0.15)
-    ax.set_xlabel("neutrino energy [GeV]")
-    ax.set_ylabel(r"angular spread $\arccos\langle\cos\theta\rangle$ [deg]")
-    ax.set_title(r"$P_N$ confirms FP is adequate for $N_{\rm chain}\!\approx\!2$")
-    ax.legend()
+        axR.set_xlabel("neutrino energy [GeV]")
+        axR.set_ylabel(r"angular spread $\arccos\langle\cos\theta\rangle$ [deg]")
+        axR.set_title(r"Shape test: real $\equiv$ same-variance Gaussian")
+        axR.text(
+            0.5,
+            0.05,
+            "(demo kernel k_local_demo; its variance differs from the\n"
+            "left panel's moments, so heights need not match)",
+            transform=axR.transAxes,
+            fontsize=7.5,
+            ha="center",
+            color="0.4",
+        )
+        axR.legend(loc="upper right")
     fig.tight_layout()
     fig.savefig("sn_transport.png", dpi=110)
     print("saved plot -> sn_transport.png")
