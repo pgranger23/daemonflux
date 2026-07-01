@@ -240,6 +240,37 @@ class MCEq3DFlux:
             out["total_antinue"][i, m] = tot_e / (1.0 + r_e)
         return out
 
+    # daemonflux quantity name per engine species (conventional charge/flavour)
+    _DF_Q = {
+        "total_numu": "numu",
+        "total_antinumu": "antinumu",
+        "total_nue": "nue",
+        "total_antinue": "antinue",
+    }
+
+    def _daemonflux_relerr(self, cos_zeniths, only_hadronic=False):
+        """Fractional calibration uncertainty sigma/Phi[species, cosZ, E] from
+        daemonflux's nuisance-parameter covariance (its ``error()``).
+
+        The directional flux is ``Phi_df * G * S`` with ``G, S`` independent of the
+        daemonflux nuisance parameters, so the *fractional* error is preserved and
+        propagates unchanged: ``sigma(Phi_3D)/Phi_3D = sigma(Phi_df)/Phi_df``.
+        ``only_hadronic`` isolates the hadronic-production part of the covariance.
+        """
+        e = self.e
+        m = e <= 1.0e9
+        ev = e[m]
+        out = {s: np.zeros((len(cos_zeniths), len(e))) for s in SPECIES}
+        for i, cz in enumerate(cos_zeniths):
+            zen = float(np.degrees(np.arccos(np.clip(abs(cz), 1e-3, 1))))
+            for s in SPECIES:
+                q = self._DF_Q[s]
+                f = np.asarray(self._df.flux(ev, zen, q))
+                er = np.asarray(self._df.error(ev, zen, q, only_hadronic=only_hadronic))
+                with np.errstate(invalid="ignore", divide="ignore"):
+                    out[s][i, m] = np.where(f > 0, er / f, 0.0)
+        return out
+
     # -- geomagnetic response G_s(E, R_c) from cascade-correct cut/full --
     def geomag_response(self, rc_grid, cz_ref=1.0, cache_dir=None):
         """G[species, R_c, E] = MCEq(primary cut at R_c)/MCEq(full) at one zenith.
@@ -430,6 +461,8 @@ class MCEq3DFlux:
         use_cache=False,
         cache_dir=None,
         solar_modulation=0.0,
+        with_calib_error=False,
+        calib_hadronic_only=False,
     ):
         """Absolute Phi[species, cosZ, az, E] for a site (full sky).
 
@@ -455,6 +488,13 @@ class MCEq3DFlux:
         primary (`solar_factor`), rescaling the flux toward low energy; 0 (default) =
         H3a baseline. The physical solar-cycle span is the *difference* between two
         potentials (~0.4 GV solar-min vs ~1.0 GV solar-max).
+
+        ``with_calib_error`` (daemonflux base only): also return the propagated
+        muon-**calibration** 1-sigma uncertainty from daemonflux's nuisance-parameter
+        covariance -- ``result["flux_err"]`` (absolute) and ``["flux_relerr"]``
+        (fractional). Since ``G`` and ``S`` are parameter-independent, the fractional
+        error carries through unchanged. ``calib_hadronic_only`` isolates the
+        hadronic-production component.
         """
         cos_zeniths = np.asarray(cos_zeniths, float)
         azimuths = np.asarray(azimuths, float)
@@ -502,7 +542,7 @@ class MCEq3DFlux:
                 for iz in range(len(cos_zeniths)):
                     g = _interp_rc(rc_map[iz, ia], rc_grid, G_by_z[iz][s])
                     flux[s][iz, ia] = base[s][iz] * g * smod
-        return dict(
+        result = dict(
             e=self.e,
             cos_zeniths=cos_zeniths,
             azimuths=azimuths,
@@ -510,6 +550,15 @@ class MCEq3DFlux:
             base=base,
             cutoff=rc_map,
         )
+        if with_calib_error:
+            if self.base_model != "daemonflux":
+                raise ValueError("with_calib_error requires base_model='daemonflux'")
+            relerr = self._daemonflux_relerr(
+                cos_zeniths, only_hadronic=calib_hadronic_only
+            )
+            result["flux_relerr"] = relerr  # sigma/Phi [species, cosZ, E]
+            result["flux_err"] = {s: flux[s] * relerr[s][:, None, :] for s in SPECIES}
+        return result
 
 
 def _interp_rc(rc, rc_grid, gmat):
