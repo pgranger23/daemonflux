@@ -286,6 +286,58 @@ class MCEq3DFlux:
             np.savez(fpath, e=self.e, **{s: G[s] for s in SPECIES})
         return G, rc_grid
 
+    # -- solar modulation: force-field on the primary -> neutrino-energy factor --
+    def _modulate_phi0(self, phi_gv):
+        """Force-field (Gleeson-Axford) modulation of the primary nucleon _phi0.
+
+        Potential ``phi_gv`` [GV] shifts each nucleon by its per-nucleon energy loss
+        Phi = (Z/A)*phi and applies the flux Jacobian. Free protons (Z/A=1) lose the
+        full phi; bound nucleons (Z/A=1/<A/Z>~0.5) lose half -- the standard
+        rigidity-dependent modulation. ``phi_gv=0`` returns the baseline unchanged.
+        """
+        m_n = 0.938272
+        E = self.e
+        out = self._phi0_std.copy()
+
+        def ff(f0, z_over_a):
+            phi = z_over_a * phi_gv
+            lo = np.log(np.maximum(f0, 1e-300))
+            shifted = np.exp(np.interp(np.log(E + phi), np.log(E), lo))
+            jac = (E * (E + 2 * m_n)) / ((E + phi) * (E + phi + 2 * m_n))
+            return shifted * jac
+
+        p = self._phi0_std[self._p_sl]
+        n = self._phi0_std[self._n_sl]
+        zoa_bound = 1.0 / self._az_bound  # Z/A of bound nucleons (~0.5)
+        out[self._p_sl] = ff(p * self._f_free, 1.0) + ff(
+            p * (1 - self._f_free), zoa_bound
+        )
+        out[self._n_sl] = ff(n, zoa_bound)
+        return out
+
+    def solar_factor(self, phi_gv, cz_ref=1.0):
+        """Neutrino-energy solar-modulation factor S(E) = numu(modulated)/numu(base).
+
+        Runs the cascade with the force-field-modulated primary (`_modulate_phi0`)
+        over the unmodulated one; the ratio maps the primary modulation to neutrino
+        energy through the shower (species- and ~zenith-independent, like G_s), so it
+        multiplies whichever 1D base is used. ``phi_gv`` is *relative to the H3a
+        baseline* (0 = baseline); the physical solar-cycle effect is the difference
+        between two potentials (e.g. ~0.4 GV solar-min vs ~1.0 GV solar-max).
+        """
+        if phi_gv == 0:
+            return np.ones(len(self.e))
+        self.mceq.set_theta_deg(np.degrees(np.arccos(np.clip(cz_ref, 1e-3, 1))))
+        self.mceq._phi0[:] = self._phi0_std
+        self.mceq.solve()
+        ref = self.mceq.get_solution("total_numu", 0).copy()
+        self.mceq._phi0[:] = self._modulate_phi0(phi_gv)
+        self.mceq.solve()
+        mod = self.mceq.get_solution("total_numu", 0)
+        self.mceq._phi0[:] = self._phi0_std
+        with np.errstate(invalid="ignore", divide="ignore"):
+            return np.where(ref > 0, mod / ref, 1.0)
+
     def cutoff_grid(
         self,
         lat,
@@ -377,6 +429,7 @@ class MCEq3DFlux:
         zenith_dependent_geomag=False,
         use_cache=False,
         cache_dir=None,
+        solar_modulation=0.0,
     ):
         """Absolute Phi[species, cosZ, az, E] for a site (full sky).
 
@@ -397,6 +450,11 @@ class MCEq3DFlux:
         Matches the default path to interpolation precision (a fixed wide ``rc_grid``
         is used so one cached ``G_s`` serves every site without clamping). Off by
         default so the validated path is untouched.
+
+        ``solar_modulation`` [GV]: force-field modulation potential applied to the
+        primary (`solar_factor`), rescaling the flux toward low energy; 0 (default) =
+        H3a baseline. The physical solar-cycle span is the *difference* between two
+        potentials (~0.4 GV solar-min vs ~1.0 GV solar-max).
         """
         cos_zeniths = np.asarray(cos_zeniths, float)
         azimuths = np.asarray(azimuths, float)
@@ -433,6 +491,9 @@ class MCEq3DFlux:
             G0, rc_grid = self.geomag_response(rc_grid, cache_dir=cache_dir)
             G_by_z = [G0] * len(cos_zeniths)
 
+        # solar modulation: neutrino-energy factor S(E), applied to all species/dirs
+        smod = self.solar_factor(solar_modulation) if solar_modulation else 1.0
+
         flux = {
             s: np.zeros((len(cos_zeniths), len(azimuths), len(self.e))) for s in SPECIES
         }
@@ -440,7 +501,7 @@ class MCEq3DFlux:
             for ia in range(len(azimuths)):
                 for iz in range(len(cos_zeniths)):
                     g = _interp_rc(rc_map[iz, ia], rc_grid, G_by_z[iz][s])
-                    flux[s][iz, ia] = base[s][iz] * g
+                    flux[s][iz, ia] = base[s][iz] * g * smod
         return dict(
             e=self.e,
             cos_zeniths=cos_zeniths,
