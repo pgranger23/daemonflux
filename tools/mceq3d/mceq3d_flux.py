@@ -7,18 +7,26 @@ from a *trusted* source and the 3D corrections are *validated against Honda*.
 
 Construction (each factor trusted / validated)
 ---------------------------------------------
-``Phi_3D(E, cosZ, az, s) = Phi_MCEq(E, cosZ, s) * G_s(E, R_c(cosZ, az))``
+``Phi_3D(E, cosZ, az, s) = Phi_base(E,|cosZ|,s) * R(E,cosZ,s) * G_s(E,R_c(cosZ,az)) * S(E)``
 
-* **Phi_MCEq** -- MCEq solved per zenith with its **curved atmosphere** (the same
-  engine daemonflux is built on). This supplies the absolute normalization, the
-  full flavour/charge content, the spectra, *and* the sec(theta) horizon
-  enhancement (a 1D-per-direction-with-curvature effect). Down-going hemisphere.
+* **Phi_base** -- MCEq (or daemonflux) solved per zenith with the **curved
+  atmosphere**: absolute normalization, flavour/charge content, spectra, and the
+  sec(theta) horizon enhancement (1D-per-direction-with-curvature).
+* **R(E, cosZ)** -- the genuine-3D **production-angle redistribution**
+  ``Phi_3D/Phi_1D`` (:meth:`angular_factor`, ``full_3d=True``): the per-zenith base
+  convolved on the sphere with the **NA61-validated** ``sigma_theta(E)``. ->1 at
+  high E; ~1-2% sub-GeV. Off (=1) by default.
 * **G_s(E, R_c)** -- the geomagnetic suppression = ``MCEq(primary cut at R_c) /
-  MCEq(full)``, i.e. the **cascade-correct** response to removing primaries below
-  the rigidity cutoff (NO ``x_eff`` hack). Precomputed on a small R_c grid (the
-  suppression *ratio* is ~zenith-independent) and interpolated.
+  MCEq(full)``, the **cascade-correct** response to removing sub-cutoff primaries
+  (NO ``x_eff`` hack); ~zenith-independent, interpolated on a small R_c grid.
 * **R_c(cosZ, az)** -- the first-principles **back-traced full-IGRF cutoff**
   (:mod:`geomag_backtrace`, validated: Kamioka 11.3 GV).
+* **S(E)** -- optional solar-modulation factor (:meth:`solar_factor`).
+
+With ``full_3d=True`` this is the complete deterministic-3D construction (curved
+per-zenith cascade + production-angle redistribution + geomagnetic + solar),
+validated absolutely against Honda/Bartol; ``full_3d=False`` drops R (the fast
+factorised path, ~1-2% higher near the horizon sub-GeV).
 
 The rigidity cut is applied per-nucleus to the primary nucleons: the proton flux
 is split into **free protons** (A/Z=1, R=E) and **bound protons** (in nuclei,
@@ -404,6 +412,45 @@ class MCEq3DFlux:
         with np.errstate(invalid="ignore", divide="ignore"):
             return np.where(ref > 0, mod / ref, 1.0)
 
+    # -- genuine-3D production-angle redistribution R(E, cosZ) = Phi_3D/Phi_1D --
+    def angular_factor(
+        self, cos_zeniths, moments="m_spliced.npz", n_dense=41, n_mc=4000
+    ):
+        """Production-angle 3D redistribution factor R[species][cosZ, E].
+
+        The 1D base is collinear (neutrino along the primary); in 3D a neutrino from
+        direction n_o is produced along a spread of parent directions about it. We
+        convolve the per-zenith base with the **NA61-validated** production-angle
+        spread ``sigma_theta(E)`` (from the high-statistics kernel moments) on the
+        sphere (`coupled_3d_flux.convolve_sphere`), flux-conserving. R->1 at high E
+        (sigma->0); sub-GeV it is a ~1-2% zenith redistribution (slight horizon
+        deficit / vertical excess). Site- and azimuth-independent; the curved-
+        atmosphere sec-theta rise is already in the per-zenith base and is *not*
+        touched here (no double counting).
+        """
+        from fokker_planck_3d import load_theta2, sigma_theta_vs_energy
+        from coupled_3d_flux import convolve_sphere
+
+        e = self.e
+        e_sig, theta2 = load_theta2(moments)
+        sig = np.deg2rad(sigma_theta_vs_energy(e_sig, theta2, e, zenith_deg=0.0))
+        dense = np.linspace(-1.0, 1.0, n_dense)  # mirrored full sphere
+        base = self.base(dense)  # per species (n_dense, n_E), symmetric in cosZ
+        out_cos = np.clip(np.abs(np.asarray(cos_zeniths, float)), 1e-3, 1.0)
+        sigma_EZ = np.tile(sig, (len(out_cos), 1))
+        eidx = list(range(len(e)))
+        R = {}
+        for s in SPECIES:
+            phi3d = convolve_sphere(
+                e, dense, base[s], sigma_EZ, out_cos, eidx, n_mc=n_mc
+            )
+            phi1d = np.array(
+                [np.interp(out_cos, dense, base[s][:, ie]) for ie in eidx]
+            ).T
+            with np.errstate(invalid="ignore", divide="ignore"):
+                R[s] = np.where(phi1d > 0, phi3d / phi1d, 1.0)  # (n_cos, n_E)
+        return R
+
     def cutoff_grid(
         self,
         lat,
@@ -499,6 +546,8 @@ class MCEq3DFlux:
         with_calib_error=False,
         calib_hadronic_only=False,
         with_calib_jacobian=False,
+        full_3d=False,
+        moments="m_spliced.npz",
     ):
         """Absolute Phi[species, cosZ, az, E] for a site (full sky).
 
@@ -531,6 +580,13 @@ class MCEq3DFlux:
         (fractional). Since ``G`` and ``S`` are parameter-independent, the fractional
         error carries through unchanged. ``calib_hadronic_only`` isolates the
         hadronic-production component.
+
+        ``full_3d``: fold in the genuine-3D **production-angle redistribution**
+        ``R(E, cosZ)`` (`angular_factor`, NA61-validated ``sigma_theta``) so the
+        delivered flux is the complete deterministic-3D construction -- per-zenith
+        curved cascade x angular redistribution x geomagnetic cutoff x solar. The
+        redistribution is ~1-2% (sub-GeV); ``full_3d=False`` (default) is the pure
+        factorised path.
         """
         cos_zeniths = np.asarray(cos_zeniths, float)
         azimuths = np.asarray(azimuths, float)
@@ -569,15 +625,21 @@ class MCEq3DFlux:
 
         # solar modulation: neutrino-energy factor S(E), applied to all species/dirs
         smod = self.solar_factor(solar_modulation) if solar_modulation else 1.0
+        # genuine-3D production-angle redistribution R[species][cosZ, E]
+        R3d = self.angular_factor(cos_zeniths, moments=moments) if full_3d else None
 
         flux = {
             s: np.zeros((len(cos_zeniths), len(azimuths), len(self.e))) for s in SPECIES
         }
         for s in SPECIES:
+            r3 = R3d[s] if R3d is not None else None
             for ia in range(len(azimuths)):
                 for iz in range(len(cos_zeniths)):
                     g = _interp_rc(rc_map[iz, ia], rc_grid, G_by_z[iz][s])
-                    flux[s][iz, ia] = base[s][iz] * g * smod
+                    f = base[s][iz] * g * smod
+                    if r3 is not None:
+                        f = f * r3[iz]
+                    flux[s][iz, ia] = f
         result = dict(
             e=self.e,
             cos_zeniths=cos_zeniths,
@@ -688,13 +750,17 @@ def main(argv=None):
         default="mceq",
         help="1D base the geomag factor multiplies (daemonflux = data-anchored)",
     )
+    p.add_argument(
+        "--full3d", action="store_true",
+        help="fold in the production-angle 3D redistribution (full deterministic 3D)",
+    )
     args = p.parse_args(argv)
 
     df_loc = "kamioka" if abs(args.lat - 36.43) < 1 else "generic"
     eng = MCEq3DFlux(base_model=args.base, daemonflux_location=df_loc)
     cz = np.array([-0.95, -0.55, -0.15, 0.15, 0.55, 0.95])  # full sky
     az = np.array([0, 45, 90, 135, 180, 225, 270, 315], float)
-    r = eng.solve(args.lat, args.lon, cz, az)
+    r = eng.solve(args.lat, args.lon, cz, az, full_3d=args.full3d)
     e = r["e"]
     ie = int(np.argmin(np.abs(e - 1.0)))
     print(
