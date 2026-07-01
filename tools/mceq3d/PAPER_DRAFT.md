@@ -127,6 +127,8 @@ $$
 
 and the cumulative angular spread over the production-and-decay chain is treated both with a small-angle Fokker–Planck operator, $\sigma_\theta^2 = N\,\theta_1^2$ for $N$ kick-giving generations, and with a full multipole ($P_N$) transport on the sphere. The two agree where both are valid, and a variance-only treatment is shown to be sufficient for the conventional flux. The net effect of the production angle on the conventional flux is small — at the $1$–$2\%$ level at multi-GeV energies, where $\theta_{\rm prod} \lesssim 0.5^\circ$ — so it is a correction rather than a leading term, but it is included and validated against data (Section 4.2) rather than assumed.
 
+![**Figure 3.** Production-and-decay angular spread of the conventional flux versus neutrino energy, from the regenerated kernels. The Fokker–Planck (variance) and full $P_N$ transports agree, and the spread falls below a degree above a few GeV, confirming that the production-angle 3D effect on the conventional flux is a $\sim 1$–$2\%$ correction.](fokker_planck_3d.png)
+
 ### 3.7 Muon bending
 
 Muons produced in the cascade bend in the geomagnetic field before they decay, so the decay neutrinos inherit a deflected direction. Over the in-flight decay the bending angle is
@@ -143,9 +145,9 @@ f_{\rm dec}(E_\mu,\theta_z) = 1 - \exp\!\left(-\,\frac{L(\theta_z)}{\gamma\beta 
 \tag{10}
 $$
 
-with $L(\theta_z)$ the curved-atmosphere slant path from the production altitude. We weight the bending by $f_{\rm dec}/(1+f_{\rm dec})$ and restrict it to the muon-decay $\nu_\mu$ channel so it does not contaminate the direct $\nu_\mu$. The coherent, charge-dependent part is computed with the full local field vector (IGRF-13) and the actual muon direction: $\mu^+$ and $\mu^-$ deflect oppositely, giving a $\approx 3^\circ$ charge-separated East–West split and a small ($\approx 0.3^\circ$) net shift for the summed flux given the near-unity muon charge ratio (Figure 3).
+with $L(\theta_z)$ the curved-atmosphere slant path from the production altitude. We weight the bending by $f_{\rm dec}/(1+f_{\rm dec})$ and restrict it to the muon-decay $\nu_\mu$ channel so it does not contaminate the direct $\nu_\mu$. The coherent, charge-dependent part is computed with the full local field vector (IGRF-13) and the actual muon direction: $\mu^+$ and $\mu^-$ deflect oppositely, giving a $\approx 3^\circ$ charge-separated East–West split and a small ($\approx 0.3^\circ$) net shift for the summed flux given the near-unity muon charge ratio (Figure 4).
 
-![**Figure 3.** Muon-bending angular spread and coherent East–West shift, restricted to the muon-decay channel.](muon_bending.png)
+![**Figure 4.** Muon-bending angular spread and coherent East–West shift, restricted to the muon-decay channel.](muon_bending.png)
 
 ---
 
@@ -155,7 +157,7 @@ with $L(\theta_z)$ the curved-atmosphere slant path from the production altitude
 
 We compare the absolute $\nu_\mu$ flux at Kamioka against the Honda HKKM2014 tables [6] on a dense energy grid from $0.1$ to $100\,\mathrm{GeV}$. Both predictions are log–log interpolated to common energies; a naïve nearest-grid-point comparison mismatches MCEq's $0.89\,\mathrm{GeV}$ node against Honda's $1.0\,\mathrm{GeV}$ bin and is misleading on a steep spectrum.
 
-The comparison (Table 1, Figure 4) reveals the role of the 1D base. The raw-MCEq base lies $\approx 25$–$30\%$ below Honda across $0.3$–$10\,\mathrm{GeV}$, a genuine SIBYLL/H3a normalisation deficit. The `daemonflux`-anchored base agrees with Honda to $\approx 10\%$ for $E\gtrsim 1\,\mathrm{GeV}$ up to $100\,\mathrm{GeV}$, but over-predicts toward $0.1\,\mathrm{GeV}$ (up to $\sim\!2\times$), where it extrapolates beyond its muon calibration. The two bases **bracket Honda below $\sim 1\,\mathrm{GeV}$** (daemonflux above, MCEq below); above $\sim 1\,\mathrm{GeV}$ both lie below Honda, with the data-anchored daemonflux base the closer of the two. We therefore adopt the daemonflux base as the central estimate, and use the inter-base spread to define the systematic (Section 5).
+The comparison (Table 1, Figure 5) reveals the role of the 1D base. The raw-MCEq base lies $\approx 25$–$30\%$ below Honda across $0.3$–$10\,\mathrm{GeV}$, a genuine SIBYLL/H3a normalisation deficit. The `daemonflux`-anchored base agrees with Honda to $\approx 10\%$ for $E\gtrsim 1\,\mathrm{GeV}$ up to $100\,\mathrm{GeV}$, but over-predicts toward $0.1\,\mathrm{GeV}$ (up to $\sim\!2\times$), where it extrapolates beyond its muon calibration. The two bases **bracket Honda below $\sim 1\,\mathrm{GeV}$** (daemonflux above, MCEq below); above $\sim 1\,\mathrm{GeV}$ both lie below Honda, with the data-anchored daemonflux base the closer of the two. We therefore adopt the daemonflux base as the central estimate, and use the inter-base spread to define the systematic (Section 5).
 
 **Table 1.** Ratio of the absolute vertical $\nu_\mu$ flux at Kamioka to Honda HKKM2014.
 
@@ -168,25 +170,25 @@ The comparison (Table 1, Figure 4) reveals the role of the 1D base. The raw-MCEq
 | 3.0 | 0.73 | 0.96 |
 | 10–100 | 0.74–0.85 | 0.91 |
 
-![**Figure 4.** Absolute $\nu_\mu$ spectrum and zenith dependence versus Honda HKKM2014 (Kamioka).](mceq3d_flux.png)
+![**Figure 5.** Absolute $\nu_\mu$ spectrum and zenith dependence versus Honda HKKM2014 (Kamioka).](mceq3d_flux.png)
 
-The directional observables are ratios and are therefore independent of the absolute base. The engine recovers the up/down asymmetry (up-going exceeds down-going at fixed energy, as in Honda), the East–West amplitude at Kamioka ($2.4$ here versus $2.1$ in Honda at $1\,\mathrm{GeV}$, with the correct sub-GeV peak and high-energy vanishing), and the $\sec\theta$ horizon enhancement ($2.17$ versus $2.19$ at $100\,\mathrm{GeV}$) (Figure 5). The $\nu_e/\nu_\mu$ flavour ratio — the sharpest, most model-independent test, set by the $\pi\to\mu\to e$ chain — agrees with Honda to $0.7$–$4\%$ across the band.
+The directional observables are ratios and are therefore independent of the absolute base. The engine recovers the up/down asymmetry (up-going exceeds down-going at fixed energy, as in Honda), the East–West amplitude at Kamioka ($2.4$ here versus $2.1$ in Honda at $1\,\mathrm{GeV}$, with the correct sub-GeV peak and high-energy vanishing), and the $\sec\theta$ horizon enhancement ($2.17$ versus $2.19$ at $100\,\mathrm{GeV}$) (Figure 6). The $\nu_e/\nu_\mu$ flavour ratio — the sharpest, most model-independent test, set by the $\pi\to\mu\to e$ chain — agrees with Honda to $0.7$–$4\%$ across the band.
 
-![**Figure 5.** East–West and $\sec\theta$ directional cross-checks against the Honda 3D tables.](validate_honda.png)
+![**Figure 6.** East–West and $\sec\theta$ directional cross-checks against the Honda 3D tables.](validate_honda.png)
 
 ### 4.2 Hadronic production versus NA61/SHINE
 
-The production kinematics that set the angular content are validated against fixed-target data, since MCEq's 1D kernels carry no angular information. We compare the mean transverse momentum $\langle p_T\rangle(p)$ of charged pions and kaons in $p+\mathrm{C}$ at $31\,\mathrm{GeV}/c$ against the NA61/SHINE measurements [18,19] (HEPData [22] records ins886780 and ins1397003, fetched via `hepdata-cli`), applying the experiment's angular acceptance. For pions the agreement is $\approx 10\%$ (Figure 6); for kaons UrQMD reproduces the $\langle p_T\rangle$ scale ($0.2$–$0.6\,\mathrm{GeV}$) and its rise with momentum, running $10$–$20\%$ harder than the data (Figure 7). Both map to a small over-estimate of the production angle in the relevant decay channel, sub-percent on the directional flux at the multi-GeV energies where kaons dominate.
+The production kinematics that set the angular content are validated against fixed-target data, since MCEq's 1D kernels carry no angular information. We compare the mean transverse momentum $\langle p_T\rangle(p)$ of charged pions and kaons in $p+\mathrm{C}$ at $31\,\mathrm{GeV}/c$ against the NA61/SHINE measurements [18,19] (HEPData [22] records ins886780 and ins1397003, fetched via `hepdata-cli`), applying the experiment's angular acceptance. For pions the agreement is $\approx 10\%$ (Figure 7); for kaons UrQMD reproduces the $\langle p_T\rangle$ scale ($0.2$–$0.6\,\mathrm{GeV}$) and its rise with momentum, running $10$–$20\%$ harder than the data (Figure 8). Both map to a small over-estimate of the production angle in the relevant decay channel, sub-percent on the directional flux at the multi-GeV energies where kaons dominate.
 
-![**Figure 6.** Pion $\langle p_T\rangle(p)$ versus NA61/SHINE.](validate_na61_pt.png)
+![**Figure 7.** Pion $\langle p_T\rangle(p)$ versus NA61/SHINE.](validate_na61_pt.png)
 
-![**Figure 7.** Kaon $\langle p_T\rangle(p)$ versus NA61/SHINE.](validate_na61_kaon_pt.png)
+![**Figure 8.** Kaon $\langle p_T\rangle(p)$ versus NA61/SHINE.](validate_na61_kaon_pt.png)
 
 ### 4.3 Behaviour across magnetic environments
 
-As a stability check we evaluate the central flux and its systematic from a high-cutoff equatorial site to the polar limit (Figure 8). The vertical cutoff falls monotonically and smoothly ($17.2 \to 9.0 \to 1.8 \to 0.8\,\mathrm{GV}$ from equator to pole), the flux rises correspondingly with no discontinuity at the no-cutoff polar limit, and the fractional systematic is site-robust (the cutoff cancels in the base ratio). The composition-weighted $\langle A/Z\rangle$ is site-independent by construction.
+As a stability check we evaluate the central flux and its systematic from a high-cutoff equatorial site to the polar limit (Figure 9). The vertical cutoff falls monotonically and smoothly ($17.2 \to 9.0 \to 1.8 \to 0.8\,\mathrm{GV}$ from equator to pole), the flux rises correspondingly with no discontinuity at the no-cutoff polar limit, and the fractional systematic is site-robust (the cutoff cancels in the base ratio). The composition-weighted $\langle A/Z\rangle$ is site-independent by construction.
 
-![**Figure 8.** Central flux and systematic band across magnetic environments.](latitude_check.png)
+![**Figure 9.** Central flux and systematic band across magnetic environments.](latitude_check.png)
 
 ---
 
@@ -201,9 +203,13 @@ $$
 \tag{11}
 $$
 
-The band is $\pm 37\%$ at $0.1\,\mathrm{GeV}$, $\pm 31\%$ at $0.5\,\mathrm{GeV}$, $\pm 21\%$ at $1\,\mathrm{GeV}$, $\pm 10\%$ at $10\,\mathrm{GeV}$ and $\pm 4\%$ at $100\,\mathrm{GeV}$ (Figure 9), to be propagated through an oscillation fit as a correlated normalisation-versus-energy systematic. Two honest caveats apply. First, the bases bracket Honda only **below $\sim 1\,\mathrm{GeV}$** (daemonflux above, MCEq below), where the geometric-mean central reproduces Honda to $\approx 5\%$; **above $\sim 1\,\mathrm{GeV}$ both bases lie below Honda** (daemonflux at $\approx 0.91$, the better central; the geometric mean is biased $\approx 10$–$18\%$ low and should not be used there). Second, being a two-model spread it is an *intra-framework* systematic — a floor on the flux uncertainty — and does not by itself span other calculations (Honda lies $\approx 10$–$18\%$ above the geometric mean at multi-GeV); a complete analysis should fold in the inter-calculation (Honda/Bartol/FLUKA) envelope. Sub-dominant, well-bounded effects include the production-angle treatment ($\sim 1$–$2\%$), the zenith-independence of $G_s$ ($\le 2\%$, Section 3.4), the composition-averaged bound $\langle A/Z\rangle$, and the muon-bending kinematic constants, which matter only for fine-grained charge-resolved studies.
+The band is $\pm 37\%$ at $0.1\,\mathrm{GeV}$, $\pm 31\%$ at $0.5\,\mathrm{GeV}$, $\pm 21\%$ at $1\,\mathrm{GeV}$, $\pm 10\%$ at $10\,\mathrm{GeV}$ and $\pm 4\%$ at $100\,\mathrm{GeV}$ (Figure 10), to be propagated through an oscillation fit as a correlated normalisation-versus-energy systematic. Two honest caveats apply. First, the bases bracket Honda only **below $\sim 1\,\mathrm{GeV}$** (daemonflux above, MCEq below), where the geometric-mean central reproduces Honda to $\approx 5\%$; **above $\sim 1\,\mathrm{GeV}$ both bases lie below Honda** (daemonflux at $\approx 0.91$, the better central; the geometric mean is biased $\approx 10$–$18\%$ low and should not be used there). Second, being a two-model spread it is an *intra-framework* systematic — a floor on the flux uncertainty — and does not by itself span other calculations (Honda lies $\approx 10$–$18\%$ above the geometric mean at multi-GeV); a complete analysis should fold in the inter-calculation (Honda/Bartol/FLUKA) envelope. Sub-dominant, well-bounded effects include the production-angle treatment ($\sim 1$–$2\%$), the zenith-independence of $G_s$ ($\le 2\%$, Section 3.4), the composition-averaged bound $\langle A/Z\rangle$, and the muon-bending kinematic constants, which matter only for fine-grained charge-resolved studies.
 
-![**Figure 9.** The two 1D bases versus Honda, with their geometric-mean central and log-spread systematic band over $0.1$–$100\,\mathrm{GeV}$. The bases bracket Honda only below $\sim 1\,\mathrm{GeV}$; above, both lie below Honda (daemonflux closer).](base_comparison.png)
+![**Figure 10.** The two 1D bases versus Honda, with their geometric-mean central and log-spread systematic band over $0.1$–$100\,\mathrm{GeV}$. The bases bracket Honda only below $\sim 1\,\mathrm{GeV}$; above, both lie below Honda (daemonflux closer).](base_comparison.png)
+
+**Decomposing the spread: interaction model versus calibration.** To separate the hadronic-interaction contribution from the overall normalisation, we run the same base setup (H3a primary, US-Standard atmosphere) through the four hadronic models MCEq carries — SIBYLL-2.3d, EPOS-LHC, DPMJET-III-19.3, QGSJET-II-04 — a proxy for the inter-calculation (Bartol/FLUKA) spread whose dominant driver is the hadronic model. The **interaction-model spread is only $\approx 4$–$7\%$ sub-GeV, rising to $\approx 12$–$13\%$ at multi-GeV** (Figure 11). This is much smaller than the daemonflux$\leftrightarrow$MCEq spread below a few GeV, which establishes an important point: the **sub-GeV flux uncertainty is dominated by the overall normalisation/muon-calibration, not by the interaction model** — precisely why anchoring to muon data matters. At multi-GeV the two contributions become comparable ($\sim 10\%$ each). We caution that this MCEq-internal spread is *not* a substitute for a literal Bartol/FLUKA comparison — those codes differ also in primary flux, atmosphere and 3D treatment — but it bounds the hadronic-model part; a direct table comparison is left for when those tables are ingested through the same validation path.
+
+![**Figure 11.** Hadronic interaction-model spread of the vertical $\nu_\mu$ base (four MCEq models, same primary/atmosphere): $E^3\Phi$ (left) and ratio to the geometric mean with the inter-model envelope (right). The spread is $\approx 4$–$7\%$ sub-GeV, rising to $\approx 12$–$13\%$ at multi-GeV — smaller than the calibration-driven spread of Figure 10 below a few GeV.](hadronic_spread.png)
 
 ---
 
@@ -295,4 +301,4 @@ The cascade solutions use MCEq with its default 1D matrix solver on a logarithmi
 
 ## Appendix B: code and data availability
 
-All code, unit tests, and figure-generating scripts are available on the fork `github.com/pgranger23/daemonflux`, branch `3d-extension`, under `tools/mceq3d/`. The absolute engine is `mceq3d_flux.py`; the geomagnetic back-tracer and cached cutoff are in `geomag_backtrace.py`; the validation scripts are `validate_honda.py`, `validate_na61.py`, `validate_na61_kaon.py`, `base_comparison.py`, `geomag_zenith_check.py` and `latitude_check.py`. A detailed development report with the complete module inventory and an exhaustive list of approximations is provided in `IMPLEMENTATION_REPORT.md`.
+All code, unit tests, and figure-generating scripts are available on the fork `github.com/pgranger23/daemonflux`, branch `3d-extension`, under `tools/mceq3d/`. The absolute engine is `mceq3d_flux.py`; the geomagnetic back-tracer and cached cutoff are in `geomag_backtrace.py`; the validation scripts are `validate_honda.py`, `validate_na61.py`, `validate_na61_kaon.py`, `base_comparison.py`, `hadronic_spread.py`, `geomag_zenith_check.py` and `latitude_check.py`; performance and caching are exercised by `profile_3d.py` and `verify_cache.py`. A detailed development report with the complete module inventory and an exhaustive list of approximations is provided in `IMPLEMENTATION_REPORT.md`.
