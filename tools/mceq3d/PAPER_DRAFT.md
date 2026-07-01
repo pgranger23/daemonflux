@@ -28,6 +28,8 @@ This work bridges the two: it retains the calibrated normalisation and uncertain
 
 The starting point is the inclusive 1D flux $\Phi^{1D}_s(E,\theta_z)$ for each neutrino species $s \in \{\nu_\mu,\bar\nu_\mu,\nu_e,\bar\nu_e\}$. We support two choices. The first is a direct MCEq [11] solution with the SIBYLL-2.3d hadronic interaction model [12] and the Hillas–Gaisser H3a primary-flux parametrisation [14], solved per zenith in the realistic CORSIKA US-Standard layered atmosphere. The second, and our recommended choice for the absolute scale, is the muon-calibrated `daemonflux` flux [10]: it provides the $E^3$-weighted species sums and the $\nu/\bar\nu$ ratios, from which we reconstruct the four species (Section 3.2). The MCEq base is fully self-contained but carries the SIBYLL/H3a normalisation, which we find lies $\approx 25$–$30\%$ below Honda in the sub-GeV–few-GeV band (Section 4.1); the `daemonflux` base removes this deficit by anchoring to muon data.
 
+**Outputs, conventions and uncertainties.** The engine returns the absolute differential flux $\Phi_s$ for the four species in $\mathrm{m^{-2}\,s^{-1}\,sr^{-1}\,GeV^{-1}}$ on a logarithmic energy grid ($\approx 10$ bins per decade) spanning $0.1$–$100\,\mathrm{GeV}$, evaluable at arbitrary $(E,\cos\theta_z,\varphi)$ by trilinear interpolation (log-$E$, azimuth-periodic, $\cos\theta_z$). The same 1D base also carries the inclusive **muon** flux and charge ratio (charge-separated $\mu^\pm$), so a directional muon flux follows by the identical construction; we do not pursue it here. On uncertainties, two scopes should be distinguished: (i) the **model/normalisation** spread, which we quantify and deliver as an explicit systematic (Section 5), and (ii) daemonflux's own **nuisance-parameter covariance**, its principal feature — the latter is *not yet propagated* through the directional factor (we use the central flux). Because the geomagnetic factor is a multiplicative, largely parameter-independent envelope, propagating it is a straightforward extension (apply $G$ to each parameter gradient), noted in Section 6.
+
 ---
 
 ## 3. Method
@@ -213,7 +215,9 @@ Known approximations, each bounded above, are: (i) the up-going hemisphere uses 
 
 **Performance.** On a single core, one MCEq cascade solve takes $\approx 1.5\,\mathrm{s}$. A full directional solve over a $6\times 8 = 48$-direction sky grid takes $\approx 6\,\mathrm{min}$ — roughly $240\times$ one MCEq solve, or $\approx 14\times$ the equivalent 1D MCEq flux at the same zeniths. The cost is dominated ($\sim 85\%$) by the geomagnetic-cutoff trajectory back-tracing ($\sim 5\,\mathrm{s}$ per direction); the 1D base contributes $\approx 26\,\mathrm{s}$ (MCEq base) or $\approx 10\,\mathrm{ms}$ (daemonflux spline base), and the suppression response $G_s$ adds $\approx 21\,\mathrm{s}$. Both heavy ingredients are reusable and are memoised to disk (`solve(use_cache=True)`): the cutoff map is a one-time per-site precompute and $G_s$ is site- and zenith-independent, so a warm re-evaluation loads from disk in milliseconds (measured: a warm solve is $\approx 5\,\mathrm{ms}$ versus $\approx 60\,\mathrm{s}$ cold, a $>10^3$ speed-up, reproducing the direct result to $\approx 0.1\%$). The framework is therefore a one-time per-site precompute followed by near-instant evaluation, in contrast to the CPU-weeks of a full 3D Monte-Carlo.
 
-The seasonal and site dependence of the atmosphere is available through the NRLMSISE-00 profiles exposed by MCEq, but has not been studied here. Anchoring the sub-$0.3\,\mathrm{GeV}$ region — where the present central value relies on bracketing two extrapolating models — to a dedicated low-energy dataset is the most valuable extension.
+Two capabilities are deliberately out of scope. First, the full daemonflux **nuisance-parameter covariance** is not yet propagated through the directional factor (Section 2); folding it in is the most valuable next step, since it would give the directional flux the same rigorous, correlated error model that distinguishes the 1D model. Second, the **correlated muon** accompanying a down-going neutrino — the atmospheric self-veto passing fraction relevant to neutrino telescopes — is an event-level quantity that an inclusive flux model (this work, MCEq, or daemonflux) cannot provide; it requires a dedicated calculation such as nuVeto [25].
+
+The seasonal and site dependence of the atmosphere is available through the NRLMSISE-00 profiles exposed by MCEq, but has not been studied here. Anchoring the sub-$0.3\,\mathrm{GeV}$ region — where the present central value relies on bracketing two extrapolating models — to a dedicated low-energy dataset is the other high-value extension.
 
 ---
 
@@ -280,6 +284,8 @@ This work builds directly on the MCEq, `daemonflux`, `crflux`, `chromo` and `ppi
 [23] M. Honda, T. Kajita, K. Kasahara, S. Midorikawa, T. Sanuki, *Calculation of atmospheric neutrino flux using the interaction model calibrated with atmospheric muon data*, Phys. Rev. D **75**, 043006 (2007).
 
 [24] G. D. Barr, T. K. Gaisser, S. Robbins, T. Stanev, *Uncertainties in atmospheric neutrino fluxes*, Phys. Rev. D **74**, 094009 (2006).
+
+[25] C. A. Argüelles, S. Palomares-Ruiz, A. Schneider, L. Wille, T. Yuan, *Unified atmospheric neutrino passing fractions for large-scale neutrino telescopes*, JCAP **07**, 047 (2018).
 
 ---
 
