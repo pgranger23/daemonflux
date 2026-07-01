@@ -117,6 +117,10 @@ As a stability check we evaluate the central flux and its systematic from a high
 
 ![Central flux and systematic band across magnetic environments.](latitude_check.png)
 
+**Inter-calculation comparison — Bartol.** We also compare directly against the Bartol/Oxford 3D tables (Barr et al. 2004; TARGET-2.1, ICRC01 primary, full 3D) at Kamioka over 0.1–10 GeV. Honda and Bartol — two independent full-3D calculations — agree to ≈4 %, so the reference is robust; this work (daemonflux base) tracks Bartol to ≈7 % at 1 GeV and ≈1.0 at 2 GeV, over-predicting sub-0.3 GeV exactly as against Honda (confirmed by a second reference).
+
+![Vertical numu at Kamioka: this work and Honda vs the Bartol 2004 3D tables (solar min–max band). Honda and Bartol agree to ~4%.](validate_bartol.png)
+
 ---
 
 ## 4. Systematic uncertainties
