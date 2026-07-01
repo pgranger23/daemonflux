@@ -232,9 +232,17 @@ response ~21 s (13 cascade solves), 1D base ~26 s (MCEq base) or **~10 ms
 one-time per-site precompute (`cached_cutoff_source`; warm re-evaluation
 **~0.3 µs/direction**), and `G_s` is site- and zenith-independent (computable once).
 So the engine is a one-time per-site precompute then near-instant evaluation —
-vs the CPU-weeks of a full 3D Monte-Carlo. *Open optimisation:* `solve()` currently
-re-runs the back-trace and `G_s` each call; wiring it to the caches would cut the
-recurring cost to the base term (seconds for MCEq, ms for daemonflux).
+vs the CPU-weeks of a full 3D Monte-Carlo.
+
+**Caching wired in (`solve(use_cache=True)`).** Both heavy ingredients are now
+memoised to disk (`flux_cache/`): the **site-independent** `G_s` (keyed by
+model/primary/atmosphere/e_min + rigidity grid) and the **per-site** cutoff map
+(keyed by site/date/grid). The first evaluation of a site pays the full cost;
+repeat calls — and *any* other site, for `G_s` — load in **milliseconds**
+(measured: a warm `solve()` of a 2×2 grid is **4.7 ms** vs **60 s** cold, a
+**>10³–10⁴× speed-up** on re-use), matching the default path to ~0.1 % (the cached
+path uses a finer fixed rigidity grid); cold-vs-warm cache is byte-identical. Off by
+default so the validated path is untouched.
 
 ---
 

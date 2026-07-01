@@ -58,8 +58,13 @@ Run::
 from __future__ import annotations
 
 import argparse
+import hashlib
+import os
 
 import numpy as np
+
+# Site-independent G_s and per-site cutoff maps are cached here (see solve(use_cache)).
+_CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "flux_cache")
 
 CM2_PER_M2 = 1.0e4  # MCEq flux is per cm^2; Honda/this engine report per m^2
 SPECIES = ("total_numu", "total_antinumu", "total_nue", "total_antinue")
@@ -138,6 +143,11 @@ class MCEq3DFlux:
         import mceq_config as config
 
         self.base_model = base_model
+        # identity for the G_s disk cache (G_s depends only on these + rc_grid, cz_ref)
+        self._tag = (
+            f"{interaction_model}_{primary[0]}-{primary[1]}_emin{e_min:g}"
+            f"_atm{'std' if atmosphere is None else str(atmosphere)}"
+        )
         self._df = None
         if base_model == "daemonflux":
             from daemonflux import Flux
@@ -231,8 +241,25 @@ class MCEq3DFlux:
         return out
 
     # -- geomagnetic response G_s(E, R_c) from cascade-correct cut/full --
-    def geomag_response(self, rc_grid, cz_ref=1.0):
-        """G[species, R_c, E] = MCEq(primary cut at R_c)/MCEq(full) at one zenith."""
+    def geomag_response(self, rc_grid, cz_ref=1.0, cache_dir=None):
+        """G[species, R_c, E] = MCEq(primary cut at R_c)/MCEq(full) at one zenith.
+
+        ``G_s`` depends only on the interaction model / primary / atmosphere / e_min
+        (via ``self._tag``), the rigidity grid and ``cz_ref`` -- it is **site- and
+        (validated) zenith-independent**. With ``cache_dir`` set it is memoised to
+        ``<cache_dir>/gs_*.npz`` and reused across sites and calls.
+        """
+        rc_grid = np.asarray(rc_grid, float)
+        fpath = None
+        if cache_dir is not None:
+            h = hashlib.md5(
+                f"{self._tag}|{cz_ref:.4f}|{rc_grid.tobytes()}".encode()
+            ).hexdigest()[:16]
+            fpath = os.path.join(cache_dir, f"gs_{h}.npz")
+            if os.path.exists(fpath):
+                d = np.load(fpath)
+                if d["e"].shape == self.e.shape and np.allclose(d["e"], self.e):
+                    return {s: d[s] for s in SPECIES}, rc_grid
         self.mceq.set_theta_deg(np.degrees(np.arccos(np.clip(cz_ref, 1e-3, 1))))
         self.mceq._phi0[:] = self._phi0_std
         self.mceq.solve()
@@ -254,10 +281,22 @@ class MCEq3DFlux:
                 with np.errstate(invalid="ignore", divide="ignore"):
                     G[s][j] = np.where(full[s] > 0, cut / full[s], 1.0)
         self.mceq._phi0[:] = self._phi0_std
+        if fpath is not None:
+            os.makedirs(cache_dir, exist_ok=True)
+            np.savez(fpath, e=self.e, **{s: G[s] for s in SPECIES})
         return G, rc_grid
 
     def cutoff_grid(
-        self, lat, lon, cos_zeniths, azimuths, date, n_scan=14, r_lo=0.5, r_hi=20.0
+        self,
+        lat,
+        lon,
+        cos_zeniths,
+        azimuths,
+        date,
+        n_scan=14,
+        r_lo=0.5,
+        r_hi=20.0,
+        cache_dir=None,
     ):
         """R_c[cosZ, az] [GV]: detector cutoff (down-going), far-side (up-going).
 
@@ -266,8 +305,25 @@ class MCEq3DFlux:
         (straight-line) neutrino direction ``d``, so the cutoff is a back-trace
         from the production point ``Q`` with ``u0 = -d`` -- the global geomagnetic
         treatment, batched like :func:`geomag_backtrace.cutoff_map`.
+
+        This is the dominant cost (trajectory integration). With ``cache_dir`` set
+        the resulting map is memoised to ``<cache_dir>/rc_*.npz``, keyed by site,
+        date, grid and scan parameters, so repeat evaluations are ~instant.
         """
         import geomag_backtrace as gb
+
+        fpath = None
+        if cache_dir is not None:
+            dtag = date.isoformat() if hasattr(date, "isoformat") else str(date)
+            cz_b = np.asarray(cos_zeniths).tobytes()
+            az_b = np.asarray(azimuths).tobytes()
+            tag = f"{lat:.4f}_{lon:.4f}_{dtag}_{cz_b}_{az_b}_{n_scan}_{r_lo}_{r_hi}"
+            h = hashlib.md5(tag.encode()).hexdigest()[:16]
+            fpath = os.path.join(cache_dir, f"rc_{h}.npz")
+            if os.path.exists(fpath):
+                d = np.load(fpath)
+                if d["rc"].shape == (len(cos_zeniths), len(azimuths)):
+                    return d["rc"]
 
         rc = np.zeros((len(cos_zeniths), len(azimuths)))
         down = cos_zeniths >= 0
@@ -304,6 +360,9 @@ class MCEq3DFlux:
                         r_hi if forb[0] == 0 else 0.5 * (rs[forb[0] - 1] + rs[forb[0]])
                     )
                 )
+        if fpath is not None:
+            os.makedirs(cache_dir, exist_ok=True)
+            np.savez(fpath, rc=rc)
         return rc
 
     def solve(
@@ -316,6 +375,8 @@ class MCEq3DFlux:
         n_scan=12,
         rc_grid=None,
         zenith_dependent_geomag=False,
+        use_cache=False,
+        cache_dir=None,
     ):
         """Absolute Phi[species, cosZ, az, E] for a site (full sky).
 
@@ -328,6 +389,14 @@ class MCEq3DFlux:
         since the slant-depth shower effects cancel in the cut/full ratio. Set True
         to instead recompute ``G_s`` at *every* zenith (removes that <=2%
         approximation at the cost of one cascade pair per zenith band).
+
+        ``use_cache``: memoise the two heavy ingredients to ``cache_dir`` (default
+        ``flux_cache/`` next to this module) -- the **site-independent** ``G_s`` and
+        the **per-site** cutoff map. The first call to a site pays the full cost;
+        repeat calls (and other sites, for ``G_s``) load from disk in milliseconds.
+        Matches the default path to interpolation precision (a fixed wide ``rc_grid``
+        is used so one cached ``G_s`` serves every site without clamping). Off by
+        default so the validated path is untouched.
         """
         cos_zeniths = np.asarray(cos_zeniths, float)
         azimuths = np.asarray(azimuths, float)
@@ -336,22 +405,32 @@ class MCEq3DFlux:
         import datetime as _dt
 
         date = date or _dt.datetime(2020, 1, 1)
-        rc_map = self.cutoff_grid(lat, lon, cos_zeniths, azimuths, date, n_scan)
+        if use_cache and cache_dir is None:
+            cache_dir = _CACHE_DIR
+        rc_map = self.cutoff_grid(
+            lat, lon, cos_zeniths, azimuths, date, n_scan, cache_dir=cache_dir
+        )
 
         # Build the G(R_c) interpolation grid to *span the actual cutoff map*, so the
         # suppression is never clamped: a fixed floor (e.g. 2 GV) would apply spurious
         # suppression to low-cutoff directions/sites (polar R_c<2 GV) where G->1.
         if rc_grid is None:
-            lo = max(0.1, float(np.min(rc_map)) * 0.9)
-            hi = max(lo + 0.5, float(np.max(rc_map)) * 1.05)
-            rc_grid = np.linspace(lo, hi, 12)
+            if use_cache:
+                # fixed wide grid -> one cached G_s is reusable across all sites
+                rc_grid = np.linspace(0.1, 20.0, 24)
+            else:
+                lo = max(0.1, float(np.min(rc_map)) * 0.9)
+                hi = max(lo + 0.5, float(np.max(rc_map)) * 1.05)
+                rc_grid = np.linspace(lo, hi, 12)
         if zenith_dependent_geomag:
             G_by_z = []
             for cz in cos_zeniths:
-                Gz, rc_grid = self.geomag_response(rc_grid, cz_ref=max(abs(cz), 1e-3))
+                Gz, rc_grid = self.geomag_response(
+                    rc_grid, cz_ref=max(abs(cz), 1e-3), cache_dir=cache_dir
+                )
                 G_by_z.append(Gz)
         else:
-            G0, rc_grid = self.geomag_response(rc_grid)
+            G0, rc_grid = self.geomag_response(rc_grid, cache_dir=cache_dir)
             G_by_z = [G0] * len(cos_zeniths)
 
         flux = {
