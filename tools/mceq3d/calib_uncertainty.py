@@ -6,12 +6,15 @@ geomagnetic factor ``G`` and solar factor ``S`` independent of those parameters,
 
     sigma(Phi_3D)/Phi_3D = sigma(Phi_df)/Phi_df,
 
-i.e. the *fractional* calibration uncertainty (and the full parameter covariance,
-via gradient scaling by G*S) carries through unchanged. ``solve(with_calib_error=
-True)`` returns ``flux_err`` (absolute 1-sigma) and ``flux_relerr`` (fractional);
-``calib_hadronic_only`` isolates the hadronic-production part. This script solves at
-Kamioka vertical, prints the propagated band, checks the fractional error is
-preserved, and plots it. Run::
+i.e. the *fractional* calibration uncertainty and the *full correlated covariance*
+(via gradient scaling by G*S) carry through unchanged. ``solve(with_calib_error=
+True)`` returns ``flux_err``/``flux_relerr`` (1-sigma band); ``with_calib_jacobian=
+True`` additionally returns the 24 nuisance-parameter names, their correlation
+matrix, and the fractional per-parameter Jacobian, from which
+:func:`mceq3d_flux.calib_covariance` forms the full energy-energy covariance for a
+fit. This script solves at Kamioka vertical, prints the band, checks the fractional
+error is preserved and that the covariance reproduces ``error()`` exactly, shows the
+energy-bin correlations, and exports a self-contained npz. Run::
 
     python calib_uncertainty.py --plot
 """
@@ -22,7 +25,7 @@ import argparse
 
 import numpy as np
 
-from mceq3d_flux import MCEq3DFlux, SPECIES
+from mceq3d_flux import MCEq3DFlux, SPECIES, calib_covariance
 
 
 def main(argv=None):
@@ -33,7 +36,9 @@ def main(argv=None):
     eng = MCEq3DFlux(base_model="daemonflux", daemonflux_location="kamioka")
     cz = np.array([0.95])
     az = np.array([0.0])
-    r = eng.solve(36.43, 137.31, cz, az, with_calib_error=True)
+    r = eng.solve(
+        36.43, 137.31, cz, az, with_calib_error=True, with_calib_jacobian=True
+    )
     rh = eng._daemonflux_relerr(cz, only_hadronic=True)  # hadronic-only fractional
     e = r["e"]
 
@@ -61,6 +66,44 @@ def main(argv=None):
     print(
         f"\nfractional error preserved through G*S? max|prop-raw| = "
         f"{np.nanmax(np.abs(prop - raw)):.2e} (should be ~0)"
+    )
+
+    # Full correlated covariance (for a fit): Cov = (Phi*R)^T corr (Phi*R).
+    print(f"\nFull calibration covariance ({len(r['calib_params'])} nuisance params):")
+    C = calib_covariance(r, "total_numu", iz=0, ia=0)  # (n_E, n_E)
+    band = np.sqrt(np.diag(C))
+    # sqrt(diag) must equal the 1-sigma from the covariance path (self-consistency)
+    print(
+        "  sqrt(diag(Cov))/flux == relerr?  max diff = "
+        f"{np.nanmax(np.abs(np.where(fnumu > 0, band / fnumu, 0) - rel)):.2e}"
+    )
+    m = e <= 1e9
+    Cn = C[np.ix_(m, m)] / np.outer(band[m], band[m])  # correlation matrix
+    ie1 = int(np.argmin(np.abs(e - 1.0)))
+    ie3 = int(np.argmin(np.abs(e - 3.0)))
+    ie30 = int(np.argmin(np.abs(e - 30.0)))
+    mm = np.where(m)[0]
+
+    def ci(i):
+        return int(np.searchsorted(mm, i))
+
+    print(
+        f"  energy-bin correlation: rho(1,3 GeV)={Cn[ci(ie1), ci(ie3)]:+.2f}, "
+        f"rho(1,30 GeV)={Cn[ci(ie1), ci(ie30)]:+.2f} "
+        "(nearby bins correlated, far bins less)"
+    )
+    # export a self-contained npz an analysis can load
+    np.savez(
+        "calib_export_kamioka_vert.npz",
+        e=e,
+        flux_numu=fnumu,
+        params=np.array(r["calib_params"]),
+        corr=r["calib_corr"],
+        jac_numu=r["calib_jac"]["total_numu"][:, 0, :],  # (n_par, n_E) fractional
+    )
+    print(
+        "  exported -> calib_export_kamioka_vert.npz "
+        "(flux, params, corr, fractional jac)"
     )
 
     if args.plot:

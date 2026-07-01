@@ -141,3 +141,6 @@ tools/mceq3d/flux_cache/
 
 # Raw Bartol flux tables (external data; parsed subset cached in bartol_kam.npz)
 tools/mceq3d/bartol/
+
+# Demo export from calib_uncertainty.py
+tools/mceq3d/calib_export_*.npz

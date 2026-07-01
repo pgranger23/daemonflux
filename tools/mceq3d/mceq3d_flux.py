@@ -271,6 +271,41 @@ class MCEq3DFlux:
                     out[s][i, m] = np.where(f > 0, er / f, 0.0)
         return out
 
+    def calib_jacobian(self, cos_zeniths):
+        """Full correlated calibration Jacobian for propagation into a fit.
+
+        Returns ``dict(params, corr, cov, jac)`` where ``jac[species]`` has shape
+        ``(n_param, cosZ, E)`` and is the **fractional** flux response to a +1-sigma
+        pull of each daemonflux nuisance parameter, ``R_i = Phi(pull_i=+1)/Phi - 1``.
+        Because ``G, S`` are parameter-independent, ``R_i`` is identical for the base
+        and the directional flux (and azimuth-independent). ``corr`` is the parameter
+        correlation matrix (unit-variance pulls). The directional-flux calibration
+        covariance for any direction is then ``(Phi*R)^T corr (Phi*R)``
+        (see :func:`calib_covariance`); by construction ``sqrt(R^T corr R)`` equals
+        the fractional ``error()``. Enables an oscillation fit to carry daemonflux's
+        *correlated* nuisance parameters on the 3D flux, not just the 1-sigma band.
+        """
+        if self.base_model != "daemonflux":
+            raise ValueError("calib_jacobian requires base_model='daemonflux'")
+        names = list(self._df.params.known_parameters)
+        cov = np.asarray(self._df.params.cov)
+        sig = np.sqrt(np.diag(cov))
+        corr = cov / np.outer(sig, sig)
+        e = self.e
+        m = e <= 1.0e9
+        ev = e[m]
+        jac = {s: np.zeros((len(names), len(cos_zeniths), len(e))) for s in SPECIES}
+        for iz, cz in enumerate(cos_zeniths):
+            zen = float(np.degrees(np.arccos(np.clip(abs(cz), 1e-3, 1))))
+            for s in SPECIES:
+                q = self._DF_Q[s]
+                c = np.asarray(self._df.flux(ev, zen, q))
+                for ip, name in enumerate(names):
+                    sh = np.asarray(self._df.flux(ev, zen, q, params={name: 1.0}))
+                    with np.errstate(invalid="ignore", divide="ignore"):
+                        jac[s][ip, iz, m] = np.where(c > 0, sh / c - 1.0, 0.0)
+        return dict(params=names, corr=corr, cov=cov, jac=jac)
+
     # -- geomagnetic response G_s(E, R_c) from cascade-correct cut/full --
     def geomag_response(self, rc_grid, cz_ref=1.0, cache_dir=None):
         """G[species, R_c, E] = MCEq(primary cut at R_c)/MCEq(full) at one zenith.
@@ -463,6 +498,7 @@ class MCEq3DFlux:
         solar_modulation=0.0,
         with_calib_error=False,
         calib_hadronic_only=False,
+        with_calib_jacobian=False,
     ):
         """Absolute Phi[species, cosZ, az, E] for a site (full sky).
 
@@ -558,6 +594,14 @@ class MCEq3DFlux:
             )
             result["flux_relerr"] = relerr  # sigma/Phi [species, cosZ, E]
             result["flux_err"] = {s: flux[s] * relerr[s][:, None, :] for s in SPECIES}
+        if with_calib_jacobian:
+            cj = self.calib_jacobian(cos_zeniths)
+            result["calib_params"] = cj["params"]  # 24 nuisance-parameter names
+            result["calib_corr"] = cj["corr"]  # parameter correlation (n_par, n_par)
+            result["calib_cov"] = cj["cov"]
+            result["calib_jac"] = cj[
+                "jac"
+            ]  # R[species]=dPhi/Phi per +1sig [par,cosZ,E]
         return result
 
 
@@ -613,6 +657,23 @@ def interp_flux(result, energy_gev, cos_zenith, azimuth_deg, species="total_numu
     )  # (cosZ,) at this E, azimuth
     order = np.argsort(cz)
     return float(np.interp(cos_zenith, cz[order], row[order]))
+
+
+def calib_covariance(result, species="total_numu", iz=0, ia=0):
+    """Full (n_E, n_E) muon-calibration covariance of the directional flux for one
+    direction, from ``solve(with_calib_jacobian=True)``.
+
+    ``Cov = A^T . corr . A`` with the absolute per-parameter gradient
+    ``A = Phi * R`` (``R`` = fractional response per +1-sigma pull). ``sqrt(diag(Cov))``
+    is the absolute 1-sigma; dividing by the flux recovers the fractional ``error()``.
+    An oscillation fit uses the daemonflux pulls as nuisance parameters with unit
+    priors and correlation ``result["calib_corr"]``, and modifies the flux by
+    ``Phi * (1 + sum_i eta_i R_i)``.
+    """
+    R = result["calib_jac"][species][:, iz, :]  # (n_par, n_E) fractional response
+    phi = result["flux"][species][iz, ia]  # (n_E,)
+    A = phi[None, :] * R  # absolute gradient (n_par, n_E)
+    return A.T @ result["calib_corr"] @ A
 
 
 def main(argv=None):
