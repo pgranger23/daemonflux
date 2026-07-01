@@ -7,15 +7,20 @@ from a *trusted* source and the 3D corrections are *validated against Honda*.
 
 Construction (each factor trusted / validated)
 ---------------------------------------------
-``Phi_3D = Phi_base(E,|cosZ|,s) * R(E,cosZ,s) * G_s(E,R_c(cosZ,az)) * S(E)``
+``Phi_3D = Phi_base(E,|cosZ|,s) * E_off(E,cosZ) * G_s(E,R_c(cosZ,az)) * S(E)``
 
 * **Phi_base** -- MCEq (or daemonflux) solved per zenith with the **curved
   atmosphere**: absolute normalization, flavour/charge content, spectra, and the
   sec(theta) horizon enhancement (1D-per-direction-with-curvature).
-* **R(E, cosZ)** -- the genuine-3D **production-angle redistribution**
-  ``Phi_3D/Phi_1D`` (:meth:`angular_factor`, ``full_3d=True``): the per-zenith base
-  convolved on the sphere with the **NA61-validated** ``sigma_theta(E)``. ->1 at
-  high E; ~1-2% sub-GeV. Off (=1) by default.
+* **E_off(E, cosZ)** -- the **first-principles off-axis 3D-production factor**
+  ``Phi_3D/Phi_1D`` (:meth:`offaxis_factor`, ``offaxis=True``): the complete
+  genuine-3D/1D ratio that both redistributes flux in zenith and produces the
+  sub-GeV near-horizon excess (horizon/vertical ~1.8 at 0.3 GeV). Built in
+  `offaxis_mc.py` from MCEq depth-resolved production, curved-atmosphere geometry,
+  and decay-kinematics production angles per nu_mu channel (cone for the collimated
+  direct pi/K; near-isotropic muon-decay as a flat pedestal), with MCEq channel
+  fractions. **No reference flux is used**; validated to reproduce Honda and Bartol
+  to their mutual ~5-15%. ->1 at high E and at the vertical. Off (=1) by default.
 * **G_s(E, R_c)** -- the geomagnetic suppression = ``MCEq(primary cut at R_c) /
   MCEq(full)``, the **cascade-correct** response to removing sub-cutoff primaries
   (NO ``x_eff`` hack); ~zenith-independent, interpolated on a small R_c grid.
@@ -23,10 +28,12 @@ Construction (each factor trusted / validated)
   (:mod:`geomag_backtrace`, validated: Kamioka 11.3 GV).
 * **S(E)** -- optional solar-modulation factor (:meth:`solar_factor`).
 
-With ``full_3d=True`` this is the complete deterministic-3D construction (curved
-per-zenith cascade + production-angle redistribution + geomagnetic + solar),
-validated absolutely against Honda/Bartol; ``full_3d=False`` drops R (the fast
-factorised path, ~1-2% higher near the horizon sub-GeV).
+With ``offaxis=True`` this is the complete first-principles 3D construction (curved
+per-zenith cascade + off-axis 3D production + geomagnetic + solar), validated
+absolutely against Honda/Bartol; ``offaxis=False`` drops E_off (the fast
+factorised path, ~1.8x lower near the horizon sub-GeV). The legacy ``full_3d``
+option applies only the flux-conserving redistribution R (:meth:`angular_factor`)
+and is superseded by ``offaxis`` (do not combine them).
 
 The rigidity cut is applied per-nucleus to the primary nucleons: the proton flux
 is split into **free protons** (A/Z=1, R=E) and **bound protons** (in nuclei,
@@ -157,7 +164,7 @@ class MCEq3DFlux:
             f"_atm{'std' if atmosphere is None else str(atmosphere)}"
         )
         self._df = None
-        if base_model == "daemonflux":
+        if base_model in ("daemonflux", "hybrid"):
             from daemonflux import Flux
 
             self._df = Flux(location=daemonflux_location)
@@ -217,6 +224,18 @@ class MCEq3DFlux:
             self.mceq.solve()
             for s in SPECIES:
                 out[s][i] = self.mceq.get_solution(s, 0) * CM2_PER_M2
+        if self.base_model == "hybrid":
+            # Muon-calibrated daemonflux where the calibration is valid
+            # (E >~ 1 GeV), data-anchored MCEq below (recommended with the
+            # GSF primary: AMS-02/BESS/PAMELA-fitted, which fixes the sub-GeV
+            # primary that H3a extrapolates poorly). Smooth log-blend around
+            # E0=0.8 GeV (one octave wide): the two bases agree with the 3D
+            # references in complementary domains (GSF-MCEq 0.15-0.5 GeV,
+            # daemonflux >=1 GeV), so the blend tracks the better one.
+            df = self._base_daemonflux(cos_zeniths)
+            w = hybrid_weight(self.e)
+            for s in SPECIES:
+                out[s] = (1.0 - w)[None, :] * out[s] + w[None, :] * df[s]
         return out
 
     def _base_daemonflux(self, cos_zeniths):
@@ -451,40 +470,77 @@ class MCEq3DFlux:
                 R[s] = np.where(phi1d > 0, phi3d / phi1d, 1.0)  # (n_cos, n_E)
         return R
 
-    def horizon_excess_factor(self, cos_zeniths, path=None):
-        """Near-horizon 3D-excess correction H[cosZ, E] (reference-anchored).
+    def offaxis_factor(self, cos_zeniths, path=None, shape_only=False,
+                       which="E_off"):
+        """First-principles off-axis 3D-production factor E_off[species][cosZ, E].
 
-        The sub-GeV near-horizon flux carries a genuine 3D enhancement (off-axis
-        production in the curved atmosphere; horizon/vertical ~1.8 at 0.3 GeV) that
-        the per-zenith cascade + flux-conserving redistribution do not produce. A
-        first-principles deterministic derivation is the 3D-MC problem; we model it
-        **explicitly but anchored** to the full-3D references: ``H`` is the ratio of
-        the Honda zenith shape to this work's, built by `build_horizon_excess.py`
-        (anchored to Honda, cross-validated against Bartol to ~5%). H->1 at the
-        vertical and above a few GeV. Applied to ``|cosZ|`` and to all species (the
-        excess is geometric); returns 1 where the table is unavailable.
+        The complete genuine-3D/1D production ratio: it both redistributes flux in
+        zenith and produces the sub-GeV near-horizon excess (horizon/vertical ~1.8
+        at 0.3 GeV) that the per-zenith cascade cannot. Derived *from first
+        principles* in `offaxis_mc.py`: MCEq depth-resolved production p(X,E),
+        curved-atmosphere slant depth, and the **pion production angle from the
+        SIBYLL/UrQMD generator moments** (chromo, NA61-validated) folded with exact
+        pi->mu nu decay. The excess is a pion-production-rate effect inherited by
+        every daughter neutrino (muon-decay neutrinos included -- NOT a flat
+        pedestal), so E_off is **flavour-independent**: one table for all species;
+        the nu_e-vs-nu_mu flux difference lives entirely in the per-flavour base.
+        No reference flux is used; validated to reproduce the Honda and Bartol
+        nu_mu *and* nu_e zenith shapes to ~5% sub-GeV (`offaxis_mc.py --validate`).
+        E_off->1 at high E; applied to ``|cosZ|``; =1 outside the tabulated E range
+        (0.1-100 GeV -- below 0.1 GeV the excess is large and NOT modelled).
+
+        ``shape_only``: divide out the vertical value, E_off(cosZ)/E_off(vert).
+        Use with the **muon-calibrated daemonflux base**: its absolute
+        normalization was calibrated on real-world (3D) muon data, so the ~6%
+        sub-GeV vertical 1D->3D shift is already absorbed there and re-applying it
+        would double-count; only the zenith *shape* is missing from a 1D model.
+        For the raw-MCEq base (a genuine 1D calculation) use the full factor.
+
+        ``which``: "E_off" (central) | "E_off_hi"/"E_off_lo" (NA61 +-12%
+        pion-angle variants, used for the sigma_pi_NA61 covariance pull).
         """
         if path is None:
             path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                "horizon_excess.npz")
+                                "offaxis_excess.npz")
         e = self.e
         cz = np.abs(np.asarray(cos_zeniths, float))
         if not os.path.exists(path):
             raise FileNotFoundError(
-                f"{path} not found; run build_horizon_excess.py first"
+                f"{path} not found; run 'python offaxis_mc.py --build' first"
             )
         d = np.load(path)
-        Hcz, He, Htab = d["cz"], d["e"], d["H"]  # (n_cz, n_He)
-        # interpolate H(cz, E) -> (len(cz), len(e)); 1 outside the tabulated E range
-        out = np.ones((len(cz), len(e)))
-        lo, hi = He[0], He[-1]
+        if "tag" in d:
+            tag = str(d["tag"])
+            if not self._tag.startswith(tag):
+                # interaction model must match (the kernel and p(X,E) are its
+                # yields); a primary-spectrum mismatch only reweights the ratio
+                # mildly -> warn (E_off is primary-insensitive to first order).
+                if not self._tag.startswith(tag.split("_")[0]):
+                    raise ValueError(
+                        f"offaxis table built for {tag} but engine is "
+                        f"{self._tag}; rebuild with offaxis_mc.py --build"
+                    )
+                import warnings
+
+                warnings.warn(
+                    f"offaxis table primary ({tag}) differs from engine "
+                    f"({self._tag}); E_off is a primary-insensitive ratio, "
+                    "but rebuild for exactness."
+                )
+        Etab = d[which]  # (n_cz, n_Ee)
+        Ecz, Ee = d["cz"], d["e"]
+        if shape_only:
+            Etab = Etab / Etab[np.argmax(Ecz)]  # normalise to the vertical row
+        # interpolate E_off(cz, E) -> (len(cz), len(e)); 1 outside the tabulated E
+        table = np.ones((len(cz), len(e)))
+        lo, hi = Ee[0], Ee[-1]
         for k, en in enumerate(e):
             if en < lo or en > hi:
                 continue
-            col = np.array([np.interp(np.log(en), np.log(He), Htab[i]) for i in
-                            range(len(Hcz))])
-            out[:, k] = np.interp(cz, Hcz, col)
-        return out
+            col = np.array([np.interp(np.log(en), np.log(Ee), Etab[i]) for i in
+                            range(len(Ecz))])
+            table[:, k] = np.interp(cz, Ecz, col)
+        return {s: table for s in SPECIES}  # same (geometric) factor for all species
 
     def cutoff_grid(
         self,
@@ -583,7 +639,11 @@ class MCEq3DFlux:
         with_calib_jacobian=False,
         full_3d=False,
         moments="m_spliced.npz",
-        horizon_excess=False,
+        offaxis=False,
+        offaxis_shape_only=None,
+        with_eoff_jacobian=False,
+        solar_sigma_gv=0.0,
+        with_base_spread=False,
     ):
         """Absolute Phi[species, cosZ, az, E] for a site (full sky).
 
@@ -617,20 +677,44 @@ class MCEq3DFlux:
         error carries through unchanged. ``calib_hadronic_only`` isolates the
         hadronic-production component.
 
-        ``full_3d``: fold in the genuine-3D **production-angle redistribution**
-        ``R(E, cosZ)`` (`angular_factor`, NA61-validated ``sigma_theta``) so the
-        delivered flux is the complete deterministic-3D construction -- per-zenith
-        curved cascade x angular redistribution x geomagnetic cutoff x solar. The
-        redistribution is ~1-2% (sub-GeV); ``full_3d=False`` (default) is the pure
-        factorised path.
+        ``offaxis`` (recommended for 3D): fold in the first-principles off-axis
+        3D-production factor ``E_off(E, cosZ)`` (`offaxis_factor`) -- the complete
+        genuine-3D/1D production ratio, which both redistributes flux in zenith and
+        produces the sub-GeV near-horizon excess (horizon/vertical ~1.8 at 0.3 GeV).
+        Derived from first principles (MCEq production + curved geometry + decay
+        kinematics; no reference flux) and validated against Honda/Bartol to their
+        mutual ~5-15%. This supersedes ``full_3d`` (the two must not be combined --
+        that double-counts the production angle).
 
-        ``horizon_excess``: also fold in the near-horizon 3D-excess correction
-        ``H(E,cosZ)`` (`horizon_excess_factor`) -- the genuine sub-GeV horizontal
-        enhancement (horizon/vertical ~1.8 at 0.3 GeV) that the deterministic terms
-        do not produce. It is **reference-anchored** (built from Honda,
-        cross-validated vs Bartol), not a first-principles derivation; recommended
-        together with ``full_3d`` for a flux that reproduces the full-3D zenith shape.
+        ``full_3d`` (legacy): fold in only the flux-conserving production-angle
+        **redistribution** ``R(E, cosZ)`` (`angular_factor`) -- the ~1-2% sub-GeV
+        zenith redistribution without the net horizontal excess. Kept for
+        comparison; use ``offaxis`` for the complete 3D flux. ``full_3d=False`` and
+        ``offaxis=False`` (default) is the pure factorised path.
+
+        ``offaxis_shape_only``: apply E_off/E_off(vertical) instead of the full
+        factor. Default ``None`` = auto: shape-only on the muon-calibrated
+        daemonflux base (whose absolute normalisation already absorbed real-world
+        3D effects -- re-applying the ~6% sub-GeV vertical shift would
+        double-count and break the muon-calibration consistency), full factor on
+        the genuinely-1D raw-MCEq base. The muon closure behind this convention
+        is checked at build time (`offaxis_mc.build`: E_off with the muon kernel
+        is ~1 for E_mu >= 5 GeV, daemonflux's calibration region).
+
+        Additional nuisance pulls (appended to ``calib_params/corr/jac`` so
+        `calib_covariance` carries the **full** uncertainty, and folded into
+        ``flux_relerr``/``flux_err`` in quadrature when ``with_calib_error``):
+        ``with_eoff_jacobian`` -- the hadronic E_off pull ``sigma_pi_NA61``
+        (NA61 +-12% pion production angle; ~+-8% on the sub-GeV horizon excess);
+        ``solar_sigma_gv`` -- a +1-sigma solar-potential pull of this size [GV];
+        ``with_base_spread`` -- the fully-correlated base-model-choice pull
+        (half log-spread MCEq vs daemonflux; the dominant sub-GeV systematic).
         """
+        if offaxis and full_3d:
+            raise ValueError(
+                "offaxis supersedes full_3d (E_off already contains the "
+                "production-angle redistribution); set only one."
+            )
         cos_zeniths = np.asarray(cos_zeniths, float)
         azimuths = np.asarray(azimuths, float)
         base = self.base(cos_zeniths)
@@ -668,24 +752,34 @@ class MCEq3DFlux:
 
         # solar modulation: neutrino-energy factor S(E), applied to all species/dirs
         smod = self.solar_factor(solar_modulation) if solar_modulation else 1.0
-        # genuine-3D production-angle redistribution R[species][cosZ, E]
+        # legacy flux-conserving production-angle redistribution R[species][cosZ,E]
         R3d = self.angular_factor(cos_zeniths, moments=moments) if full_3d else None
-        # reference-anchored near-horizon 3D excess H[cosZ, E] (all species)
-        Hexc = self.horizon_excess_factor(cos_zeniths) if horizon_excess else None
+        # first-principles complete off-axis 3D-production factor E_off[cosZ,E].
+        # Default convention: shape-only on the muon-calibrated daemonflux base
+        # (its absolute normalisation already lives in the 3D world -- see
+        # offaxis_factor), full factor on the genuinely-1D raw-MCEq base.
+        if offaxis_shape_only is None:
+            offaxis_shape_only = self.base_model == "daemonflux"
+        Eoff = (
+            self.offaxis_factor(cos_zeniths, shape_only=offaxis_shape_only)
+            if offaxis
+            else None
+        )
 
         flux = {
             s: np.zeros((len(cos_zeniths), len(azimuths), len(self.e))) for s in SPECIES
         }
         for s in SPECIES:
             r3 = R3d[s] if R3d is not None else None
+            eo = Eoff[s] if Eoff is not None else None
             for ia in range(len(azimuths)):
                 for iz in range(len(cos_zeniths)):
                     g = _interp_rc(rc_map[iz, ia], rc_grid, G_by_z[iz][s])
                     f = base[s][iz] * g * smod
                     if r3 is not None:
                         f = f * r3[iz]
-                    if Hexc is not None:
-                        f = f * Hexc[iz]
+                    if eo is not None:
+                        f = f * eo[iz]
                     flux[s][iz, ia] = f
         result = dict(
             e=self.e,
@@ -702,7 +796,6 @@ class MCEq3DFlux:
                 cos_zeniths, only_hadronic=calib_hadronic_only
             )
             result["flux_relerr"] = relerr  # sigma/Phi [species, cosZ, E]
-            result["flux_err"] = {s: flux[s] * relerr[s][:, None, :] for s in SPECIES}
         if with_calib_jacobian:
             cj = self.calib_jacobian(cos_zeniths)
             result["calib_params"] = cj["params"]  # 24 nuisance-parameter names
@@ -711,6 +804,83 @@ class MCEq3DFlux:
             result["calib_jac"] = cj[
                 "jac"
             ]  # R[species]=dPhi/Phi per +1sig [par,cosZ,E]
+
+        # -- extra nuisance pulls (uncorrelated with the daemonflux calibration) --
+        # Each is a fractional flux response R[species][cosZ, E] to a +1-sigma pull,
+        # appended to calib_params/corr/jac so calib_covariance() carries the FULL
+        # uncertainty (calibration + hadronic E_off + solar + base spread).
+        extras = []  # (name, R[species])
+        if with_eoff_jacobian:
+            if not offaxis:
+                raise ValueError("with_eoff_jacobian requires offaxis=True")
+            E_hi = self.offaxis_factor(
+                cos_zeniths, shape_only=offaxis_shape_only, which="E_off_hi"
+            )
+            r = {
+                s: np.where(Eoff[s] > 0, E_hi[s] / Eoff[s] - 1.0, 0.0)
+                for s in SPECIES
+            }
+            extras.append(("sigma_pi_NA61", r))
+        if solar_sigma_gv:
+            s_ref = smod if solar_modulation else np.ones(len(self.e))
+            s_up = self.solar_factor(solar_modulation + solar_sigma_gv)
+            r1 = np.where(s_ref > 0, s_up / s_ref - 1.0, 0.0)[None, :] * np.ones(
+                (len(cos_zeniths), 1)
+            )
+            extras.append(("solar_phi", {s: r1 for s in SPECIES}))
+        if with_base_spread:
+            # evaluate the *other* base at the same zeniths; the half log-spread
+            # is a single fully-correlated model-choice pull (base_comparison).
+            if self.base_model == "daemonflux":
+                saved = self.base_model
+                self.base_model = "mceq"
+                try:
+                    other = self.base(cos_zeniths)
+                finally:
+                    self.base_model = saved
+            else:
+                if self._df is None:
+                    from daemonflux import Flux
+
+                    self._df = Flux(location="generic")
+                other = self._base_daemonflux(cos_zeniths)
+            r = {}
+            for s in SPECIES:
+                with np.errstate(invalid="ignore", divide="ignore"):
+                    r[s] = np.where(
+                        (base[s] > 0) & (other[s] > 0),
+                        0.5 * np.log(other[s] / base[s]),
+                        0.0,
+                    )
+            extras.append(("base_model_spread", r))
+        if extras:
+            names = list(result.get("calib_params", []))
+            n0 = len(names)
+            jac = result.get(
+                "calib_jac",
+                {s: np.zeros((0, len(cos_zeniths), len(self.e))) for s in SPECIES},
+            )
+            for name, r in extras:
+                names.append(name)
+                for s in SPECIES:
+                    jac[s] = np.concatenate([jac[s], r[s][None]], axis=0)
+            corr = np.eye(len(names))
+            if n0:
+                corr[:n0, :n0] = result["calib_corr"]
+            result["calib_params"] = names
+            result["calib_corr"] = corr
+            result["calib_jac"] = jac
+            # total fractional error incl. extras (extras mutually uncorrelated)
+            if with_calib_error:
+                for s in SPECIES:
+                    q = result["flux_relerr"][s] ** 2
+                    for _, r in extras:
+                        q = q + r[s] ** 2
+                    result["flux_relerr"][s] = np.sqrt(q)
+        if with_calib_error:
+            result["flux_err"] = {
+                s: flux[s] * result["flux_relerr"][s][:, None, :] for s in SPECIES
+            }
         return result
 
 
@@ -725,6 +895,16 @@ def _interp_rc(rc, rc_grid, gmat):
     j = min(max(j, 1), len(rc_grid) - 1)
     w = (rc - rc_grid[j - 1]) / (rc_grid[j] - rc_grid[j - 1])
     return (1.0 - w) * gmat[j - 1] + w * gmat[j]
+
+
+def hybrid_weight(e, e0=0.8):
+    """Daemonflux weight w(E) of the ``base_model="hybrid"`` blend.
+
+    Smooth one-octave log-transition centred at ``e0`` [GeV]: w->0 below (the
+    GSF-anchored MCEq base, best 0.15-0.5 GeV vs the 3D references), w->1 above
+    (the muon-calibrated daemonflux base, best >~1 GeV); w(e0)=0.5.
+    """
+    return 0.5 * (1.0 + np.tanh(np.log(np.asarray(e, float) / e0) / np.log(2.0)))
 
 
 def horizon_grid(n_horizon=9, n_bulk=6, cz_max=0.95, horizon_half_width=0.2):
@@ -793,17 +973,19 @@ def main(argv=None):
     p.add_argument("--plot", action="store_true")
     p.add_argument(
         "--base",
-        choices=["mceq", "daemonflux"],
+        choices=["mceq", "daemonflux", "hybrid"],
         default="mceq",
         help="1D base the geomag factor multiplies (daemonflux = data-anchored)",
     )
     p.add_argument(
-        "--full3d", action="store_true",
-        help="fold in the production-angle 3D redistribution (full deterministic 3D)",
+        "--offaxis", action="store_true",
+        help="fold in the first-principles off-axis 3D-production factor E_off "
+        "(complete genuine-3D zenith shape; recommended)",
     )
     p.add_argument(
-        "--horizon", action="store_true",
-        help="also fold in the reference-anchored near-horizon 3D-excess correction",
+        "--full3d", action="store_true",
+        help="legacy: flux-conserving production-angle redistribution only "
+        "(superseded by --offaxis; cannot be combined)",
     )
     args = p.parse_args(argv)
 
@@ -812,7 +994,7 @@ def main(argv=None):
     cz = np.array([-0.95, -0.55, -0.15, 0.15, 0.55, 0.95])  # full sky
     az = np.array([0, 45, 90, 135, 180, 225, 270, 315], float)
     r = eng.solve(
-        args.lat, args.lon, cz, az, full_3d=args.full3d, horizon_excess=args.horizon
+        args.lat, args.lon, cz, az, full_3d=args.full3d, offaxis=args.offaxis
     )
     e = r["e"]
     ie = int(np.argmin(np.abs(e - 1.0)))

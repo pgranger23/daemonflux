@@ -703,20 +703,43 @@ Output is the curved 1D-per-direction flux; the 3D residual is *not* added here.
 **Idea.** A usable, *absolute*, all-flavour 3D flux to ~0.5 GeV where every factor
 is trusted and the result is validated *absolutely* against Honda — not just shape ratios.
 
-**Construction.** `Φ_3D = Φ_1D(E,|cosθ|,s) · R_s(E,cosθ) · H(E,cosθ) · G_s(E,
-R_c(cosθ,az)) · S(E)` — the complete deterministic-3D product (`full_3d=True` for R;
-`horizon_excess=True` for the reference-anchored H; both off → fast factorised path):
-* `R_s(E, cosθ)` — the genuine-3D **production-angle redistribution** `Φ_3D/Φ_1D`
-  (`angular_factor`): the per-zenith base convolved on the sphere with the
-  NA61-validated `σ_θ(E)` (flux-conserving; the curved-atmosphere sec θ is already
-  in `Φ_1D` and is **not** re-added — no double counting). ~1–2% sub-GeV, →1 high-E.
-* `H(E, cosθ)` — the **near-horizon 3D-excess** correction (`horizon_excess_factor`,
-  `solve(horizon_excess=True)`): the *net* sub-GeV horizontal enhancement (horizon/
-  vertical ~1.8 at 0.3 GeV) that the flux-conserving `R` cannot produce. Diagnosed
-  by comparing our zenith shape to Honda/Bartol (they agree ~5%); modelled
-  **reference-anchored** (`H`=Honda_shape/ours, `build_horizon_excess.py`),
-  cross-validated vs the independent Bartol to ~5%. Not first-principles — a
-  separate toggle from `R`; a from-scratch off-axis cascade remains open.
+**Construction.** `Φ_3D = Φ_1D(E,|cosθ|,s) · E_off(E,cosθ) · G_s(E,
+R_c(cosθ,az)) · S(E)` — the complete deterministic-3D product (`offaxis=True` for
+E_off; off → fast factorised path):
+* `E_off(E, cosθ)` — the **first-principles off-axis 3D-production factor**
+  `Φ_3D/Φ_1D` (`offaxis_factor`, `solve(offaxis=True)`; built by `offaxis_mc.py`):
+  the complete genuine-3D/1D production ratio that both redistributes flux in
+  zenith and produces the *net* sub-GeV near-horizon excess (horizon/vertical ~1.8
+  at 0.3 GeV). Built with **no reference-flux input** from (i) MCEq depth-resolved
+  production `p(X,E)=dΦ_ν/dX`, (ii) curved-atmosphere slant depth `X_slant(h,ψ)`,
+  and (iii) the **pion production angle** `σ_π(E)` (`kinematic_kernel`): the
+  inclusive `<θ²>(E_meson)` from the **SIBYLL/UrQMD generator moments** (chromo,
+  pooled by `fokker_planck_3d.load_theta2`, NA61-validated) folded with exact
+  π→μν decay and the H3a spectrum — **no hand-set p_T/x_F**. E_off is
+  **flavour-independent**: the excess is a pion-production-rate effect inherited by
+  all daughters (the near-isotropic muon-decay νμ carry the same excess — *not* a
+  flat pedestal), so one factor multiplies each flavour's own 1D base; kaons
+  (wider-angle, subdominant) are omitted. Reproduces the Honda and Bartol νμ *and*
+  νe zenith shapes to their mutual ~5–15% across 0.3–10 GeV (0.3 GeV horizon:
+  cascade-only 0.94 → E_off: νμ 1.82/Honda 1.89, νe 2.06/Honda 2.18); →1 at high E
+  and at the vertical. Uncertainty: NA61 ±12% on σ_π → ±8% on the sub-GeV horizon
+  excess (→0 by a few GeV); multi-generator spread needs regenerating the moments.
+  **Supersedes** the legacy flux-conserving `full_3d`/`angular_factor` R (kept for
+  comparison; must not be combined) and the earlier reference-anchored H (removed).
+  **Muon-calibration consistency**: on the daemonflux base E_off is applied
+  *shape-only* (`offaxis_shape_only`, auto) — the calibrated normalisation already
+  lives in the 3D world; closure check at build: E_off(muon kernel) = 0.998–1.000
+  vertical for E_μ ≥ 5 GeV (1.02→1.00 horizon, 5→30 GeV). (The closure diagnostic
+  caught a real massive-daughter boost bug — tan θ needs E*/p*, not p*/E*.)
+  **Full covariance**: `with_eoff_jacobian` (`sigma_pi_NA61` pull),
+  `solar_sigma_gv` (`solar_phi` pull), `with_base_spread` (`base_model_spread`
+  pull) append to `calib_params/corr/jac`; `flux_relerr` adds them in quadrature.
+  Tables are tagged with the hadronic identity (`SIBYLL23D_H3a`) and the engine
+  refuses mismatched tables. Unit tests: `test_offaxis_mc.py`,
+  `test_kinematic_kernel.py`; assumption checks (`verify_offaxis.py`, all well
+  inside the ±8% kernel systematic): p(X,E) zenith-independence ≤0.2% (60°) /
+  2.4% (85°), rigidity-cutoff independence 1.1% (11.3 GV), cone-quadrature
+  convergence 0.11% on doubling.
 * `Φ_1D` — the 1D base, selectable via `base_model`:
   * `"mceq"` (default, dependency-free) — real MCEq per zenith, **curved
     atmosphere** (absolute norm, all four species, spectra, sec θ horizon
@@ -1101,7 +1124,28 @@ Kernel regeneration on a cluster: see `KERNEL_GENERATION.md`.
    `hepdata-cli`).
 6. ~~Finer cosθ grid near the horizon~~ **exposed** (`horizon_grid()`, §1d/§5.11);
    the `G_s` zenith-independence behind it is bounded to ≤2 % (`geomag_zenith_check`).
-7. (If ever needed) full-shape high-stat kernels + S_N yield transport — shown
+7. ~~First-principles near-horizon 3D excess~~ **done** (`offaxis_mc.py`,
+   `kinematic_kernel.py`, `solve(offaxis=True)`, §5.11): the off-axis production
+   factor `E_off` derives the sub-GeV horizontal enhancement from MCEq production +
+   curved geometry + the **SIBYLL/UrQMD generator pion production angle** (chromo,
+   NA61-validated) folded with exact decay — no hand-set p_T/x_F, no reference flux
+   — reproducing Honda/Bartol to their mutual ~5–15% for **both νμ and νe**.
+   Replaces the earlier reference-anchored `H`. `E_off` is **flavour-independent**
+   (pion-production-rate effect inherited by all daughters). Uncertainty: NA61 ±12%
+   → ±8% sub-GeV horizon. Refinements: (a) multi-generator (EPOS/QGSJET) spread —
+   needs regenerating moments (chromo download / cluster); (b) a full continuous
+   off-axis transport beyond the Gaussian cone; (c) the subdominant kaon parent.
+8. ~~Anchor sub-0.3 GeV to a dedicated low-energy dataset~~ **done**
+   (`base_model="hybrid"` + GSF primary): the raw-MCEq sub-GeV deficit is the
+   **H3a primary** (~32% below the AMS-02/BESS/PAMELA-fitted GSF at 10 GeV, the
+   sub-GeV parent region), not the hadronic model. Hybrid = GSF-anchored MCEq
+   below ~0.8 GeV ⊕ muon-calibrated daemonflux above (`hybrid_weight`, smooth
+   one-octave blend). Full engine vs Honda (solar-min — the table's epoch,
+   pinned empirically vs Bartol fmin/fmax): **±11% or better, both flavours,
+   all zeniths, 0.14–10 GeV** (νe vertical 0.3 GeV: 1.11 vs 1.64 with the
+   daemonflux base alone). E_off tag: primary mismatch now warns (ratio is
+   primary-insensitive); interaction-model mismatch still raises.
+9. (If ever needed) full-shape high-stat kernels + S_N yield transport — shown
    *not* required for the angular spread.
 
 ---
@@ -1112,7 +1156,7 @@ Kernel regeneration on a cluster: see `KERNEL_GENERATION.md`.
 |---|---|
 | `validate_na61_pt.png` | NA61 pion `<p_T>` agreement (~10%) |
 | `validate_na61_kaon_pt.png` | NA61 **kaon** `<p_T>` vs UrQMD (K⁺/K⁻) |
-| `horizon_excess.png` | near-horizon 3D excess: zenith shape before/after H vs Honda & Bartol |
+| `offaxis_excess.png` | first-principles near-horizon 3D excess: zenith shape with/without E_off vs Honda & Bartol |
 | `base_comparison.png` | MCEq vs daemonflux base vs Honda + **model-spread systematic** |
 | `geomag_zenith_check.png` | `G_s(E,R_c)` zenith-independent to ≤2% (verification #2) |
 | `latitude_check.png` | smooth central+systematic across magnetic environments (verification #1) |

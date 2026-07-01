@@ -84,3 +84,15 @@ def test_horizon_grid_refines_near_horizon():
     far = np.sum(np.abs(g) >= 0.2)
     assert near > far  # horizon is refined
     assert g.min() < -0.9 and g.max() > 0.9  # spans the full sky
+
+
+def test_hybrid_weight_blend():
+    """hybrid base blend: GSF-MCEq below ~0.8 GeV, daemonflux above."""
+    from mceq3d_flux import hybrid_weight
+
+    e = np.array([0.1, 0.8, 10.0, 100.0])
+    w = hybrid_weight(e)
+    assert w[0] < 0.03  # sub-GeV: data-anchored (GSF) MCEq base
+    assert abs(w[1] - 0.5) < 1e-12  # centre of the one-octave transition
+    assert w[2] > 0.997 and w[3] > 0.999  # >~ GeV: muon-calibrated daemonflux
+    assert np.all(np.diff(hybrid_weight(np.geomspace(0.1, 100, 50))) > 0)
