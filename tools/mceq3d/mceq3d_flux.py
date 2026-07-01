@@ -7,7 +7,7 @@ from a *trusted* source and the 3D corrections are *validated against Honda*.
 
 Construction (each factor trusted / validated)
 ---------------------------------------------
-``Phi_3D(E, cosZ, az, s) = Phi_base(E,|cosZ|,s) * R(E,cosZ,s) * G_s(E,R_c(cosZ,az)) * S(E)``
+``Phi_3D = Phi_base(E,|cosZ|,s) * R(E,cosZ,s) * G_s(E,R_c(cosZ,az)) * S(E)``
 
 * **Phi_base** -- MCEq (or daemonflux) solved per zenith with the **curved
   atmosphere**: absolute normalization, flavour/charge content, spectra, and the

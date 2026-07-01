@@ -703,8 +703,13 @@ Output is the curved 1D-per-direction flux; the 3D residual is *not* added here.
 **Idea.** A usable, *absolute*, all-flavour 3D flux to ~0.5 GeV where every factor
 is trusted and the result is validated *absolutely* against Honda — not just shape ratios.
 
-**Construction.** `Φ_3D(E, cosθ, az, s) = Φ_1D(E, |cosθ|, s) · G_s(E, R_c(cosθ,
-az))`:
+**Construction.** `Φ_3D(E, cosθ, az, s) = Φ_1D(E,|cosθ|,s) · R_s(E,cosθ) · G_s(E,
+R_c(cosθ,az)) · S(E)` — the complete deterministic-3D product (`solve(full_3d=True)`
+for the R factor; `full_3d=False` drops it, the ~1–2% fast factorised path):
+* `R_s(E, cosθ)` — the genuine-3D **production-angle redistribution** `Φ_3D/Φ_1D`
+  (`angular_factor`): the per-zenith base convolved on the sphere with the
+  NA61-validated `σ_θ(E)` (flux-conserving; the curved-atmosphere sec θ is already
+  in `Φ_1D` and is **not** re-added — no double counting). ~1–2% sub-GeV, →1 high-E.
 * `Φ_1D` — the 1D base, selectable via `base_model`:
   * `"mceq"` (default, dependency-free) — real MCEq per zenith, **curved
     atmosphere** (absolute norm, all four species, spectra, sec θ horizon
