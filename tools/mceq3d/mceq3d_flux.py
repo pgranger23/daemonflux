@@ -451,6 +451,41 @@ class MCEq3DFlux:
                 R[s] = np.where(phi1d > 0, phi3d / phi1d, 1.0)  # (n_cos, n_E)
         return R
 
+    def horizon_excess_factor(self, cos_zeniths, path=None):
+        """Near-horizon 3D-excess correction H[cosZ, E] (reference-anchored).
+
+        The sub-GeV near-horizon flux carries a genuine 3D enhancement (off-axis
+        production in the curved atmosphere; horizon/vertical ~1.8 at 0.3 GeV) that
+        the per-zenith cascade + flux-conserving redistribution do not produce. A
+        first-principles deterministic derivation is the 3D-MC problem; we model it
+        **explicitly but anchored** to the full-3D references: ``H`` is the ratio of
+        the Honda zenith shape to this work's, built by `build_horizon_excess.py`
+        (anchored to Honda, cross-validated against Bartol to ~5%). H->1 at the
+        vertical and above a few GeV. Applied to ``|cosZ|`` and to all species (the
+        excess is geometric); returns 1 where the table is unavailable.
+        """
+        if path is None:
+            path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                "horizon_excess.npz")
+        e = self.e
+        cz = np.abs(np.asarray(cos_zeniths, float))
+        if not os.path.exists(path):
+            raise FileNotFoundError(
+                f"{path} not found; run build_horizon_excess.py first"
+            )
+        d = np.load(path)
+        Hcz, He, Htab = d["cz"], d["e"], d["H"]  # (n_cz, n_He)
+        # interpolate H(cz, E) -> (len(cz), len(e)); 1 outside the tabulated E range
+        out = np.ones((len(cz), len(e)))
+        lo, hi = He[0], He[-1]
+        for k, en in enumerate(e):
+            if en < lo or en > hi:
+                continue
+            col = np.array([np.interp(np.log(en), np.log(He), Htab[i]) for i in
+                            range(len(Hcz))])
+            out[:, k] = np.interp(cz, Hcz, col)
+        return out
+
     def cutoff_grid(
         self,
         lat,
@@ -548,6 +583,7 @@ class MCEq3DFlux:
         with_calib_jacobian=False,
         full_3d=False,
         moments="m_spliced.npz",
+        horizon_excess=False,
     ):
         """Absolute Phi[species, cosZ, az, E] for a site (full sky).
 
@@ -587,6 +623,13 @@ class MCEq3DFlux:
         curved cascade x angular redistribution x geomagnetic cutoff x solar. The
         redistribution is ~1-2% (sub-GeV); ``full_3d=False`` (default) is the pure
         factorised path.
+
+        ``horizon_excess``: also fold in the near-horizon 3D-excess correction
+        ``H(E,cosZ)`` (`horizon_excess_factor`) -- the genuine sub-GeV horizontal
+        enhancement (horizon/vertical ~1.8 at 0.3 GeV) that the deterministic terms
+        do not produce. It is **reference-anchored** (built from Honda,
+        cross-validated vs Bartol), not a first-principles derivation; recommended
+        together with ``full_3d`` for a flux that reproduces the full-3D zenith shape.
         """
         cos_zeniths = np.asarray(cos_zeniths, float)
         azimuths = np.asarray(azimuths, float)
@@ -627,6 +670,8 @@ class MCEq3DFlux:
         smod = self.solar_factor(solar_modulation) if solar_modulation else 1.0
         # genuine-3D production-angle redistribution R[species][cosZ, E]
         R3d = self.angular_factor(cos_zeniths, moments=moments) if full_3d else None
+        # reference-anchored near-horizon 3D excess H[cosZ, E] (all species)
+        Hexc = self.horizon_excess_factor(cos_zeniths) if horizon_excess else None
 
         flux = {
             s: np.zeros((len(cos_zeniths), len(azimuths), len(self.e))) for s in SPECIES
@@ -639,6 +684,8 @@ class MCEq3DFlux:
                     f = base[s][iz] * g * smod
                     if r3 is not None:
                         f = f * r3[iz]
+                    if Hexc is not None:
+                        f = f * Hexc[iz]
                     flux[s][iz, ia] = f
         result = dict(
             e=self.e,
@@ -754,13 +801,19 @@ def main(argv=None):
         "--full3d", action="store_true",
         help="fold in the production-angle 3D redistribution (full deterministic 3D)",
     )
+    p.add_argument(
+        "--horizon", action="store_true",
+        help="also fold in the reference-anchored near-horizon 3D-excess correction",
+    )
     args = p.parse_args(argv)
 
     df_loc = "kamioka" if abs(args.lat - 36.43) < 1 else "generic"
     eng = MCEq3DFlux(base_model=args.base, daemonflux_location=df_loc)
     cz = np.array([-0.95, -0.55, -0.15, 0.15, 0.55, 0.95])  # full sky
     az = np.array([0, 45, 90, 135, 180, 225, 270, 315], float)
-    r = eng.solve(args.lat, args.lon, cz, az, full_3d=args.full3d)
+    r = eng.solve(
+        args.lat, args.lon, cz, az, full_3d=args.full3d, horizon_excess=args.horizon
+    )
     e = r["e"]
     ie = int(np.argmin(np.abs(e - 1.0)))
     print(
