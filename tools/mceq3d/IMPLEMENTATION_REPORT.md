@@ -16,7 +16,7 @@ meaningful for the MCEq-backed engine (§5.6); the parametrized engines produce
 *ratios/shapes* only.
 
 All code is on the fork `pgranger23/daemonflux`, branch `3d-extension`.
-Inventory: **26 modules, 21 test files, 118 passing offline tests, 25 validation
+Inventory: **28 modules, 21 test files, 118 passing offline tests, 26 validation
 plots, 4 companion docs.** Tooling: Black + flake8 clean, NumPy docstrings.
 
 ---
@@ -703,13 +703,20 @@ Output is the curved 1D-per-direction flux; the 3D residual is *not* added here.
 **Idea.** A usable, *absolute*, all-flavour 3D flux to ~0.5 GeV where every factor
 is trusted and the result is validated *absolutely* against Honda — not just shape ratios.
 
-**Construction.** `Φ_3D(E, cosθ, az, s) = Φ_1D(E,|cosθ|,s) · R_s(E,cosθ) · G_s(E,
-R_c(cosθ,az)) · S(E)` — the complete deterministic-3D product (`solve(full_3d=True)`
-for the R factor; `full_3d=False` drops it, the ~1–2% fast factorised path):
+**Construction.** `Φ_3D = Φ_1D(E,|cosθ|,s) · R_s(E,cosθ) · H(E,cosθ) · G_s(E,
+R_c(cosθ,az)) · S(E)` — the complete deterministic-3D product (`full_3d=True` for R;
+`horizon_excess=True` for the reference-anchored H; both off → fast factorised path):
 * `R_s(E, cosθ)` — the genuine-3D **production-angle redistribution** `Φ_3D/Φ_1D`
   (`angular_factor`): the per-zenith base convolved on the sphere with the
   NA61-validated `σ_θ(E)` (flux-conserving; the curved-atmosphere sec θ is already
   in `Φ_1D` and is **not** re-added — no double counting). ~1–2% sub-GeV, →1 high-E.
+* `H(E, cosθ)` — the **near-horizon 3D-excess** correction (`horizon_excess_factor`,
+  `solve(horizon_excess=True)`): the *net* sub-GeV horizontal enhancement (horizon/
+  vertical ~1.8 at 0.3 GeV) that the flux-conserving `R` cannot produce. Diagnosed
+  by comparing our zenith shape to Honda/Bartol (they agree ~5%); modelled
+  **reference-anchored** (`H`=Honda_shape/ours, `build_horizon_excess.py`),
+  cross-validated vs the independent Bartol to ~5%. Not first-principles — a
+  separate toggle from `R`; a from-scratch off-axis cascade remains open.
 * `Φ_1D` — the 1D base, selectable via `base_model`:
   * `"mceq"` (default, dependency-free) — real MCEq per zenith, **curved
     atmosphere** (absolute norm, all four species, spectra, sec θ horizon
@@ -1071,7 +1078,7 @@ Kernel regeneration on a cluster: see `KERNEL_GENERATION.md`.
 
 ## 13. Inventory
 
-* **26 modules**, **21 test files**, **118 passing offline tests**, **25 plots**,
+* **28 modules**, **21 test files**, **118 passing offline tests**, **26 plots**,
   Black/flake8 clean.
 * Companion docs: `README.md` (full roadmap), `REVIEW.md` (self-review with
   statuses), `KERNEL_GENERATION.md` (cluster runbook), `KERNEL_PRODUCTION_REPORT.md`
@@ -1105,6 +1112,7 @@ Kernel regeneration on a cluster: see `KERNEL_GENERATION.md`.
 |---|---|
 | `validate_na61_pt.png` | NA61 pion `<p_T>` agreement (~10%) |
 | `validate_na61_kaon_pt.png` | NA61 **kaon** `<p_T>` vs UrQMD (K⁺/K⁻) |
+| `horizon_excess.png` | near-horizon 3D excess: zenith shape before/after H vs Honda & Bartol |
 | `base_comparison.png` | MCEq vs daemonflux base vs Honda + **model-spread systematic** |
 | `geomag_zenith_check.png` | `G_s(E,R_c)` zenith-independent to ≤2% (verification #2) |
 | `latitude_check.png` | smooth central+systematic across magnetic environments (verification #1) |
