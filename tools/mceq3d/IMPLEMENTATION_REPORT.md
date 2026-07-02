@@ -726,11 +726,18 @@ E_off; off → fast factorised path):
   excess (→0 by a few GeV); multi-generator spread needs regenerating the moments.
   **Supersedes** the legacy flux-conserving `full_3d`/`angular_factor` R (kept for
   comparison; must not be combined) and the earlier reference-anchored H (removed).
-  **Muon-calibration consistency**: on the daemonflux base E_off is applied
-  *shape-only* (`offaxis_shape_only`, auto) — the calibrated normalisation already
-  lives in the 3D world; closure check at build: E_off(muon kernel) = 0.998–1.000
-  vertical for E_μ ≥ 5 GeV (1.02→1.00 horizon, 5→30 GeV). (The closure diagnostic
-  caught a real massive-daughter boost bug — tan θ needs E*/p*, not p*/E*.)
+  **Muon-calibration consistency**: the **full** E_off is applied on every base
+  (default `offaxis_shape_only=False`). Build-time closure: E_off(muon kernel) =
+  0.998–1.000 vertical for E_μ ≥ 5 GeV (1.02→1.00 horizon, 5→30 GeV) — so with
+  daemonflux's neutrino flux genuinely 1D and E_off_μ≈1 in the calibration
+  region, the full 1D→3D factor is self-consistent (no double-count) and tracks
+  Honda better than the old shape-only heuristic (vertical sub-GeV ≈1.0× vs
+  ≈1.07× Honda); shape-only kept only as an A/B opt-in. (The closure diagnostic
+  caught a real massive-daughter boost bug — tan θ needs E*/p*, not p*/E*.) The
+  deeper "yield-level calibration" (inject daemonflux's Barr/GSF at the MCEq
+  yields so μ and ν share one calibrated cascade) is blocked: daemonflux ships
+  flux-gradient splines + covariance, not the Barr recipe/baseline model; GSF is
+  available and used (hybrid base), the Barr transfer needs daemonflux's build code.
   **Full covariance**: `with_eoff_jacobian` (`sigma_pi_NA61` pull),
   `solar_sigma_gv` (`solar_phi` pull), `with_base_spread` (`base_model_spread`
   pull) append to `calib_params/corr/jac`; `flux_relerr` adds them in quadrature.

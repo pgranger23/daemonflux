@@ -506,12 +506,14 @@ class MCEq3DFlux:
         E_off->1 at high E; applied to ``|cosZ|``; =1 outside the tabulated E range
         (0.1-100 GeV -- below 0.1 GeV the excess is large and NOT modelled).
 
-        ``shape_only``: divide out the vertical value, E_off(cosZ)/E_off(vert).
-        Use with the **muon-calibrated daemonflux base**: its absolute
-        normalization was calibrated on real-world (3D) muon data, so the ~6%
-        sub-GeV vertical 1D->3D shift is already absorbed there and re-applying it
-        would double-count; only the zenith *shape* is missing from a 1D model.
-        For the raw-MCEq base (a genuine 1D calculation) use the full factor.
+        ``shape_only`` (opt-in, off by default): divide out the vertical value,
+        E_off(cosZ)/E_off(vert). This was once the default on the daemonflux base
+        out of a double-counting worry, but the muon closure shows it is
+        unnecessary: daemonflux's neutrino flux is genuinely 1D and E_off_mu ~ 1
+        in its muon-calibration region (E_mu >~ 5 GeV), so the **full** factor is
+        self-consistent with the calibration and tracks Honda better (the vertical
+        sub-GeV flux lands at ~1.0x Honda with the full factor vs ~1.07x
+        shape-only). Kept only for A/B comparison.
 
         ``which``: "E_off" (central) | "E_off_hi"/"E_off_lo" (NA61 +-12%
         pion-angle variants, used for the sigma_pi_NA61 covariance pull).
@@ -709,14 +711,13 @@ class MCEq3DFlux:
         comparison; use ``offaxis`` for the complete 3D flux. ``full_3d=False`` and
         ``offaxis=False`` (default) is the pure factorised path.
 
-        ``offaxis_shape_only``: apply E_off/E_off(vertical) instead of the full
-        factor. Default ``None`` = auto: shape-only on the muon-calibrated
-        daemonflux base (whose absolute normalisation already absorbed real-world
-        3D effects -- re-applying the ~6% sub-GeV vertical shift would
-        double-count and break the muon-calibration consistency), full factor on
-        the genuinely-1D raw-MCEq base. The muon closure behind this convention
-        is checked at build time (`offaxis_mc.build`: E_off with the muon kernel
-        is ~1 for E_mu >= 5 GeV, daemonflux's calibration region).
+        ``offaxis_shape_only``: opt-in E_off/E_off(vertical) instead of the full
+        factor (default ``None`` -> ``False``, i.e. the full factor on every
+        base). daemonflux's neutrino flux is genuinely 1D, and the build-time
+        muon closure (E_off with the muon kernel ~1 for E_mu >= 5 GeV,
+        daemonflux's calibration region) shows the full 1D->3D factor does not
+        double-count the calibration -- it tracks Honda better than shape-only
+        (vertical sub-GeV ~1.0x Honda vs ~1.07x). Kept only for A/B studies.
 
         Additional nuisance pulls (appended to ``calib_params/corr/jac`` so
         `calib_covariance` carries the **full** uncertainty, and folded into
@@ -772,11 +773,14 @@ class MCEq3DFlux:
         # legacy flux-conserving production-angle redistribution R[species][cosZ,E]
         R3d = self.angular_factor(cos_zeniths, moments=moments) if full_3d else None
         # first-principles complete off-axis 3D-production factor E_off[cosZ,E].
-        # Default convention: shape-only on the muon-calibrated daemonflux base
-        # (its absolute normalisation already lives in the 3D world -- see
-        # offaxis_factor), full factor on the genuinely-1D raw-MCEq base.
+        # The FULL factor is applied on every base (default). daemonflux's
+        # neutrino flux is genuinely 1D, and the muon-calibration region
+        # (E_mu >~ 5 GeV) has E_off_mu ~ 1 (build-time closure check), so the
+        # full 1D->3D factor is self-consistent with the calibration and does
+        # not double-count -- verified to track Honda better than the earlier
+        # shape-only heuristic (kept only as an opt-in for A/B studies).
         if offaxis_shape_only is None:
-            offaxis_shape_only = self.base_model == "daemonflux"
+            offaxis_shape_only = False
         Eoff = (
             self.offaxis_factor(cos_zeniths, shape_only=offaxis_shape_only)
             if offaxis
