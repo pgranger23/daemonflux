@@ -649,7 +649,7 @@ class MCEq3DFlux:
         date=None,
         n_scan=12,
         rc_grid=None,
-        zenith_dependent_geomag=False,
+        zenith_dependent_geomag=True,
         use_cache=False,
         cache_dir=None,
         solar_modulation=0.0,
@@ -669,12 +669,13 @@ class MCEq3DFlux:
         Down-going (cosZ>=0): detector geomagnetic cutoff. Up-going (cosZ<0):
         far-side production-point cutoff (global treatment, :func:`farside_production`).
 
-        ``zenith_dependent_geomag``: by default the suppression ratio ``G_s(E,R_c)``
-        is precomputed at the vertical column and reused at all zeniths -- validated
-        zenith-independent to <=2% (sub-GeV horizon) by `geomag_zenith_check.py`,
-        since the slant-depth shower effects cancel in the cut/full ratio. Set True
-        to instead recompute ``G_s`` at *every* zenith (removes that <=2%
-        approximation at the cost of one cascade pair per zenith band).
+        ``zenith_dependent_geomag`` (default **True**): recompute the suppression
+        ratio ``G_s(E,R_c)`` at *every* zenith band, so no slant-depth
+        approximation enters. G_s is site-independent and cached per (cz_ref,
+        rc_grid), so the extra cost (one cascade pair per unique |cosZ|) is a
+        one-time precompute. Set False to reuse the vertical-column G_s at all
+        zeniths -- validated zenith-independent to <=2% (sub-GeV horizon) by
+        `geomag_zenith_check.py` -- for a faster first (uncached) evaluation.
 
         ``use_cache``: memoise the two heavy ingredients to ``cache_dir`` (default
         ``flux_cache/`` next to this module) -- the **site-independent** ``G_s`` and

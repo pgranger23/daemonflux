@@ -43,9 +43,9 @@ plots, 4 companion docs.** Tooling: Black + flake8 clean, NumPy docstrings.
     **near-isotropic**. This is captured by 1D-per-direction with curved columns;
     the genuinely-3D inter-direction residual is the small (~1–2%) part.
 * **Validated against Honda HKKM2014** (§8): the directional observables match the
-  authoritative 3D tables — East–West amplitude at Kamioka **2.1 (Honda) vs 2.4
+  authoritative 3D tables — East–West amplitude at Kamioka **≈20% too weak at 0.5–1 GeV (1.69 vs Honda 2.09; penumbra fix scoped)
   (this work)** at 1 GeV with the correct sub-GeV peak and >10 GeV vanishing, and
-  the sec θ horizon enhancement **2.19 vs 2.17** at 100 GeV.
+  the sec θ horizon enhancement tracking Honda to ≈3–6% over 0.3–100 GeV (delivered-engine Fig 6; the old figure used a prototype without E_off).
 * **A trustable *absolute, full-sky* directional engine** (`mceq3d_flux.py`,
   §5.11): returns the absolute Φ(E, cosθ, azimuth) for all four flavours over the
   **whole sky across 0.1–100 GeV** as **selectable 1D base × cascade-correct

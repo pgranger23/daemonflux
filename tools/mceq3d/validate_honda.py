@@ -95,24 +95,40 @@ def honda_observables(h, horizon_cz=0.0):
     return E, ew, sec
 
 
-def my_east_west(energies, lat=36.43, lon=137.31, zenith=75.0, n_scan=12):
-    """This work's West/East flux ratio vs energy (directional_flux)."""
-    import directional_flux as df
+def _engine():
+    """The delivered production engine (recommended config: hybrid base + GSF
+    primary), memoised so E-W and sec-theta reuse one instance/cache."""
+    from mceq3d_flux import MCEq3DFlux
 
-    r = df.solve_directional(
-        lat, lon, np.array([zenith]), np.array([90.0, 270.0]), n_scan=n_scan
-    )
-    e, we = r["e"], r["flux"][0, 1] / r["flux"][0, 0]
+    if not hasattr(_engine, "_e"):
+        _engine._e = MCEq3DFlux(
+            base_model="hybrid", primary=("GlobalSplineFitBeta", None),
+            daemonflux_location="kamioka",
+        )
+    return _engine._e
+
+
+def my_east_west(energies, lat=36.43, lon=137.31, zenith=75.0):
+    """This work's West/East nu_mu ratio vs energy, from the delivered engine."""
+    eng = _engine()
+    cz = np.array([np.cos(np.radians(zenith))])
+    r = eng.solve(lat, lon, cz, np.array([90.0, 270.0]), offaxis=True,
+                  use_cache=True)  # az: 90=E, 270=W
+    e = r["e"]
+    we = r["flux"]["total_numu"][0, 1] / r["flux"]["total_numu"][0, 0]  # W/E
     return np.interp(energies, e, we)
 
 
-def my_sec_theta(energies):
-    """This work's horizon/vertical ratio vs energy (spherical_cascade)."""
-    from spherical_cascade import solve as scs
-
-    r = scs(np.array([0.95, 0.05]), n_e=60, nsteps=3000)
-    e, ratio = r["e"], r["flux"][1] / r["flux"][0]
-    return np.interp(energies, e, ratio)
+def my_sec_theta(energies, lat=36.43, lon=137.31):
+    """This work's horizon/vertical nu_mu ratio vs energy, from the delivered
+    engine (azimuth-averaged, WITH the off-axis 3D factor)."""
+    eng = _engine()
+    az = np.array([0.0, 90.0, 180.0, 270.0])
+    r = eng.solve(lat, lon, np.array([0.95, 0.05]), az, offaxis=True,
+                  use_cache=True)
+    e = r["e"]
+    f = r["flux"]["total_numu"].mean(1)  # azimuth-average -> (cz, E)
+    return np.interp(energies, e, f[1] / f[0])
 
 
 def main(argv=None):
@@ -124,14 +140,14 @@ def main(argv=None):
     h = fetch_honda_cache(refresh=args.refresh)
     E, ew_h, sec_h = honda_observables(h)
 
-    eg = np.array([0.5, 1.0, 2.0, 5.0, 10.0])
+    eg = np.geomspace(0.1, 30.0, 20)
     ew_mine = my_east_west(eg)
     print("EAST-WEST amplitude (numu, near horizon) -- Honda vs this work:")
     print("  E[GeV]   Honda max/min   this work W/E")
     for e, m in zip(eg, ew_mine):
         print(f"  {e:6.1f}      {np.interp(e, E, ew_h):6.2f}        {m:6.2f}")
 
-    eg2 = np.array([1.0, 10.0, 100.0, 1000.0])
+    eg2 = np.geomspace(0.3, 100.0, 18)
     sec_mine = my_sec_theta(eg2)
     print("\nsec(theta) horizon/vertical (azimuth-avg) -- Honda vs this work:")
     print("  E[GeV]   Honda   this work")
