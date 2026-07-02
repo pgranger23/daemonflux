@@ -122,12 +122,19 @@ def production_profile(e_lo=0.1, e_hi=100.0, n_x=80, theta_deg=0.0, rc_cut_gv=No
     mc.solve(int_grid=x_grid, grid_var="X")
     e = mc.e_grid
     sel = (e >= e_lo) & (e <= e_hi)
-    acc = np.array(
-        [mc.get_solution("total_numu", 0, grid_idx=i)[sel] for i in range(n_x)]
-    )  # (n_x, nE) accumulated numu flux at each depth
-    p = np.gradient(acc, x_grid, axis=0)
-    p = np.clip(p, 0.0, None)
-    return x_grid, e[sel], p, mc.density_model
+
+    def prof(key):
+        acc = np.array(
+            [mc.get_solution(key, 0, grid_idx=i)[sel] for i in range(n_x)]
+        )  # (n_x, nE) accumulated flux at each depth
+        return np.clip(np.gradient(acc, x_grid, axis=0), 0.0, None)
+
+    p = prof("total_numu")
+    # per-parent split: the kaon-parent part gets its own (wider) cone kernel;
+    # everything else (direct pi + muon-decay + K0 etc.) carries the pion
+    # production geometry (inheritance -- see offaxis_excess).
+    p_k = np.minimum(prof("k_numu"), p)
+    return x_grid, e[sel], {"tot": p, "k": p_k}, mc.density_model
 
 
 def _rho_of_h(density_model):
@@ -212,11 +219,18 @@ def _p_at(x_vals, x_grid, e_grid, p):
 # --------------------------------------------------------------------------
 # Off-axis excess
 # --------------------------------------------------------------------------
-def e_off_for_zenith(
-    cos_theta, e_grid, sigma_deg, x_grid, ep_grid, p, geom, n_alpha=60, n_beta=24
+def cone_numden(
+    cos_theta, e_grid, sigma_deg, x_grid, ep_grid, p, geom, n_alpha=60, n_beta=24,
+    alpha_w=None,
 ):
-    """E_off(E) for one arrival cos(zenith), integrated along the ray with a
-    Gaussian-on-the-sphere production cone of RMS sigma_theta(E)."""
+    """(numerator, denominator) of E_off(E) for one arrival cos(zenith).
+
+    The production cone is either Gaussian-on-the-sphere with RMS
+    ``sigma_deg(E)``, or -- if ``alpha_w`` (nE, n_alpha) is given -- the
+    **sampled angular distribution** on the internal alpha grid
+    (linspace 0.5..89 deg, n_alpha points; weights include the measure), e.g.
+    from the generator (x_L, theta) kernel histograms (`kinematic_kernel.
+    pion_alpha_pdf`) instead of the second-moment Gaussian."""
     h_grid, psi_grid, table = geom
     theta = np.arccos(np.clip(cos_theta, -1, 1))
 
@@ -261,11 +275,14 @@ def e_off_for_zenith(
     alpha = np.deg2rad(np.linspace(0.5, 89.0, n_alpha))
     for k, sdeg in enumerate(sigma_deg):
         s1 = np.deg2rad(sdeg) / np.sqrt(2.0)  # per-axis sigma
-        if s1 < 1e-4:
+        if alpha_w is not None and alpha_w[k].sum() > 0:
+            wa = alpha_w[k] / alpha_w[k].sum()  # sampled kernel distribution
+        elif s1 < 1e-4:
             num[k] = den[k]
             continue
-        wa = np.sin(alpha) * np.exp(-(alpha**2) / (2 * s1**2))
-        wa /= wa.sum()
+        else:
+            wa = np.sin(alpha) * np.exp(-(alpha**2) / (2 * s1**2))
+            wa /= wa.sum()
         acc = np.zeros(len(h_ray))
         for a, w in zip(alpha, wa):
             # cos psi_p over all beta for this alpha, broadcast over the ray
@@ -286,6 +303,18 @@ def e_off_for_zenith(
             acc += w * pk.mean(axis=1)
         num[k] = np.sum(rho_w * dl * acc)
 
+    return num, den
+
+
+def e_off_for_zenith(
+    cos_theta, e_grid, sigma_deg, x_grid, ep_grid, p, geom, n_alpha=60, n_beta=24,
+    alpha_w=None,
+):
+    """E_off(E) = num/den for one arrival cos(zenith) (see `cone_numden`)."""
+    num, den = cone_numden(
+        cos_theta, e_grid, sigma_deg, x_grid, ep_grid, p, geom, n_alpha, n_beta,
+        alpha_w=alpha_w,
+    )
     return np.where(den > 0, num / np.maximum(den, 1e-300), 1.0)
 
 
@@ -304,7 +333,8 @@ def _regrid(arr, e_src, e_dst):
     return out
 
 
-def offaxis_excess(cz, x_grid, ep_grid, p, geom, n_alpha=44, n_beta=18, moments=None):
+def offaxis_excess(cz, x_grid, ep_grid, p, geom, n_alpha=44, n_beta=18, moments=None,
+                   sigma_scale=1.0):
     """Off-axis 3D-production excess E_off(cosZ, E) -- **flavour-independent**.
 
     The near-horizon excess is a geometric property of *where the parent pions are
@@ -330,11 +360,26 @@ def offaxis_excess(cz, x_grid, ep_grid, p, geom, n_alpha=44, n_beta=18, moments=
     Validated (``--validate``) to reproduce both the nu_mu and nu_e Honda/Bartol
     zenith shapes to within their mutual spread, with no reference-flux input.
     """
-    from kinematic_kernel import channel_shapes
+    from kinematic_kernel import channel_shapes, pion_alpha_pdf
 
     kw = {} if moments is None else {"moments": moments}
-    sig_pi = channel_shapes(ep_grid, **kw)["pi"]  # generator pion prod. angle [deg]
-    return cone_excess(cz, sig_pi, x_grid, ep_grid, p, geom, n_alpha, n_beta)
+    alpha_deg = np.linspace(0.5, 89.0, n_alpha)
+    # pion channel: full sampled angular distribution from the generator's
+    # (x_L, theta) kernel histograms + exact decay (no Gaussian assumption);
+    # kaon channel: Gaussian sigma_K (no full kaon kernel available).
+    W = pion_alpha_pdf(ep_grid, alpha_deg, scale=sigma_scale)
+    sig_pi = channel_shapes(ep_grid, **kw)["pi"] * sigma_scale  # Gaussian fallback
+    sig_k = channel_shapes(ep_grid, **kw)["k"] * sigma_scale
+    p_nonk = p["tot"] - p["k"]  # direct pi + muon-decay + rest: pion geometry
+    num = np.zeros((len(cz), len(ep_grid)))
+    den = np.zeros_like(num)
+    for i, c in enumerate(cz):
+        n1, d1 = cone_numden(c, ep_grid, sig_pi, x_grid, ep_grid, p_nonk, geom,
+                             n_alpha, n_beta, alpha_w=W)
+        n2, d2 = cone_numden(c, ep_grid, sig_k, x_grid, ep_grid, p["k"], geom,
+                             n_alpha, n_beta)
+        num[i], den[i] = n1 + n2, d1 + d2
+    return np.where(den > 0, num / np.maximum(den, 1e-300), 1.0)
 
 
 def cone_excess(cz, sigma_deg, x_grid, ep_grid, p, geom, n_alpha=44, n_beta=18):
@@ -361,23 +406,24 @@ def build(out="offaxis_excess.npz"):
     print("[2/3] curved-atmosphere slant-depth table X_slant(h,psi) ...")
     geom = slant_depth_table(_RHO)
 
-    print("[3/3] off-axis excess (flavour-independent pion cone) ...")
-    from kinematic_kernel import channel_shapes, muon_shape
+    print("[3/3] off-axis excess (sampled pion kernel + Gaussian kaon term) ...")
+    from kinematic_kernel import muon_shape
 
-    sig_pi = channel_shapes(ep_grid)["pi"]
     cz = np.round(np.arange(0.05, 1.0, 0.1), 2)  # Honda-style bin centres
-    E_off = cone_excess(cz, sig_pi, x_grid, ep_grid, p, geom)
+    E_off = offaxis_excess(cz, x_grid, ep_grid, p, geom)
     # NA61 +-12% pion-angle variants -> nuisance-parameter Jacobian for the
     # engine's covariance (sigma_pi_NA61 pull, see mceq3d_flux.solve).
     print("      +-12% NA61 sigma variants (covariance pull) ...")
-    E_hi = cone_excess(cz, sig_pi * 1.12, x_grid, ep_grid, p, geom)
-    E_lo = cone_excess(cz, sig_pi * 0.88, x_grid, ep_grid, p, geom)
+    E_hi = offaxis_excess(cz, x_grid, ep_grid, p, geom, sigma_scale=1.12)
+    E_lo = offaxis_excess(cz, x_grid, ep_grid, p, geom, sigma_scale=0.88)
     # Muon-calibration closure: the same off-axis factor evaluated with the
     # muon angular kernel must be ~1 in daemonflux's calibration region
     # (E_mu >~ 5 GeV), otherwise folding E_off onto the muon-calibrated base
     # would break the muon/neutrino consistency the calibration relies on.
     sig_mu = muon_shape(ep_grid)
-    E_mu = cone_excess(np.array([0.05, 0.95]), sig_mu, x_grid, ep_grid, p, geom)
+    E_mu = cone_excess(
+        np.array([0.05, 0.95]), sig_mu, x_grid, ep_grid, p["tot"], geom
+    )
     print("      muon closure E_off_mu (horizon, vertical):")
     for E in (5.0, 10.0, 30.0):
         ie = int(np.argmin(abs(ep_grid - E)))

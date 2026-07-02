@@ -90,9 +90,10 @@ def test_hybrid_weight_blend():
     """hybrid base blend: GSF-MCEq below ~0.8 GeV, daemonflux above."""
     from mceq3d_flux import hybrid_weight
 
-    e = np.array([0.1, 0.8, 10.0, 100.0])
+    e = np.array([0.1, 1.7, 10.0, 100.0])
     w = hybrid_weight(e)
     assert w[0] < 0.03  # sub-GeV: data-anchored (GSF) MCEq base
-    assert abs(w[1] - 0.5) < 1e-12  # centre of the one-octave transition
-    assert w[2] > 0.997 and w[3] > 0.999  # >~ GeV: muon-calibrated daemonflux
+    # centre = daemonflux calibration floor mapped to nu (5 GeV / ~3)
+    assert abs(w[1] - 0.5) < 1e-12
+    assert w[2] > 0.99 and w[3] > 0.999  # >~ GeV: muon-calibrated daemonflux
     assert np.all(np.diff(hybrid_weight(np.geomspace(0.1, 100, 50))) > 0)

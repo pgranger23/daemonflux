@@ -20,13 +20,11 @@ from __future__ import annotations
 import numpy as np
 
 import offaxis_mc as ox
-from kinematic_kernel import channel_shapes
-
 CZ = np.array([0.05, 0.55])
 
 
-def _eoff(x_grid, ep_grid, p, geom, sig, n_alpha=44, n_beta=18):
-    return ox.cone_excess(CZ, sig, x_grid, ep_grid, p, geom, n_alpha, n_beta)
+def _eoff(x_grid, ep_grid, p, geom, n_alpha=44, n_beta=18):
+    return ox.offaxis_excess(CZ, x_grid, ep_grid, p, geom, n_alpha, n_beta)
 
 
 def _maxdev(a, b, e, lo=0.2, hi=10.0):
@@ -39,22 +37,21 @@ def main():
     x0, e0, p0, dm = ox.production_profile()
     ox._RHO = ox._rho_of_h(dm)
     geom = ox.slant_depth_table(ox._RHO)
-    sig = channel_shapes(e0)["pi"]
-    ref = _eoff(x0, e0, p0, geom, sig)
+    ref = _eoff(x0, e0, p0, geom)
 
     print("[1] zenith-dependence of p(X,E):")
     for th in (60.0, 85.0):
         xg, eg, pg, _ = ox.production_profile(theta_deg=th)
-        dev = _maxdev(ref, _eoff(xg, eg, pg, geom, sig), e0)
+        dev = _maxdev(ref, _eoff(xg, eg, pg, geom), e0)
         print(f"    theta={th:4.0f} deg : max |dE_off/E_off| = {dev * 100:.1f}%")
 
     print("[2] rigidity-cutoff dependence of p(X,E):")
     xg, eg, pg, _ = ox.production_profile(rc_cut_gv=11.3)
-    dev = _maxdev(ref, _eoff(xg, eg, pg, geom, sig), e0)
+    dev = _maxdev(ref, _eoff(xg, eg, pg, geom), e0)
     print(f"    R_c=11.3 GV : max |dE_off/E_off| = {dev * 100:.1f}%")
 
     print("[3] cone-quadrature convergence:")
-    dev = _maxdev(ref, _eoff(x0, e0, p0, geom, sig, n_alpha=88, n_beta=36), e0)
+    dev = _maxdev(ref, _eoff(x0, e0, p0, geom, n_alpha=88, n_beta=36), e0)
     print(f"    (n_alpha,n_beta) x2 : max |dE_off/E_off| = {dev * 100:.2f}%")
     print("done. (Compare against the NA61 kernel systematic, +-8% sub-GeV.)")
 

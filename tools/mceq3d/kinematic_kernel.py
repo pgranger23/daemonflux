@@ -131,6 +131,57 @@ def muon_shape(e_query, n=6_000_000, seed=2, primary="H3a", moments=None):
     return _sigma_powerlaw(e_mu, th2, w, e_query)
 
 
+def pion_alpha_pdf(e_grid, alpha_deg, n=3_000_000, seed=4, scale=1.0,
+                   kernels="k_spliced.npz", primary="H3a", floor=800):
+    """Sampled nu angular distribution W[nE, n_alpha] from the generator's full
+    (x_L, theta) pion kernel + exact pi->mu nu decay (no Gaussian assumption).
+
+    Cells of the 2D kernel are sampled with H3a-flux-weighted projectile rows,
+    the decay is exact two-body, and the hadronic and decay angles are combined
+    on the sphere with a random azimuth. Rows are per-``e_grid`` energy
+    histograms over ``alpha_deg`` (weights include the measure); rows with fewer
+    than ``floor`` samples are zeroed (the cone then falls back to the Gaussian
+    second-moment kernel). ``scale`` stretches the angles (NA61 +-12% pull)."""
+    import crflux.models as crf
+
+    d = dict(np.load(kernels))
+    pe, xe, te, K = d["proj_energies"], d["xl_edges"], d["theta_edges"], d["kernel"]
+    pm = crf.HillasGaisser2012(primary)
+    wrow = pm.tot_nucleon_flux(pe) * pe  # flux weight per projectile row
+    prob = K * wrow[:, None, None]
+    prob = (prob / prob.sum()).ravel()
+    rng = np.random.default_rng(seed)
+    idx = rng.choice(prob.size, size=n, p=prob)
+    ip, ix, it = np.unravel_index(idx, K.shape)
+    u1, u2 = rng.random(n), rng.random(n)
+    x = xe[ix] + u1 * (xe[ix + 1] - xe[ix])
+    th_had = np.deg2rad(te[it] + u2 * (te[it + 1] - te[it]))
+    e_mes = np.maximum(x * pe[ip], 0.15)
+    ct = rng.uniform(-1, 1, n)
+    gamma = e_mes / M_PI
+    e_nu = gamma * ESTAR_PI * (1 + ct)
+    th_dec = np.arctan2(np.sin(np.arccos(ct)), gamma * (ct + 1.0))
+    phi = rng.uniform(0, 2 * np.pi, n)  # random relative azimuth on the sphere
+    cth = np.cos(th_had) * np.cos(th_dec) - np.sin(th_had) * np.sin(th_dec) * np.cos(
+        phi
+    )
+    th = np.degrees(np.arccos(np.clip(cth, -1, 1))) * scale
+    # histogram per e_grid point (nearest in log E) over the alpha grid
+    ae = np.concatenate([[0.0], 0.5 * (alpha_deg[1:] + alpha_deg[:-1]), [180.0]])
+    le = np.log(e_grid)
+    edges = np.concatenate(
+        [[-np.inf], 0.5 * (le[1:] + le[:-1]), [np.inf]]
+    )
+    ie = np.searchsorted(edges, np.log(np.maximum(e_nu, 1e-9))) - 1
+    W = np.zeros((len(e_grid), len(alpha_deg)))
+    for k in range(len(e_grid)):
+        m = ie == k
+        if m.sum() < floor:
+            continue  # thin statistics -> Gaussian fallback in the cone
+        W[k], _ = np.histogram(th[m], bins=ae)
+    return W
+
+
 def channel_fractions(e_query, flavour="numu", cache="channel_fractions.npz"):
     """Energy-dependent flux fractions f_pi, f_k, f_mu from MCEq (cached).
 

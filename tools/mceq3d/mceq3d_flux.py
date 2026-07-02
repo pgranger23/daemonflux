@@ -16,11 +16,12 @@ Construction (each factor trusted / validated)
   ``Phi_3D/Phi_1D`` (:meth:`offaxis_factor`, ``offaxis=True``): the complete
   genuine-3D/1D ratio that both redistributes flux in zenith and produces the
   sub-GeV near-horizon excess (horizon/vertical ~1.8 at 0.3 GeV). Built in
-  `offaxis_mc.py` from MCEq depth-resolved production, curved-atmosphere geometry,
-  and decay-kinematics production angles per nu_mu channel (cone for the collimated
-  direct pi/K; near-isotropic muon-decay as a flat pedestal), with MCEq channel
-  fractions. **No reference flux is used**; validated to reproduce Honda and Bartol
-  to their mutual ~5-15%. ->1 at high E and at the vertical. Off (=1) by default.
+  `offaxis_mc.py` from MCEq per-parent depth-resolved production (pi-geometry +
+  kaon term), the curved-atmosphere slant geometry, and the **sampled** angular
+  distribution from the generator's (x_L, theta) pion kernel folded with exact
+  decay (Gaussian sigma_K for the kaon term). **No reference flux is used**;
+  validated to reproduce Honda and Bartol (numu and nue) to their mutual ~5-15%.
+  ->1 at high E and at the vertical. Off (=1) by default.
 * **G_s(E, R_c)** -- the geomagnetic suppression = ``MCEq(primary cut at R_c) /
   MCEq(full)``, the **cascade-correct** response to removing sub-cutoff primaries
   (NO ``x_eff`` hack); ~zenith-independent, interpolated on a small R_c grid.
@@ -142,6 +143,7 @@ class MCEq3DFlux:
         atmosphere=None,
         base_model="mceq",
         daemonflux_location="generic",
+        hybrid_e0=1.7,
     ):
         """``atmosphere`` is an MCEq ``density_model`` tuple. Default ``None`` keeps
         MCEq's realistic **CORSIKA US-Standard** layered profile (NOT the isothermal
@@ -158,6 +160,15 @@ class MCEq3DFlux:
         import mceq_config as config
 
         self.base_model = base_model
+        # hybrid-blend centre [GeV]. Physics window: bounded above by the
+        # daemonflux muon-calibration floor mapped to neutrinos
+        # (E_mu >= 5 GeV -> E_nu ~ E_mu/3 ~ 1.7 GeV, above which the muon
+        # calibration fully constrains the flux) and below by where the
+        # GSF-anchored MCEq base is validated (~0.15 GeV). The delivered
+        # ratios are insensitive to E0 within this window (<=6% below 1 GeV,
+        # scan in docs); the default 1.7 GeV IS the derived calibration floor
+        # (fixed before the scan) -- NOT tuned to any reference.
+        self._hybrid_e0 = float(hybrid_e0)
         # identity for the G_s disk cache (G_s depends only on these + rc_grid, cz_ref)
         self._tag = (
             f"{interaction_model}_{primary[0]}-{primary[1]}_emin{e_min:g}"
@@ -233,7 +244,7 @@ class MCEq3DFlux:
             # references in complementary domains (GSF-MCEq 0.15-0.5 GeV,
             # daemonflux >=1 GeV), so the blend tracks the better one.
             df = self._base_daemonflux(cos_zeniths)
-            w = hybrid_weight(self.e)
+            w = hybrid_weight(self.e, e0=self._hybrid_e0)
             for s in SPECIES:
                 out[s] = (1.0 - w)[None, :] * out[s] + w[None, :] * df[s]
         return out
@@ -395,8 +406,14 @@ class MCEq3DFlux:
         def ff(f0, z_over_a):
             phi = z_over_a * phi_gv
             lo = np.log(np.maximum(f0, 1e-300))
-            shifted = np.exp(np.interp(np.log(E + phi), np.log(E), lo))
-            jac = (E * (E + 2 * m_n)) / ((E + phi) * (E + phi + 2 * m_n))
+            # Negative phi = DE-modulation (e.g. to a solar-minimum epoch):
+            # E+phi can drop below the grid; clip to the grid floor. This is
+            # harmless for the neutrino flux: sub-threshold primaries
+            # (E_kin below the single-pion production threshold ~0.29 GeV)
+            # cannot produce the E_nu >= 0.1 GeV flux modelled here.
+            es = np.clip(E + phi, E[0], None)
+            shifted = np.exp(np.interp(np.log(es), np.log(E), lo))
+            jac = (E * (E + 2 * m_n)) / (es * (es + 2 * m_n))
             return shifted * jac
 
         p = self._phi0_std[self._p_sl]
@@ -897,12 +914,14 @@ def _interp_rc(rc, rc_grid, gmat):
     return (1.0 - w) * gmat[j - 1] + w * gmat[j]
 
 
-def hybrid_weight(e, e0=0.8):
+def hybrid_weight(e, e0=1.7):
     """Daemonflux weight w(E) of the ``base_model="hybrid"`` blend.
 
     Smooth one-octave log-transition centred at ``e0`` [GeV]: w->0 below (the
-    GSF-anchored MCEq base, best 0.15-0.5 GeV vs the 3D references), w->1 above
-    (the muon-calibrated daemonflux base, best >~1 GeV); w(e0)=0.5.
+    GSF-anchored MCEq base), w->1 above (the muon-calibrated daemonflux base);
+    w(e0)=0.5. Default e0=1.7 GeV is the daemonflux muon-calibration floor
+    (E_mu >= 5 GeV per its README) mapped to neutrinos via E_nu ~ E_mu/3 --
+    a physics-derived choice, not a fit to any reference.
     """
     return 0.5 * (1.0 + np.tanh(np.log(np.asarray(e, float) / e0) / np.log(2.0)))
 

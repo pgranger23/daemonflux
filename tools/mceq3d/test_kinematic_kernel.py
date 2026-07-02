@@ -54,3 +54,16 @@ def test_channel_fractions_physics():
     assert fr_e["mu"][0] > 0.9
     # the nu_mu muon-decay fraction falls with energy
     assert fr_mu["mu"][0] > fr_mu["mu"][-1]
+
+
+def test_pion_alpha_pdf_physics():
+    """Sampled (kernel x decay) angular distribution: normalisable, wide sub-GeV,
+    narrow (or Gaussian-fallback) at high energy."""
+    a = np.linspace(0.5, 89.0, 44)
+    W = kk.pion_alpha_pdf(np.array([0.3, 1.0]), a, n=300_000)
+    assert np.all(W >= 0)
+    assert W[0].sum() > 0 and W[1].sum() > 0
+    m03 = (W[0] / W[0].sum() * a).sum()
+    m10 = (W[1] / W[1].sum() * a).sum()
+    assert 15.0 < m03 < 60.0  # sub-GeV: tens of degrees
+    assert m10 < 0.5 * m03  # falls quickly with energy

@@ -1145,7 +1145,19 @@ Kernel regeneration on a cluster: see `KERNEL_GENERATION.md`.
    all zeniths, 0.14–10 GeV** (νe vertical 0.3 GeV: 1.11 vs 1.64 with the
    daemonflux base alone). E_off tag: primary mismatch now warns (ratio is
    primary-insensitive); interaction-model mismatch still raises.
-9. (If ever needed) full-shape high-stat kernels + S_N yield transport — shown
+9. ~~Sampled-kernel cone + kaon parent~~ **done**: `pion_alpha_pdf` samples the
+   full (x_L, θ) generator kernel + exact decay (Gaussian only as thin-stats
+   fallback); `offaxis_excess` combines per-parent MCEq depth profiles
+   (non-K at pion geometry + kaon term at σ_K). Validation shifts within the
+   reference spread (0.3 GeV horizon 0.99/0.98 vs Honda for νμ/νe).
+10. ~~Physics-derived hybrid crossover~~ **done**: E0=1.7 GeV (daemonflux 5 GeV
+   muon floor × E_ν/E_μ≈1/3, fixed before scanning); E0-scan sensitivity ≤6%
+   below 1 GeV, derived value equal-or-better everywhere (1 GeV: +9%→+2%).
+11. ~~Negative-φ de-modulation~~ **done** (`_modulate_phi0` clips sub-threshold
+   shifts; S(−0.35 GV)=1.13 at 0.3 GeV) — exact solar-min epoch matching.
+   ~~Seasonal check~~ **done**: MSIS00 Tokyo Jan/Jul vertical νμ ratio
+   0.997–0.998 (≲0.3%, negligible for neutrinos).
+12. (If ever needed) full-shape high-stat kernels + S_N yield transport — shown
    *not* required for the angular spread.
 
 ---
