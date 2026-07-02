@@ -169,6 +169,7 @@ def cutoff_map(
     r_lo=0.5,
     r_hi=20.0,
     n_scan=16,
+    return_admittance=False,
     **kw,
 ):
     """Full-IGRF cutoff [GV] on a (zenith x azimuth) sky grid for a site.
@@ -176,6 +177,13 @@ def cutoff_map(
     All directions and rigidities are batched into a single vectorized
     back-trace (ppigrf's per-call overhead is amortized), so a coarse sky map is
     a few minutes rather than hours.
+
+    ``return_admittance``: also return ``(rs, A)`` -- ``rs`` the rigidity scan
+    grid [GV] (high->low) and ``A[n_zen, n_az, n_scan]`` the **penumbral
+    admittance** (allowed fraction, 0/1 per traced rigidity). Collapsing A to the
+    highest forbidden rigidity gives the single cutoff ``out``; keeping A whole
+    preserves the penumbra (e.g. allowed islands below the main forbidden band)
+    that the analytic erf step cannot represent.
     """
     if m_hat is None:
         m_hat = dipole_axis()
@@ -201,6 +209,10 @@ def cutoff_map(
             r_lo
             if len(forb) == 0
             else (r_hi if forb[0] == 0 else 0.5 * (rs[forb[0] - 1] + rs[forb[0]]))
+        )
+    if return_admittance:
+        return out, rs, allowed.astype(float).reshape(
+            len(zeniths), len(azimuths), n_scan
         )
     return out
 
