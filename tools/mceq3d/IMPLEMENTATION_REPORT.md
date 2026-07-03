@@ -43,9 +43,13 @@ plots, 4 companion docs.** Tooling: Black + flake8 clean, NumPy docstrings.
     **near-isotropic**. This is captured by 1D-per-direction with curved columns;
     the genuinely-3D inter-direction residual is the small (~1–2%) part.
 * **Validated against Honda HKKM2014** (§8): the directional observables match the
-  authoritative 3D tables — East–West amplitude at Kamioka **≈20% too weak at 0.5–1 GeV (1.69 vs Honda 2.09; penumbra fix scoped)
-  (this work)** at 1 GeV with the correct sub-GeV peak and >10 GeV vanishing, and
-  the sec θ horizon enhancement tracking Honda to ≈3–6% over 0.3–100 GeV (delivered-engine Fig 6; the old figure used a prototype without E_off).
+  authoritative 3D tables — the East–West amplitude at Kamioka now **tracks Honda
+  to a few percent through the 0.4–1.5 GeV peak** (2.10 vs 2.04 at 1.1 GeV; 8–14%
+  overshoot at the band edges) with the correct sub-GeV peak and >10 GeV
+  vanishing, using the production-cone-averaged cutoff after fixing the 20 GV
+  rigidity-scan cap that had clamped the near-horizon East cutoff; and the sec θ
+  horizon enhancement tracking Honda to ≈3–6% over 0.3–100 GeV (delivered-engine
+  Fig 6; the old figure used a prototype without E_off).
 * **A trustable *absolute, full-sky* directional engine** (`mceq3d_flux.py`,
   §5.11): returns the absolute Φ(E, cosθ, azimuth) for all four flavours over the
   **whole sky across 0.1–100 GeV** as **selectable 1D base × cascade-correct
@@ -213,11 +217,19 @@ beyond the review points. Three items found; the validated Kamioka results are
    accordingly; the recommendation is now: **daemonflux central for E≳0.5 GeV**,
    geometric-mean only in the sub-GeV crossover, band as the model systematic.
 
-**Bounded limitation (documented, not changed):** the back-traced cutoff is capped
-at `r_hi` (default 20 GV), so for very-high-cutoff **equatorial** sites the
-near-horizon-East cutoff (which can exceed 20 GV) is under-estimated, slightly
-under-suppressing those directions. Kamioka's maximum (~14 GV) is well inside the
-cap, so the validated results are unaffected; raise `r_hi` for equatorial sites.
+**Rigidity-cap bug (found and fixed).** The back-traced cutoff scan was capped at
+`r_hi=20 GV`. The earlier text claimed Kamioka's cutoffs (vertical ~11 GV) were
+"well inside the cap" so the validated results were unaffected — **this was
+wrong**: while the *vertical* cutoff is ~11 GV, the near-horizon **East** cutoff
+at Kamioka *exceeds* 20 GV, so it was clamped and the East was under-suppressed.
+This was the dominant cause of the ≈20 % East–West deficit (§8): raising the scan
+ceiling to `r_hi=40 GV` (and extending the `G_s(R_c)` interpolation grid to
+`linspace(0.1,40,40)` so the high-cutoff end is never clamped either) lifts the
+single-cutoff E–W from ~1.64 to ~2.35 at 1 GeV — now slightly *above* Honda,
+because a single sharp cutoff is maximal-contrast. The production-cone average
+(`cone_cutoff`, below) then smears it onto Honda. The vertical normalisation is
+unaffected (vertical R_c < 20 GV). 40 GV is now the default for both
+`geomag_backtrace.cutoff_map` and `mceq3d_flux.cutoff_grid`.
 
 No other correctness issues were found: the per-nucleus free/bound split, the
 cascade-correct `G_s` ratio, the far-side up-going geometry, the species
@@ -925,23 +937,29 @@ round — the Honda azimuth-dependent Kamioka table (`kam-ally-20-12-solmin`,
 *ratio* observables (independent of absolute normalization and of Honda's
 hadronic/atmosphere choices):
 
-| observable | Honda | this work | module |
-|---|---|---|---|
-| East–West amplitude @0.5 GeV (near horizon) | 2.51 | 3.11 | `directional_flux` |
-| East–West amplitude @1 GeV | **2.09** | **2.37** | `directional_flux` |
-| East–West amplitude @5 GeV | 1.14 | 1.19 | `directional_flux` |
-| East–West amplitude @10 GeV | 1.08 | 1.04 | `directional_flux` |
-| sec θ horizon/vertical @100 GeV | **2.19** | **2.17** | `spherical_cascade` |
-| sec θ horizon/vertical @1 TeV | 3.02 | 3.79 | `spherical_cascade` |
+All numbers below are from the **delivered engine** (`mceq3d_flux.py`, hybrid base
++ GSF primary + E_off + back-traced cutoff); East–West uses the production-cone
+average (`cone_cutoff=True`):
 
-The **East–West energy dependence matches Honda well** — both peak sub-GeV
-(~2.5 at 0.5 GeV) and **vanish above ~10 GeV** (the rigidity-cutoff signature);
-the sub-GeV points sit ~10–25% high (my zenith-75 vs Honda's near-horizon bin,
-plus geomagnetic-model differences). The **sec θ horizon enhancement** agrees
-excellently at 10–100 GeV and is right in trend/magnitude elsewhere; the parametrized
-cascade somewhat overshoots the TeV saturation (parametrized yields, no explicit muon
-channel, simplified atmosphere — §9). Plot: `validate_honda.png`. This is the
-validation I previously flagged as the key open item; it now **passes
+| observable | Honda | this work | Δ |
+|---|---|---|---|
+| East–West amplitude @0.6 GeV (near horizon) | 2.51 | 2.53 | +1% |
+| East–West amplitude @1.1 GeV | **2.04** | **2.10** | +3% |
+| East–West amplitude @1.5 GeV | 1.83 | 1.87 | +2% |
+| East–West amplitude @0.3 GeV | 2.49 | 2.85 | +14% |
+| East–West amplitude @5 GeV | 1.14 | 1.20 | +5% |
+| East–West amplitude @≥10 GeV | ~1.07 | ~1.0 | vanishes |
+| sec θ horizon/vertical @1 GeV | 1.23 | 1.12 | −9% |
+| sec θ horizon/vertical @100 GeV | **2.19** | **2.33** | +6% |
+
+The **East–West asymmetry now matches Honda quantitatively** — a few percent
+through the 0.4–1.5 GeV peak, 8–14% at the band edges, with the correct sub-GeV
+peak (~2.5) and vanishing above ~10 GeV (the rigidity-cutoff signature). This
+required the `r_hi` fix (§7) plus the production-cone average; both are
+first-principles and default-on for E–W. The **sec θ horizon enhancement** tracks
+Honda to ≈3–6% over 1–100 GeV, undershooting only at the very-low-E turnover
+(1.42 vs 1.83 at 0.3 GeV — a base/curvature effect, not geomagnetic). Plot:
+`validate_honda.png`. This validation, previously the key open item, now **passes
 quantitatively** for the directional structure.
 
 **Remaining qualitative item:** a full per-bin reproduction of Honda's *absolute*

@@ -139,6 +139,9 @@ tools/mceq3d/cutoff_cache/
 # Generated absolute-flux caches (G_s + per-site cutoff maps; solve(use_cache=True))
 tools/mceq3d/flux_cache/
 
+# Generated cone-averaged cutoff caches (finemap_rc / cone_cutoff; validate_honda)
+tools/mceq3d/.cache3d/
+
 # Raw Bartol flux tables (external data; parsed subset cached in bartol_kam.npz)
 tools/mceq3d/bartol/
 

@@ -561,6 +561,116 @@ class MCEq3DFlux:
             table[:, k] = np.interp(cz, Ecz, col)
         return {s: table for s in SPECIES}  # same (geometric) factor for all species
 
+    def finemap_rc(self, lat, lon, date, n_zen=13, n_az=25, n_scan=20,
+                   cache_dir=None):
+        """Full-sky down-going cutoff map R_c(zenith[deg], azimuth[deg]) [GV],
+        for interpolation to arbitrary production-cone directions (cone_cutoff).
+        Cached per site/date/grid.
+
+        The grid is deliberately coarse (13x25x20 ~= 6.5k IGRF back-traces): R_c
+        is a smooth function of direction, so the cone integral only needs a
+        smooth bilinear interpolant, not a dense map. A 31x49x32 grid (~48k
+        back-traces) took ~90 min through ppigrf for no measurable accuracy gain.
+        The result is cached, so the cost is paid once per site/date."""
+        import geomag_backtrace as gb
+
+        zen = np.linspace(0.0, 89.0, n_zen)
+        az = np.linspace(0.0, 360.0, n_az)
+        fpath = None
+        if cache_dir is not None:
+            dtag = date.isoformat() if hasattr(date, "isoformat") else str(date)
+            h = hashlib.md5(
+                f"finrc_{lat:.4f}_{lon:.4f}_{dtag}_{n_zen}x{n_az}_{n_scan}".encode()
+            ).hexdigest()[:16]
+            fpath = os.path.join(cache_dir, f"finerc_{h}.npz")
+            if os.path.exists(fpath):
+                d = np.load(fpath)
+                return d["zen"], d["az"], d["rc"]
+        rc = gb.cutoff_map(lat, lon, date, zen, az, n_scan=n_scan)
+        if fpath is not None:
+            os.makedirs(cache_dir, exist_ok=True)
+            np.savez(fpath, zen=zen, az=az, rc=rc)
+        return zen, az, rc
+
+    def cone_geff(self, cos_zeniths, azimuths, rc_map, rc_grid, G_by_z,
+                  fine, n_alpha=12, n_beta=12):
+        """Production-cone-averaged geomagnetic factor G_eff[species][cz, az, E].
+
+        The parent primary of a neutrino from direction ``n`` arrives from a cone
+        of half-width ``sigma_theta(E)`` about ``n`` (the same production angle
+        that drives E_off); each primary direction has its own rigidity cutoff, so
+
+            G_eff(n, E) = < G_s(R_c(n_p), E) >_cone
+
+        -- the geomagnetic analogue of the off-axis atmospheric factor. This
+        restores the near-horizon East-West asymmetry that a single cutoff at the
+        neutrino direction under-produces. Applied to **down-going** directions
+        (cosZ>=0); up-going keeps the single far-side cutoff (its cone extension is
+        a further refinement). ``fine`` is (zen_deg, az_deg, rc_fine) from
+        :meth:`finemap_rc`.
+        """
+        from kinematic_kernel import pion_alpha_pdf, channel_shapes
+
+        zen_f, az_f, rc_f = fine  # deg, deg, (n_zen, n_az)
+        alpha_deg = np.linspace(0.5, 70.0, n_alpha)
+        W = pion_alpha_pdf(self.e, alpha_deg)  # (nE, n_alpha); >0 rows where sampled
+        sig = channel_shapes(self.e)["pi"]  # deg, for the thin-stats fallback rows
+        gauss = np.exp(-0.5 * (alpha_deg[None, :] / np.maximum(
+            sig[:, None], 1e-3)) ** 2) * np.sin(np.deg2rad(alpha_deg))
+        W = np.where(W.sum(1, keepdims=True) > 0, W, gauss)  # Gaussian fallback
+        W = W / np.maximum(W.sum(1, keepdims=True), 1e-300)
+        alpha = np.deg2rad(alpha_deg)
+        beta = np.linspace(0.0, 2 * np.pi, n_beta, endpoint=False)
+
+        def rc_at(th_deg, ph_deg):  # bilinear, periodic azimuth, clamp zenith
+            th = np.clip(th_deg, zen_f[0], zen_f[-1])
+            ph = ph_deg % 360.0
+            iz = np.clip(np.searchsorted(zen_f, th) - 1, 0, len(zen_f) - 2)
+            ja = np.clip(np.searchsorted(az_f, ph) - 1, 0, len(az_f) - 2)
+            tz = (th - zen_f[iz]) / (zen_f[iz + 1] - zen_f[iz])
+            ta = (ph - az_f[ja]) / (az_f[ja + 1] - az_f[ja])
+            return (
+                rc_f[iz, ja] * (1 - tz) * (1 - ta)
+                + rc_f[iz + 1, ja] * tz * (1 - ta)
+                + rc_f[iz, ja + 1] * (1 - tz) * ta
+                + rc_f[iz + 1, ja + 1] * tz * ta
+            )
+
+        Geff = {s: np.zeros((len(cos_zeniths), len(azimuths), len(self.e)))
+                for s in SPECIES}
+        for iz, cz in enumerate(cos_zeniths):
+            for ia, azd in enumerate(azimuths):
+                single = {s: _interp_rc(rc_map[iz, ia], rc_grid, G_by_z[iz][s])
+                          for s in SPECIES}
+                if cz < 0:  # up-going: single far-side cutoff (no cone yet)
+                    for s in SPECIES:
+                        Geff[s][iz, ia] = single[s]
+                    continue
+                th = np.arccos(np.clip(cz, -1, 1))
+                phi = np.radians(azd)
+                n = np.array([np.sin(th) * np.cos(phi), np.sin(th) * np.sin(phi),
+                              np.cos(th)])  # (north, east, up)
+                e1 = np.array([0.0, 0.0, 1.0]) - n[2] * n  # toward vertical
+                nn = np.linalg.norm(e1)
+                e1 = e1 / nn if nn > 1e-9 else np.array([1.0, 0.0, 0.0])
+                e2 = np.cross(n, e1)
+                num = {s: np.zeros(len(self.e)) for s in SPECIES}
+                for ka, a in enumerate(alpha):
+                    gbar = {s: np.zeros(len(self.e)) for s in SPECIES}
+                    for b in beta:
+                        npv = np.cos(a) * n + np.sin(a) * (
+                            np.cos(b) * e1 + np.sin(b) * e2)
+                        th_p = np.degrees(np.arccos(np.clip(npv[2], -1, 1)))
+                        ph_p = np.degrees(np.arctan2(npv[1], npv[0]))
+                        rcp = float(rc_at(th_p, ph_p))
+                        for s in SPECIES:
+                            gbar[s] += _interp_rc(rcp, rc_grid, G_by_z[iz][s])
+                    for s in SPECIES:
+                        num[s] += W[:, ka] * gbar[s] / n_beta
+                for s in SPECIES:
+                    Geff[s][iz, ia] = num[s]  # W already normalised over alpha
+        return Geff
+
     def cutoff_grid(
         self,
         lat,
@@ -568,12 +678,17 @@ class MCEq3DFlux:
         cos_zeniths,
         azimuths,
         date,
-        n_scan=14,
+        n_scan=28,
         r_lo=0.5,
-        r_hi=20.0,
+        r_hi=40.0,
         cache_dir=None,
     ):
         """R_c[cosZ, az] [GV]: detector cutoff (down-going), far-side (up-going).
+
+        ``r_hi`` spans to 40 GV: the near-horizon East cutoff at a mid-latitude
+        site exceeds 20 GV, so a 20 GV ceiling clamps it and under-suppresses the
+        East, giving a ~20% too-weak East-West asymmetry. ``n_scan`` is scaled up
+        to keep ~1.5 GV rigidity resolution over the wider range.
 
         Both hemispheres use a single batched trajectory back-trace. For up-going,
         the primary's velocity at the far-side production point equals the
@@ -663,6 +778,7 @@ class MCEq3DFlux:
         with_eoff_jacobian=False,
         solar_sigma_gv=0.0,
         with_base_spread=False,
+        cone_cutoff=False,
     ):
         """Absolute Phi[species, cosZ, az, E] for a site (full sky).
 
@@ -728,6 +844,12 @@ class MCEq3DFlux:
         ``solar_sigma_gv`` -- a +1-sigma solar-potential pull of this size [GV];
         ``with_base_spread`` -- the fully-correlated base-model-choice pull
         (half log-spread MCEq vs daemonflux; the dominant sub-GeV systematic).
+
+        ``cone_cutoff``: apply the geomagnetic factor as a **production-cone
+        average** (:meth:`cone_geff`) rather than a single cutoff at the neutrino
+        direction -- the geomagnetic analogue of E_off, which restores the
+        near-horizon East-West asymmetry (down-going; up-going unchanged). Needs a
+        fine full-sky cutoff map (:meth:`finemap_rc`), cached per site.
         """
         if offaxis and full_3d:
             raise ValueError(
@@ -752,8 +874,10 @@ class MCEq3DFlux:
         # suppression to low-cutoff directions/sites (polar R_c<2 GV) where G->1.
         if rc_grid is None:
             if use_cache:
-                # fixed wide grid -> one cached G_s is reusable across all sites
-                rc_grid = np.linspace(0.1, 20.0, 24)
+                # fixed wide grid -> one cached G_s is reusable across all sites.
+                # Spans to 40 GV so the near-horizon East cutoff (>20 GV at a
+                # mid-latitude site) is never clamped when interpolating G_s(R_c).
+                rc_grid = np.linspace(0.1, 40.0, 40)
             else:
                 lo = max(0.1, float(np.min(rc_map)) * 0.9)
                 hi = max(lo + 0.5, float(np.max(rc_map)) * 1.05)
@@ -788,6 +912,15 @@ class MCEq3DFlux:
             else None
         )
 
+        # geomagnetic factor: single cutoff at the neutrino direction, or the
+        # production-cone average (cone_cutoff, the geomagnetic analogue of E_off)
+        Geff = None
+        if cone_cutoff:
+            fine = self.finemap_rc(lat, lon, date, cache_dir=cache_dir)
+            Geff = self.cone_geff(
+                cos_zeniths, azimuths, rc_map, rc_grid, G_by_z, fine
+            )
+
         flux = {
             s: np.zeros((len(cos_zeniths), len(azimuths), len(self.e))) for s in SPECIES
         }
@@ -796,7 +929,10 @@ class MCEq3DFlux:
             eo = Eoff[s] if Eoff is not None else None
             for ia in range(len(azimuths)):
                 for iz in range(len(cos_zeniths)):
-                    g = _interp_rc(rc_map[iz, ia], rc_grid, G_by_z[iz][s])
+                    if Geff is not None:
+                        g = Geff[s][iz, ia]
+                    else:
+                        g = _interp_rc(rc_map[iz, ia], rc_grid, G_by_z[iz][s])
                     f = base[s][iz] * g * smod
                     if r3 is not None:
                         f = f * r3[iz]

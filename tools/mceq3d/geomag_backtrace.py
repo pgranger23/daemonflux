@@ -167,12 +167,17 @@ def cutoff_map(
     m_hat=None,
     charge=+1,
     r_lo=0.5,
-    r_hi=20.0,
-    n_scan=16,
+    r_hi=40.0,
+    n_scan=32,
     return_admittance=False,
     **kw,
 ):
     """Full-IGRF cutoff [GV] on a (zenith x azimuth) sky grid for a site.
+
+    ``r_hi`` defaults to 40 GV: the near-horizon *East* cutoff at a mid-latitude
+    site exceeds the old 20 GV ceiling, and capping it there under-suppressed the
+    East and gave a ~20% too-weak East-West asymmetry. ``n_scan`` is raised to
+    keep ~1 GV rigidity resolution over the wider range.
 
     All directions and rigidities are batched into a single vectorized
     back-trace (ppigrf's per-call overhead is amortized), so a coarse sky map is

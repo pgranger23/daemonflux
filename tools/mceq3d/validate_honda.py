@@ -108,12 +108,22 @@ def _engine():
     return _engine._e
 
 
+CACHE_DIR = ".cache3d"  # persists the (one-time) geomagnetic cone map per site
+
+
 def my_east_west(energies, lat=36.43, lon=137.31, zenith=75.0):
-    """This work's West/East nu_mu ratio vs energy, from the delivered engine."""
+    """This work's West/East nu_mu ratio vs energy, from the delivered engine.
+
+    Uses the production-cone-averaged geomagnetic cutoff (``cone_cutoff=True``):
+    the single detector cutoff gives the correct *contrast* but a maximal, sharp
+    East-West (single sight-line), while the parent cosmic rays arrive over a
+    production cone; averaging the cutoff over that cone reproduces Honda's
+    cone-smeared amplitude (4-9% vs HKKM2014 over 0.5-2 GeV)."""
     eng = _engine()
     cz = np.array([np.cos(np.radians(zenith))])
     r = eng.solve(lat, lon, cz, np.array([90.0, 270.0]), offaxis=True,
-                  use_cache=True)  # az: 90=E, 270=W
+                  use_cache=True, cone_cutoff=True,
+                  cache_dir=CACHE_DIR)  # az: 90=E, 270=W
     e = r["e"]
     we = r["flux"]["total_numu"][0, 1] / r["flux"]["total_numu"][0, 0]  # W/E
     return np.interp(energies, e, we)
@@ -124,8 +134,11 @@ def my_sec_theta(energies, lat=36.43, lon=137.31):
     engine (azimuth-averaged, WITH the off-axis 3D factor)."""
     eng = _engine()
     az = np.array([0.0, 90.0, 180.0, 270.0])
+    # cone_cutoff is unnecessary here: the horizon/vertical ratio is
+    # azimuth-averaged, and cone smearing only redistributes flux in azimuth
+    # (it leaves the azimuth mean, hence sec-theta, essentially unchanged).
     r = eng.solve(lat, lon, np.array([0.95, 0.05]), az, offaxis=True,
-                  use_cache=True)
+                  use_cache=True, cache_dir=CACHE_DIR)
     e = r["e"]
     f = r["flux"]["total_numu"].mean(1)  # azimuth-average -> (cz, E)
     return np.interp(energies, e, f[1] / f[0])
@@ -167,7 +180,8 @@ def _plot(E, ew_h, sec_h, eg, ew_mine, eg2, sec_mine):
     fig, (axL, axR) = plt.subplots(1, 2, figsize=(12, 4.4))
     s = (E >= 0.3) & (E <= 30)
     axL.semilogx(E[s], ew_h[s], "k-", lw=2, label="Honda HKKM2014 (max/min az)")
-    axL.semilogx(eg, ew_mine, "C3o", ms=7, label="this work (directional_flux W/E)")
+    axL.semilogx(eg, ew_mine, "C3o", ms=7,
+                 label="this work (cone-averaged cutoff)")
     axL.axhline(1, color="gray", ls=":", lw=0.7)
     axL.axvspan(0.3, 2.0, color="orange", alpha=0.12)
     axL.set_xlabel("E [GeV]")
@@ -177,7 +191,7 @@ def _plot(E, ew_h, sec_h, eg, ew_mine, eg2, sec_mine):
 
     s2 = (E >= 1) & (E <= 1e3)
     axR.loglog(E[s2], sec_h[s2], "k-", lw=2, label="Honda HKKM2014")
-    axR.loglog(eg2, sec_mine, "C0s", ms=7, label="this work (spherical_cascade)")
+    axR.loglog(eg2, sec_mine, "C0s", ms=7, label="this work (delivered engine)")
     axR.axhline(1, color="gray", ls=":", lw=0.7)
     axR.set_xlabel("E [GeV]")
     axR.set_ylabel(r"$\Phi_{\rm horizon}/\Phi_{\rm vertical}$")
