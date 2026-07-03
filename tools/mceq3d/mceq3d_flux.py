@@ -576,24 +576,34 @@ class MCEq3DFlux:
 
         zen = np.linspace(0.0, 89.0, n_zen)
         az = np.linspace(0.0, 360.0, n_az)
+        dtag = date.isoformat() if hasattr(date, "isoformat") else str(date)
+        key = f"{lat:.4f}_{lon:.4f}_{dtag}_{n_zen}x{n_az}_{n_scan}"
+        # in-memory memo: with cone_cutoff now the default, this keeps repeated
+        # solve() calls in one session from rebuilding the map even without a disk
+        # cache_dir (the first call still pays the one-off back-trace).
+        memo = getattr(self, "_finemap_memo", None)
+        if memo is None:
+            memo = self._finemap_memo = {}
+        if key in memo:
+            return memo[key]
         fpath = None
         if cache_dir is not None:
-            dtag = date.isoformat() if hasattr(date, "isoformat") else str(date)
-            h = hashlib.md5(
-                f"finrc_{lat:.4f}_{lon:.4f}_{dtag}_{n_zen}x{n_az}_{n_scan}".encode()
-            ).hexdigest()[:16]
+            h = hashlib.md5(f"finrc_{key}".encode()).hexdigest()[:16]
             fpath = os.path.join(cache_dir, f"finerc_{h}.npz")
             if os.path.exists(fpath):
                 d = np.load(fpath)
-                return d["zen"], d["az"], d["rc"]
+                out = (d["zen"], d["az"], d["rc"])
+                memo[key] = out
+                return out
         rc = gb.cutoff_map(lat, lon, date, zen, az, n_scan=n_scan)
         if fpath is not None:
             os.makedirs(cache_dir, exist_ok=True)
             np.savez(fpath, zen=zen, az=az, rc=rc)
+        memo[key] = (zen, az, rc)
         return zen, az, rc
 
     def cone_geff(self, cos_zeniths, azimuths, rc_map, rc_grid, G_by_z,
-                  fine, n_alpha=12, n_beta=12):
+                  fine, n_alpha=12, n_beta=12, sigma_scale=1.0):
         """Production-cone-averaged geomagnetic factor G_eff[species][cz, az, E].
 
         The parent primary of a neutrino from direction ``n`` arrives from a cone
@@ -613,8 +623,11 @@ class MCEq3DFlux:
 
         zen_f, az_f, rc_f = fine  # deg, deg, (n_zen, n_az)
         alpha_deg = np.linspace(0.5, 70.0, n_alpha)
-        W = pion_alpha_pdf(self.e, alpha_deg)  # (nE, n_alpha); >0 rows where sampled
-        sig = channel_shapes(self.e)["pi"]  # deg, for the thin-stats fallback rows
+        # sigma_scale stretches the cone half-width (the NA61 +-12% pion-angle
+        # pull that drives E_off's sigma_pi_NA61) -- used to test whether that
+        # systematic spans the near-horizon E-W amplitude.
+        W = pion_alpha_pdf(self.e, alpha_deg, scale=sigma_scale)
+        sig = channel_shapes(self.e)["pi"] * sigma_scale  # thin-stats fallback rows
         gauss = np.exp(-0.5 * (alpha_deg[None, :] / np.maximum(
             sig[:, None], 1e-3)) ** 2) * np.sin(np.deg2rad(alpha_deg))
         W = np.where(W.sum(1, keepdims=True) > 0, W, gauss)  # Gaussian fallback
@@ -778,7 +791,8 @@ class MCEq3DFlux:
         with_eoff_jacobian=False,
         solar_sigma_gv=0.0,
         with_base_spread=False,
-        cone_cutoff=False,
+        cone_cutoff=True,
+        cone_sigma_scale=1.0,
     ):
         """Absolute Phi[species, cosZ, az, E] for a site (full sky).
 
@@ -845,11 +859,17 @@ class MCEq3DFlux:
         ``with_base_spread`` -- the fully-correlated base-model-choice pull
         (half log-spread MCEq vs daemonflux; the dominant sub-GeV systematic).
 
-        ``cone_cutoff``: apply the geomagnetic factor as a **production-cone
-        average** (:meth:`cone_geff`) rather than a single cutoff at the neutrino
-        direction -- the geomagnetic analogue of E_off, which restores the
-        near-horizon East-West asymmetry (down-going; up-going unchanged). Needs a
-        fine full-sky cutoff map (:meth:`finemap_rc`), cached per site.
+        ``cone_cutoff`` (default **True**): apply the geomagnetic factor as a
+        **production-cone average** (:meth:`cone_geff`) rather than a single cutoff
+        at the neutrino direction -- the geomagnetic analogue of E_off, and the
+        physically-required treatment (it restores the near-horizon East-West
+        asymmetry; Section 4.1). It needs a full-sky cutoff map
+        (:meth:`finemap_rc`), which is memoised on the instance and cached to
+        ``cache_dir`` per site/date, so the ~one-off back-trace cost is paid once.
+        Set ``cone_cutoff=False`` for the **fast single-cutoff approximation**
+        (adequate away from the horizon, where the cone average -> the single
+        cutoff). The up-going hemisphere keeps the single far-side cutoff either
+        way (its cone extension is a documented, not-yet-implemented refinement).
         """
         if offaxis and full_3d:
             raise ValueError(
@@ -918,7 +938,8 @@ class MCEq3DFlux:
         if cone_cutoff:
             fine = self.finemap_rc(lat, lon, date, cache_dir=cache_dir)
             Geff = self.cone_geff(
-                cos_zeniths, azimuths, rc_map, rc_grid, G_by_z, fine
+                cos_zeniths, azimuths, rc_map, rc_grid, G_by_z, fine,
+                sigma_scale=cone_sigma_scale,
             )
 
         flux = {

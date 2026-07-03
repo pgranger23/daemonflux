@@ -10,11 +10,17 @@ vertical (down-going), so the trustworthy energy range of each base is explicit:
 * raw MCEq (SIBYLL23D+H3a) runs ~25-30 % low over 0.3-10 GeV but is closer at
   0.1-0.2 GeV.
 
-The two bases **bracket Honda only below ~1 GeV** (daemonflux above, MCEq below) --
-there the geometric mean reproduces Honda to ~5 % and that band is the genuine
-irreducible sub-GeV uncertainty. Above ~1 GeV *both* bases lie below Honda
-(daemonflux closer, ~0.91), so the geometric mean is biased ~10-18 % low there and
-daemonflux should be used as the central value. Run::
+The recommended central is the **GSF-anchored hybrid** (GSF primary below the E0
+crossover, muon-calibrated daemonflux above), which reproduces Honda to ~1.0
+sub-GeV. The delivered **systematic band** is the half log-spread between this
+hybrid central and the (independently data-anchored) daemonflux base: +-14 % at
+0.5 GeV, +-15 % at 0.3 GeV, +-5 % at 1 GeV, collapsing to ~0 above the ~2 GeV
+crossover (where hybrid == daemonflux and the residual uncertainty is the
+muon-calibration covariance + hadronic-model spread). This replaces the earlier
+raw-H3a-MCEq <-> daemonflux band (+-31 % at 0.5 GeV), which inflated the sub-GeV
+uncertainty with a base -- the H3a-primary MCEq, ~25-30 % low over 0.3-10 GeV --
+that we explicitly recommend against. The legacy band is still printed for
+reference. Run::
 
     python base_comparison.py
 """
@@ -48,9 +54,17 @@ EGRID = np.array(
 )
 
 
-def _vertical_numu(base_model):
-    """Absolute numu at Kamioka vertical (down) = base(|cosZ|) * G(Rc), /(m2 s sr GeV)."""
-    eng = MCEq3DFlux(base_model=base_model, daemonflux_location="kamioka")
+def _vertical_numu(base_model, primary=None):
+    """Absolute numu at Kamioka vertical (down) = base(|cosZ|) * G(Rc), /(m2 s sr GeV).
+
+    ``primary`` selects the cosmic-ray primary model; the recommended hybrid base
+    uses the Global Spline Fit (``("GlobalSplineFitBeta", None)``), so it must be
+    passed here to reproduce the delivered configuration (the default H3a would
+    give the raw-MCEq sub-GeV deficit below the crossover)."""
+    kw = dict(base_model=base_model, daemonflux_location="kamioka")
+    if primary is not None:
+        kw["primary"] = primary
+    eng = MCEq3DFlux(**kw)
     e = eng.e
     base = eng.base(np.array([0.95]))["total_numu"][0]
     G, rg = eng.geomag_response(np.linspace(2.0, 20.0, 10))
@@ -90,6 +104,9 @@ def main():
 
     e_mc, f_mc = _vertical_numu("mceq")
     _, f_df = _vertical_numu("daemonflux")
+    # recommended central: the GSF-anchored hybrid (GSF primary below the E0
+    # crossover, muon-calibrated daemonflux above).
+    _, f_hy = _vertical_numu("hybrid", primary=("GlobalSplineFitBeta", None))
 
     h = dict(np.load("honda_kam.npz"))
     He, Hcz, nm = h["E"], h["czlo"], h["numu"]
@@ -99,16 +116,21 @@ def main():
         [np.exp(np.interp(np.log(E), np.log(He), np.log(hv))) for E in EGRID]
     )
 
-    # Model-spread systematic: the two bases bracket Honda, so their half-spread is
-    # a defensible, data-grounded flux uncertainty (large sub-GeV, small at high E).
-    central, sysfrac = model_envelope(f_mc, f_df)
+    # Model-spread systematic around the RECOMMENDED hybrid central: the half
+    # log-spread between the GSF-hybrid and the (independently data-anchored)
+    # daemonflux base. This replaces the old raw-H3a-MCEq <-> daemonflux spread,
+    # which inflated the sub-GeV band with a base we recommend against. The band
+    # collapses above the crossover (there hybrid == daemonflux); the residual
+    # uncertainty there is the muon-calibration covariance + hadronic-model spread.
+    central, sysfrac = f_hy, 0.5 * np.abs(np.log(f_df / f_hy))
+    _, oldsys = model_envelope(f_mc, f_df)  # legacy band (for reference)
 
     print("numu vertical (Kamioka):")
-    print("  E[GeV]   MCEq/Honda   daemonflux/Honda   central/Honda   ±syst")
-    for E, a, b, c, cen, sf in zip(EGRID, f_mc, f_df, f_h, central, sysfrac):
+    print("  E[GeV]  MCEq/H  df/H  hybrid/H  | band(old)  band(hybrid)")
+    for E, a, b, hy, c, sf, osf in zip(EGRID, f_mc, f_df, f_hy, f_h, sysfrac, oldsys):
         print(
-            f"  {E:6.2f}     {a / c:6.2f}        {b / c:6.2f}"
-            f"           {cen / c:6.2f}        {sf * 100:4.0f}%"
+            f"  {E:6.2f}  {a / c:5.2f}  {b / c:5.2f}   {hy / c:5.2f}"
+            f"    |   {osf * 100:4.0f}%       {sf * 100:4.0f}%"
         )
 
     import matplotlib
@@ -119,14 +141,18 @@ def main():
     fig, ax = plt.subplots(figsize=(7.2, 4.6))
     ax.axhspan(0.9, 1.1, color="0.85", label="±10 % of Honda")
     ax.axhline(1.0, color="k", lw=1)
-    lo = np.minimum(f_mc, f_df) / f_h
-    hi = np.maximum(f_mc, f_df) / f_h
+    # band around the recommended hybrid central: GSF-hybrid <-> daemonflux
+    lo = np.minimum(f_hy, f_df) / f_h
+    hi = np.maximum(f_hy, f_df) / f_h
     ax.fill_between(
-        EGRID, lo, hi, color="C2", alpha=0.2, label="model-spread systematic (envelope)"
+        EGRID, lo, hi, color="C2", alpha=0.2,
+        label="model-spread band (hybrid ↔ daemonflux)"
     )
-    ax.plot(EGRID, f_mc / f_h, "C0o-", label="MCEq base / Honda")
+    ax.plot(EGRID, f_mc / f_h, "C0o-", lw=1, alpha=0.6,
+            label="raw MCEq (H3a) / Honda")
     ax.plot(EGRID, f_df / f_h, "C3s-", label="daemonflux base / Honda")
-    ax.plot(EGRID, central / f_h, "C2--", lw=2, label="central (geom. mean)")
+    ax.plot(EGRID, central / f_h, "C2D-", lw=2,
+            label="recommended central (GSF-hybrid)")
     ax.set_xscale("log")
     ax.set_xlabel("E [GeV]")
     ax.set_ylabel(r"$\Phi_{\nu_\mu}$(this work) / Honda  (vertical)")

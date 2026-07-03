@@ -492,9 +492,13 @@ pytest test_geomag_backtrace.py test_muon_bending.py -q
     needed for the angular spread**. (`sn_transport.png`, demo `k_local_demo.npz`.)
 21. ~~Quantitative Honda 3D cross-check~~ **done** — `validate_honda.py` parses
     the Honda HKKM2014 azimuth-dependent Kamioka table and matches this work on
-    the directional observables: East–West amplitude 2.1 (Honda) vs 2.4 at 1 GeV
-    (both peak sub-GeV, vanish >10 GeV) and sec θ horizon enhancement 2.19 vs 2.17
-    at 100 GeV. (`validate_honda.png`.)
+    the directional observables: with the production-cone-averaged cutoff, at a
+    *matched* near-horizon zenith (cosZ 0.25, ~75°) the East–West amplitude sits
+    ≈11–14 % above Honda across 0.4–2 GeV (1.85 Honda vs 2.10 this work at
+    1.1 GeV; correct sign, peak, and >10 GeV vanishing), a systematic overshoot
+    growing toward the extreme horizon (out-of-sample zenith scan: ~6 % at 63° →
+    ~26 % at 87°, where the cone truncates at the limb); sec θ horizon
+    enhancement 2.19 vs 2.33 at 100 GeV. (`validate_honda.png`.)
 22. ~~Trustable absolute *full-sky* directional engine~~ **done** —
     `mceq3d_flux.py` returns the absolute Φ(E, cosθ, azimuth) for all 4 flavours
     over the whole sky to ~0.5 GeV as MCEq (curved) × cascade-correct geomag (no

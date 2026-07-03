@@ -43,13 +43,15 @@ plots, 4 companion docs.** Tooling: Black + flake8 clean, NumPy docstrings.
     **near-isotropic**. This is captured by 1D-per-direction with curved columns;
     the genuinely-3D inter-direction residual is the small (~1–2%) part.
 * **Validated against Honda HKKM2014** (§8): the directional observables match the
-  authoritative 3D tables — the East–West amplitude at Kamioka now **tracks Honda
-  to a few percent through the 0.4–1.5 GeV peak** (2.10 vs 2.04 at 1.1 GeV; 8–14%
-  overshoot at the band edges) with the correct sub-GeV peak and >10 GeV
-  vanishing, using the production-cone-averaged cutoff after fixing the 20 GV
-  rigidity-scan cap that had clamped the near-horizon East cutoff; and the sec θ
-  horizon enhancement tracking Honda to ≈3–6% over 0.3–100 GeV (delivered-engine
-  Fig 6; the old figure used a prototype without E_off).
+  authoritative 3D tables — the East–West amplitude at Kamioka, compared at a
+  **matched** near-horizon zenith (cosZ 0.25, ~75°), now sits **≈11–14% above
+  Honda** across 0.4–2 GeV (2.10 vs 1.85 at 1.1 GeV) — correct sign, peak and
+  >10 GeV vanishing, a systematic overshoot at the edge of the Honda–Bartol
+  spread — using the production-cone-averaged cutoff after fixing the 20 GV
+  rigidity-scan cap that had clamped the near-horizon East cutoff. An
+  out-of-sample zenith scan gives ≈6% at 63° growing to ≈26% at the extreme
+  horizon (cone-truncation limitation); and the sec θ horizon enhancement tracks
+  Honda to ≈3–6% over 1–100 GeV (delivered-engine Fig 6).
 * **A trustable *absolute, full-sky* directional engine** (`mceq3d_flux.py`,
   §5.11): returns the absolute Φ(E, cosθ, azimuth) for all four flavours over the
   **whole sky across 0.1–100 GeV** as **selectable 1D base × cascade-correct
@@ -939,28 +941,34 @@ hadronic/atmosphere choices):
 
 All numbers below are from the **delivered engine** (`mceq3d_flux.py`, hybrid base
 + GSF primary + E_off + back-traced cutoff); East–West uses the production-cone
-average (`cone_cutoff=True`):
+average (`cone_cutoff=True`), compared at a **matched** near-horizon zenith
+(cosZ 0.25, ~75°, both Honda and this work — not the earlier 75°-vs-horizon-bin
+mismatch):
 
 | observable | Honda | this work | Δ |
 |---|---|---|---|
-| East–West amplitude @0.6 GeV (near horizon) | 2.51 | 2.53 | +1% |
-| East–West amplitude @1.1 GeV | **2.04** | **2.10** | +3% |
-| East–West amplitude @1.5 GeV | 1.83 | 1.87 | +2% |
-| East–West amplitude @0.3 GeV | 2.49 | 2.85 | +14% |
-| East–West amplitude @5 GeV | 1.14 | 1.20 | +5% |
-| East–West amplitude @≥10 GeV | ~1.07 | ~1.0 | vanishes |
-| sec θ horizon/vertical @1 GeV | 1.23 | 1.12 | −9% |
+| East–West amplitude @0.6 GeV (zenith ~75°) | 2.23 | 2.53 | +13% |
+| East–West amplitude @1.1 GeV | **1.85** | **2.10** | +14% |
+| East–West amplitude @2.0 GeV | 1.46 | 1.66 | +14% |
+| East–West amplitude @0.3 GeV | 2.34 | 2.85 | +22% |
+| East–West amplitude @5 GeV | 1.13 | 1.20 | +6% |
+| East–West amplitude @≥10 GeV | ~1.0 | ~1.0 | vanishes |
+| sec θ horizon/vertical @1 GeV | 1.23 | 1.13 | −8% |
 | sec θ horizon/vertical @100 GeV | **2.19** | **2.33** | +6% |
 
-The **East–West asymmetry now matches Honda quantitatively** — a few percent
-through the 0.4–1.5 GeV peak, 8–14% at the band edges, with the correct sub-GeV
-peak (~2.5) and vanishing above ~10 GeV (the rigidity-cutoff signature). This
-required the `r_hi` fix (§7) plus the production-cone average; both are
-first-principles and default-on for E–W. The **sec θ horizon enhancement** tracks
-Honda to ≈3–6% over 1–100 GeV, undershooting only at the very-low-E turnover
-(1.42 vs 1.83 at 0.3 GeV — a base/curvature effect, not geomagnetic). Plot:
-`validate_honda.png`. This validation, previously the key open item, now **passes
-quantitatively** for the directional structure.
+The **East–West asymmetry** has the correct sign, peak and >10 GeV vanishing, and
+at matched zenith 75° sits ≈11–14% above Honda across 0.4–2 GeV (a systematic
+overshoot at the edge of the Honda–Bartol spread) — a large improvement over the
+pre-fix ≈14% deficit, from the `r_hi` fix (§7) plus the production-cone average,
+both first-principles and default-on. An **out-of-sample** zenith scan (bands not
+used in the diagnosis) gives ≈5–6% at 63° and ≈8–11% at 69°, the overshoot
+growing to ≈25–29% at the extreme horizon (87°) where the production cone
+truncates at the down-going limb (an understood, localised limitation, §9). The
+**sec θ horizon enhancement** tracks Honda to ≈3–6% over 1–100 GeV, undershooting
+only at the very-low-E turnover (1.48 vs 1.83 at 0.3 GeV — a base/curvature
+effect, not geomagnetic). Plot: `validate_honda.png`. The directional structure
+is validated; the E–W carries a documented, well-localised residual rather than
+exact agreement.
 
 **Remaining qualitative item:** a full per-bin reproduction of Honda's *absolute*
 flux would additionally require matching their hadronic model, primary spectrum,

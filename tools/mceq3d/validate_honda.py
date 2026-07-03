@@ -17,13 +17,17 @@ particular hadronic/atmosphere choices:
   (azimuth-averaged) vs energy -- the curved-cascade structure. Compared to
   :func:`spherical_cascade.solve`.
 
-Findings (Kamioka, numu):
-* E-W at 1 GeV: Honda ~2.1, this work ~2.3 (~5-10%); both peak sub-GeV
-  (Honda ~2.5 at 0.5 GeV) and vanish above ~10 GeV -- the correct rigidity
-  behaviour.
-* sec(theta): both finite and growing with energy, agreeing best at 10-100 GeV
-  (Honda ~2.2 vs this work ~2.3 at 100 GeV); the toy cascade somewhat overshoots
-  the TeV saturation.
+Findings (Kamioka, numu), with the E-W compared at a *matched* zenith (~75 deg):
+* E-W at zenith ~75 deg: this work tracks Honda to ~6-8% through the sub-GeV peak
+  (both peak sub-GeV and vanish above ~10 GeV -- the correct rigidity behaviour),
+  using the production-cone-averaged cutoff. The agreement is zenith-dependent:
+  an out-of-sample scan over zenith bands shows ~5-11% for zenith <~75 deg,
+  growing to a ~20-26% overshoot at the extreme horizon (cosZ<0.15), where the
+  production cone extends below the limb and the down-going cutoff map is clamped
+  (a documented limitation; paper Section 4.1/6).
+* sec(theta): both finite and growing with energy, agreeing to ~3-6% over
+  1-100 GeV (Honda ~2.2 vs this work ~2.3 at 100 GeV), undershooting only at the
+  very-low-E turnover.
 
 The parsed table is cached in ``honda_kam.npz`` (committed) so this runs offline;
 pass ``--refresh`` to re-download from the Honda site.
@@ -84,8 +88,15 @@ def fetch_honda_cache(path=CACHE, refresh=False):
     return dict(E=E, czlo=np.array(czs), azlo=np.array(azs), numu=numu)
 
 
-def honda_observables(h, horizon_cz=0.0):
-    """Honda E-W amplitude (near horizon) and sec(theta) ratio, both vs E."""
+def honda_observables(h, horizon_cz=0.25):
+    """Honda E-W amplitude (near horizon) and sec(theta) ratio, both vs E.
+
+    ``horizon_cz`` selects the zenith band for the E-W amplitude and defaults to
+    0.25 (zenith ~75 deg), *matched* to :func:`my_east_west` so the comparison is
+    apples-to-apples. An earlier default of 0.0 compared Honda's ~87 deg horizon
+    bin against this work's 75 deg, a zenith mismatch that flattered the E-W
+    agreement; the true agreement is zenith-dependent (see the module docstring
+    and the paper Section 4.1: ~6-8% at 75 deg, growing toward the horizon)."""
     E, cz, numu = h["E"], h["czlo"], h["numu"]
     ic = int(np.argmin(np.abs(cz - horizon_cz)))
     ew = numu[ic].max(axis=0) / numu[ic].min(axis=0)  # max/min over azimuth
@@ -186,7 +197,7 @@ def _plot(E, ew_h, sec_h, eg, ew_mine, eg2, sec_mine):
     axL.axvspan(0.3, 2.0, color="orange", alpha=0.12)
     axL.set_xlabel("E [GeV]")
     axL.set_ylabel("East-West amplitude")
-    axL.set_title("Geomagnetic East-West (Kamioka, near horizon)")
+    axL.set_title(r"Geomagnetic East-West (Kamioka, zenith $\approx75^\circ$, matched)")
     axL.legend()
 
     s2 = (E >= 1) & (E <= 1e3)

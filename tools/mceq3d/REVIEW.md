@@ -83,8 +83,12 @@ Worked through the action items in priority order:
   spliced; installed as the drop-in moments). See `KERNEL_PRODUCTION_REPORT.md`.
 * **(D) Honda cross-check — done.** `validate_honda.py` parses the Honda
   HKKM2014 azimuth-dependent Kamioka table and matches this work on the
-  directional observables: East–West 2.1 (Honda) vs 2.4 (this work) at 1 GeV
-  (both peak sub-GeV, vanish >10 GeV); sec θ horizon 2.19 vs 2.17 at 100 GeV.
+  directional observables: with the production-cone-averaged cutoff, at a
+  *matched* near-horizon zenith (cosZ 0.25, ~75°) the East–West amplitude sits
+  ≈11–14 % above Honda across 0.4–2 GeV (1.85 Honda vs 2.10 this work at
+  1.1 GeV; correct sign/peak/vanishing), a systematic overshoot growing toward
+  the extreme horizon (out-of-sample: ~6 % at 63° → ~26 % at 87°, cone truncates
+  at the limb); sec θ horizon 2.19 vs 2.33 at 100 GeV.
 * **(full-shape S_N) resolved** — real kernel shape ≡ same-variance Gaussian, so
   the variance-only FP input suffices (no full-shape kernel needed for the spread).
 * **Still open:** absolute per-bin Honda reproduction (needs their full setup);
