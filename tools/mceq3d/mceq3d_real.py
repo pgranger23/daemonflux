@@ -116,6 +116,92 @@ class MCEqCascade3D:
             out[i] = self.march(phi0_per_dir[i][None, :], nsteps, dX, rho_inv)[0]
         return out
 
+    def _h_of_rho(self):
+        """altitude(density) inverse [km], cached, for placing altitude checkpoints
+        along each slant path from its per-step density (=1/rho_inv)."""
+        hr = getattr(self, "_hr_cache", None)
+        if hr is None:
+            h = np.linspace(120.0, 0.0, 4000)
+            r = self.rho_h(h)  # ascending as h descends
+            order = np.argsort(r)
+            hr = self._hr_cache = (r[order], h[order])
+        return hr
+
+    def march_checkpoints(self, phi0_per_dir, zeniths_deg, dirs_the_phi, b_enu=None,
+                          n_check=16):
+        """Coupled curved cascade by **operator-splitting at common altitude
+        checkpoints**: each direction is marched with MCEq's stable fine steps
+        between checkpoints (so the near-horizon stability wall is avoided), and the
+        inter-direction **geomagnetic force** coupling is applied across directions
+        *at* each checkpoint (the charged-species blocks are rotated by the per-
+        direction path-length accumulated over the segment). With ``b_enu=None`` the
+        coupling is off and this reproduces :meth:`march_curved` (hence MCEq
+        per-zenith) exactly -- the correctness anchor. ``dirs_the_phi`` is the
+        (theta, phi) of each direction for the rotation."""
+        rr, hh = self._h_of_rho()
+        TH, PH = dirs_the_phi
+        nd = len(zeniths_deg)
+        # per-direction path + altitude per step + segment boundaries by altitude
+        paths, alts = [], []
+        for z in zeniths_deg:
+            ns, dX, ri = self.path(z)
+            paths.append((ns, dX, ri))
+            alts.append(np.interp(1.0 / ri, rr, hh))  # altitude [km] per step
+        h_top = min(a.max() for a in alts)
+        checks = np.linspace(h_top, 0.0, n_check + 1)[1:]  # descending targets
+        # step index in each path where altitude first drops below each checkpoint
+        seg_idx = []
+        for a in alts:
+            idx = [np.searchsorted(-a, -c) for c in checks]  # a descending
+            seg_idx.append([0] + [min(i, len(a)) for i in idx])
+
+        im, dm = self.mceq.int_m, self.mceq.dec_m
+        phi = np.array(phi0_per_dir, float)
+        dvec = np.stack([np.sin(TH) * np.cos(PH), np.sin(TH) * np.sin(PH),
+                         np.cos(TH)], -1)
+        e = self.e
+        for k in range(n_check):
+            seg_len = np.zeros(nd)  # path length [cm] of this segment per direction
+            for i in range(nd):
+                ns, dX, ri = paths[i]
+                a0, a1 = seg_idx[i][k], seg_idx[i][k + 1]
+                if a1 <= a0:
+                    continue
+                p = phi[i].copy()
+                for s in range(a0, a1):
+                    p = p + (im.dot(p) + dm.dot(ri[s] * p)) * dX[s]
+                phi[i] = p
+                seg_len[i] = np.sum(dX[a0:a1] * ri[a0:a1])  # g/cm2 * cm3/g = cm
+            if b_enu is not None:
+                phi = self._force_checkpoint(phi, dvec, b_enu, seg_len)
+        return phi
+
+    def _force_checkpoint(self, phi, dvec, b_enu, seg_len):
+        """Rotate the charged-species blocks by the Lorentz bending accumulated over
+        a checkpoint segment: angle[dir, E] = seg_len[dir] / r_g(E), r_g = R/(0.3 B),
+        R~E. Pull formulation: new[dir] = phi[nearest(dir back-rotated), E]."""
+        Bmag = np.linalg.norm(b_enu)
+        k = np.asarray(b_enu) / Bmag
+        e = self.e
+        r_g_cm = (e / (0.3 * Bmag)) * 1e5  # gyroradius [cm] for R[GV]~E, B[gauss]
+        out = phi.copy()
+        kv0 = np.cross(np.broadcast_to(k, dvec.shape), dvec)
+        kd0 = dvec @ k
+        for pdg, sign in CHARGED.items():
+            sl = self._slice(pdg)
+            block = phi[:, sl]  # (nd, dim)
+            for je in range(self.dim):
+                ang = sign * seg_len / max(r_g_cm[je], 1e-30)  # (nd,) per direction
+                if np.max(np.abs(ang)) < 1e-9:
+                    continue
+                # back-rotate every direction by its own angle, nearest source
+                ca, sa = np.cos(-ang)[:, None], np.sin(-ang)[:, None]
+                dr = (dvec * ca + kv0 * sa
+                      + np.broadcast_to(k, dvec.shape) * (kd0[:, None] * (1 - ca)))
+                idx = np.argmax(dr @ dvec.T, axis=1)
+                out[:, sl.start + je] = block[idx, je]
+        return out
+
 
 def _force_operator(casc, TH, PH, b_enu_gauss):
     """Return a per-step force callable that rotates the charged-species blocks of

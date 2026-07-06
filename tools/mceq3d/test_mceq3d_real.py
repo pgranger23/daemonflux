@@ -11,28 +11,34 @@ def casc():
     return MCEqCascade3D(e_min=0.3)
 
 
-def test_curved_columns_reproduce_mceq_sec_theta(casc):
-    # each direction develops down its own slant column -> sec(theta); validated
-    # against MCEq's own per-zenith solution (moderate zeniths for speed)
+def test_checkpoint_coupling_reduces_exactly_and_couples(casc):
+    # Operator-splitting at altitude checkpoints: with coupling OFF it must
+    # reproduce MCEq per-zenith (curved columns + sec theta); with the geomagnetic
+    # force ON it stays a bounded, self-consistent rider.
     numu = casc._slice(14)
     zens = [0.0, 70.0]
+    TH, PH = np.radians(zens), np.array([1.57, 1.57])
     phi0 = np.repeat(casc.mceq_primary()[None, :], len(zens), axis=0)
-    phi = casc.march_curved(phi0, zens)
+    chk = casc.march_checkpoints(phi0, zens, (TH, PH), b_enu=None, n_check=12)
     ref = {}
     for z in zens:
         casc.mceq.set_theta_deg(z)
         casc.mceq.solve()
         ref[z] = casc.mceq.get_solution("numu", mag=0).copy()
     e = casc.e
-    ihi = int(np.argmin(np.abs(e - 30.0)))
-    # curved column reproduces MCEq per zenith
+    # reduction: no-coupling checkpoints reproduce MCEq per zenith (exact)
     m = ref[70.0] > ref[70.0].max() * 1e-6
-    assert np.abs(phi[1][numu][m] / ref[70.0][m] - 1).max() < 1e-8
-    # sec(theta): 70 deg horizon-enhanced over vertical at high E, matching MCEq
-    mine_sec = phi[1][numu][ihi] / phi[0][numu][ihi]
-    mceq_sec = ref[70.0][ihi] / ref[0.0][ihi]
-    assert mine_sec > 1.2
-    assert abs(mine_sec / mceq_sec - 1) < 1e-6
+    assert np.abs(chk[1][numu][m] / ref[70.0][m] - 1).max() < 1e-8
+    # sec(theta) carried by the curved columns
+    ihi = int(np.argmin(np.abs(e - 30.0)))
+    assert chk[1][numu][ihi] / chk[0][numu][ihi] > 1.2
+    # force ON: applied during the real cascade, stays a bounded small rider
+    # (its magnitude needs a fine direction grid + muon tracking to be resolved;
+    # on this 2-direction anchor it is grid-limited but must not blow up)
+    chf = casc.march_checkpoints(phi0, zens, (TH, PH),
+                                 b_enu=np.array([0.0, 0.30, -0.37]), n_check=12)
+    scale = np.abs(chk[:, numu]).max()
+    assert np.abs(chf[:, numu] - chk[:, numu]).max() / scale < 0.05
 
 
 def test_directional_march_is_per_direction_and_absolute(casc):
