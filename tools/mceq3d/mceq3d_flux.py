@@ -132,6 +132,52 @@ def farside_production(lat, lon, cos_zenith, azimuth, h_prod_km=20.0):
     return lat_q, lon_q, cosz_q, az_q
 
 
+def farside_cutoff_map(
+    lat, lon, date, zeniths_deg, azimuths, n_scan=20, r_lo=0.5, r_hi=40.0, m_hat=None
+):
+    """Far-side (up-going) full-IGRF cutoff [GV] on a (zenith x azimuth) grid.
+
+    For each up-going zenith (deg, >90) the parent primary is produced on the
+    *opposite* limb and the neutrino travels straight through the Earth, so the
+    cutoff is a trajectory back-trace from the far-side production point ``Q`` with
+    ``u0 = -d`` (the neutrino direction) -- the global geomagnetic treatment used
+    for genuinely up-going arrivals in :meth:`MCEq3DFlux.cutoff_grid` and by
+    :func:`farside_production`. Factored out so the up-going hemisphere of the
+    production-cone map (:meth:`MCEq3DFlux.finemap_rc`) and the solve-grid cutoff
+    share one implementation, letting the cone map extend continuously across the
+    limb rather than clamp at the horizon.
+    """
+    import geomag_backtrace as gb
+
+    if m_hat is None:
+        m_hat = gb.dipole_axis()
+    rs = np.linspace(r_hi, r_lo, n_scan)
+    r0, u0, R, idx = [], [], [], []
+    for iz, zdeg in enumerate(zeniths_deg):
+        cz = float(np.cos(np.radians(zdeg)))
+        for ia, az in enumerate(azimuths):
+            latq, lonq, _, _ = farside_production(lat, lon, cz, az)
+            Q = (gb.RE + 20e3) * gb._local_frame(latq, lonq)[0]
+            d = gb.arrival_direction(lat, lon, zdeg, az)  # neutrino velocity
+            for Ri in rs:
+                r0.append(Q)
+                u0.append(-d)
+                R.append(Ri)
+            idx.append((iz, ia))
+    allowed = gb.backtrace_vec(
+        np.array(r0), np.array(u0), np.array(R), date, m_hat
+    ).reshape(len(idx), n_scan)
+    out = np.zeros((len(zeniths_deg), len(azimuths)))
+    for k, (iz, ia) in enumerate(idx):
+        forb = np.where(~allowed[k])[0]
+        out[iz, ia] = (
+            r_lo
+            if len(forb) == 0
+            else (r_hi if forb[0] == 0 else 0.5 * (rs[forb[0] - 1] + rs[forb[0]]))
+        )
+    return out
+
+
 class MCEq3DFlux:
     """Absolute directional flux engine (full sky: down-going + up-going)."""
 
@@ -562,22 +608,37 @@ class MCEq3DFlux:
         return {s: table for s in SPECIES}  # same (geometric) factor for all species
 
     def finemap_rc(self, lat, lon, date, n_zen=13, n_az=25, n_scan=20,
-                   cache_dir=None):
-        """Full-sky down-going cutoff map R_c(zenith[deg], azimuth[deg]) [GV],
-        for interpolation to arbitrary production-cone directions (cone_cutoff).
-        Cached per site/date/grid.
+                   cache_dir=None, full_sphere=True):
+        """Cutoff map R_c(zenith[deg], azimuth[deg]) [GV] for interpolation to
+        arbitrary production-cone directions (cone_cutoff). Cached per
+        site/date/grid.
 
-        The grid is deliberately coarse (13x25x20 ~= 6.5k IGRF back-traces): R_c
-        is a smooth function of direction, so the cone integral only needs a
-        smooth bilinear interpolant, not a dense map. A 31x49x32 grid (~48k
-        back-traces) took ~90 min through ppigrf for no measurable accuracy gain.
-        The result is cached, so the cost is paid once per site/date."""
+        With ``full_sphere=True`` (default) the map spans the **whole sphere**,
+        zenith 0->180: the down-going hemisphere (0-89 deg) is the detector cutoff
+        (:func:`geomag_backtrace.cutoff_map`), the up-going hemisphere (90-180 deg)
+        is the far-side/global cutoff (:func:`farside_cutoff_map`). This lets the
+        production cone of a near-horizon down-going neutrino extend **continuously
+        across the limb** instead of clamping at the horizon -- removing the E-W
+        overshoot that grew toward the horizon when the sub-limb part of the cone
+        was pinned to the sharp 89-deg down-going cutoff (paper 6-v). Set
+        ``full_sphere=False`` for the legacy down-going-only map.
+
+        The grid is deliberately coarse (R_c is smooth in direction, so the cone
+        integral only needs a smooth bilinear interpolant): 13x25 per hemisphere,
+        ~6.5k IGRF back-traces per hemisphere. The result is cached, so the cost is
+        paid once per site/date."""
         import geomag_backtrace as gb
 
-        zen = np.linspace(0.0, 89.0, n_zen)
+        zen_down = np.linspace(0.0, 89.0, n_zen)
         az = np.linspace(0.0, 360.0, n_az)
+        if full_sphere:
+            zen_up = np.linspace(90.0, 180.0, n_zen)
+            zen = np.concatenate([zen_down, zen_up])
+        else:
+            zen = zen_down
         dtag = date.isoformat() if hasattr(date, "isoformat") else str(date)
-        key = f"{lat:.4f}_{lon:.4f}_{dtag}_{n_zen}x{n_az}_{n_scan}"
+        sphtag = "sph" if full_sphere else "dn"
+        key = f"{lat:.4f}_{lon:.4f}_{dtag}_{n_zen}x{n_az}_{n_scan}_{sphtag}"
         # in-memory memo: with cone_cutoff now the default, this keeps repeated
         # solve() calls in one session from rebuilding the map even without a disk
         # cache_dir (the first call still pays the one-off back-trace).
@@ -595,7 +656,10 @@ class MCEq3DFlux:
                 out = (d["zen"], d["az"], d["rc"])
                 memo[key] = out
                 return out
-        rc = gb.cutoff_map(lat, lon, date, zen, az, n_scan=n_scan)
+        rc = gb.cutoff_map(lat, lon, date, zen_down, az, n_scan=n_scan)
+        if full_sphere:
+            rc_up = farside_cutoff_map(lat, lon, date, zen_up, az, n_scan=n_scan)
+            rc = np.concatenate([rc, rc_up], axis=0)
         if fpath is not None:
             os.makedirs(cache_dir, exist_ok=True)
             np.savez(fpath, zen=zen, az=az, rc=rc)
@@ -603,7 +667,8 @@ class MCEq3DFlux:
         return zen, az, rc
 
     def cone_geff(self, cos_zeniths, azimuths, rc_map, rc_grid, G_by_z,
-                  fine, n_alpha=12, n_beta=12, sigma_scale=1.0):
+                  fine, n_alpha=12, n_beta=12, sigma_scale=1.0, channel_cone=True,
+                  muon_bending=True, b_enu=None):
         """Production-cone-averaged geomagnetic factor G_eff[species][cz, az, E].
 
         The parent primary of a neutrino from direction ``n`` arrives from a cone
@@ -614,10 +679,39 @@ class MCEq3DFlux:
 
         -- the geomagnetic analogue of the off-axis atmospheric factor. This
         restores the near-horizon East-West asymmetry that a single cutoff at the
-        neutrino direction under-produces. Applied to **down-going** directions
-        (cosZ>=0); up-going keeps the single far-side cutoff (its cone extension is
-        a further refinement). ``fine`` is (zen_deg, az_deg, rc_fine) from
-        :meth:`finemap_rc`.
+        neutrino direction under-produces. Applied to **down-going** neutrino
+        directions (cosZ>=0); up-going neutrino directions keep the single
+        far-side cutoff (their own cone extension is a further refinement).
+
+        When ``fine`` is the **full-sphere** map (:meth:`finemap_rc`
+        full_sphere=True, the default), the cone of a near-horizon down-going
+        neutrino extends **continuously across the limb**: sub-horizon cone
+        samples (primary local zenith > 90 deg) interpolate the far-side up-going
+        cutoff instead of clamping at the 89-deg down-going value, which removes
+        the E-W overshoot that otherwise grew toward the extreme horizon (paper
+        Section 6, limitation v). ``fine`` is (zen_deg, az_deg, rc_fine).
+
+        ``channel_cone`` (default **True**): use a **channel-weighted** cone width.
+        ~40% of sub-GeV nu_mu and ~all nu_e are born from **muon decay**, whose
+        primary-to-neutrino angle is wider than the direct pion cone and carries an
+        energy-independent in-flight-bending floor (:func:`kinematic_kernel.
+        mudecay_shape`). The single narrow pion cone under-smeared these, leaving a
+        residual near-horizon E-W overshoot (worst at the extreme horizon, where
+        the bending floor dominates the vanishing pion cone). We average G over
+        *both* cone widths and blend per species by the MCEq muon-decay flux
+        fraction ``f_mu`` (:func:`kinematic_kernel.channel_fractions`):
+        ``G_eff = (1-f_mu) <G>_pion + f_mu <G>_mudecay``. First-principles (no
+        tuned parameter); set ``channel_cone=False`` for the legacy pion-only cone.
+
+        ``muon_bending`` (default **True**, needs ``channel_cone`` and the local
+        field ``b_enu``): the muon-decay cone is **centred on the bending-shifted**
+        primary direction. A muon bends in-flight before decaying (energy-
+        independent ``Delta_phi = qB tau/m ~ 3 deg``), and its decay neutrino
+        inherits the shift, **charge-dependently**: nu_mu/anti-nu_e come from mu-,
+        nu_e/anti-nu_mu from mu+, so the two shift oppositely. Because the species
+        are tracked separately (not charge-summed), each carries the *full* shift
+        (not the ~0.3 deg net cancellation). Implemented as a coherent shift of the
+        muon-decay cone axis per species (:func:`muon_bending.bending_deflection`).
         """
         from kinematic_kernel import pion_alpha_pdf, channel_shapes
 
@@ -634,6 +728,36 @@ class MCEq3DFlux:
         W = W / np.maximum(W.sum(1, keepdims=True), 1e-300)
         alpha = np.deg2rad(alpha_deg)
         beta = np.linspace(0.0, 2 * np.pi, n_beta, endpoint=False)
+
+        # channel-weighted cone: a second (wider) muon-decay cone weight W_mu, and
+        # the per-species muon-decay flux fraction f_mu to blend the two averages.
+        W_mu, fmu = None, None
+        if channel_cone:
+            from kinematic_kernel import mudecay_shape, channel_fractions
+
+            sig_mu = getattr(self, "_sig_mudecay", None)
+            if sig_mu is None:
+                sig_mu = self._sig_mudecay = mudecay_shape(self.e)
+            sig_mu = np.maximum(sig_mu * sigma_scale, 1e-3)
+            W_mu = np.exp(-0.5 * (alpha_deg[None, :] / sig_mu[:, None]) ** 2) \
+                * np.sin(np.deg2rad(alpha_deg))[None, :]
+            W_mu = W_mu / np.maximum(W_mu.sum(1, keepdims=True), 1e-300)
+            fcache = getattr(self, "_fmu_by_species", None)
+            if fcache is None:
+                fcache = self._fmu_by_species = {
+                    s: channel_fractions(self.e,
+                                         "nue" if "nue" in s else "numu")["mu"]
+                    for s in SPECIES
+                }
+            fmu = fcache
+
+        # coherent muon-bending shift of the muon-decay cone axis (charge-signed):
+        # nu from mu+ (anti-nu_mu, nu_e) shift one way, nu from mu- (nu_mu,
+        # anti-nu_e) the other. Needs the local field vector b_enu (E,N,U).
+        do_bend = channel_cone and muon_bending and b_enu is not None
+        MU_PLUS = ("total_antinumu", "total_nue")  # neutrinos from mu+ decay
+        if do_bend:
+            import muon_bending as _mb
 
         def rc_at(th_deg, ph_deg):  # bilinear, periodic azimuth, clamp zenith
             th = np.clip(th_deg, zen_f[0], zen_f[-1])
@@ -667,9 +791,19 @@ class MCEq3DFlux:
                 nn = np.linalg.norm(e1)
                 e1 = e1 / nn if nn > 1e-9 else np.array([1.0, 0.0, 0.0])
                 e2 = np.cross(n, e1)
+                # charge-signed bending shift of the mu-decay cone axis, in the
+                # cone frame (N,E,U); mu+ primary center = n - d, mu- = n + d.
+                d_cone = None
+                if do_bend:
+                    v = _mb.muon_velocity_enu(np.degrees(th), azd)
+                    d0 = _mb.bending_deflection(v, b_enu, charge=+1)  # rad, (E,N,U)
+                    d_cone = np.array([d0[1], d0[0], d0[2]])  # -> (N,E,U)
                 num = {s: np.zeros(len(self.e)) for s in SPECIES}
+                num_mu = {s: np.zeros(len(self.e)) for s in SPECIES}
                 for ka, a in enumerate(alpha):
                     gbar = {s: np.zeros(len(self.e)) for s in SPECIES}
+                    gbar_mu = ({s: np.zeros(len(self.e)) for s in SPECIES}
+                               if do_bend else None)
                     for b in beta:
                         npv = np.cos(a) * n + np.sin(a) * (
                             np.cos(b) * e1 + np.sin(b) * e2)
@@ -678,10 +812,34 @@ class MCEq3DFlux:
                         rcp = float(rc_at(th_p, ph_p))
                         for s in SPECIES:
                             gbar[s] += _interp_rc(rcp, rc_grid, G_by_z[iz][s])
+                        if do_bend:  # bending-shifted mu-decay samples per charge
+                            # primary center = n + delta (mu+), n - delta (mu-):
+                            # neutrino n = primary - delta, so primary = n + delta.
+                            pp = npv + d_cone
+                            pp = pp / np.linalg.norm(pp)
+                            pm = npv - d_cone
+                            pm = pm / np.linalg.norm(pm)
+                            rc_p = float(rc_at(
+                                np.degrees(np.arccos(np.clip(pp[2], -1, 1))),
+                                np.degrees(np.arctan2(pp[1], pp[0]))))
+                            rc_m = float(rc_at(
+                                np.degrees(np.arccos(np.clip(pm[2], -1, 1))),
+                                np.degrees(np.arctan2(pm[1], pm[0]))))
+                            for s in SPECIES:
+                                rc_s = rc_p if s in MU_PLUS else rc_m
+                                gbar_mu[s] += _interp_rc(rc_s, rc_grid, G_by_z[iz][s])
+                    # same inner cone samples, two alpha-weights (pion + mu-decay)
                     for s in SPECIES:
                         num[s] += W[:, ka] * gbar[s] / n_beta
+                        if channel_cone:
+                            g_src = gbar_mu[s] if do_bend else gbar[s]
+                            num_mu[s] += W_mu[:, ka] * g_src / n_beta
                 for s in SPECIES:
-                    Geff[s][iz, ia] = num[s]  # W already normalised over alpha
+                    if channel_cone:
+                        # blend the two cone widths by the muon-decay flux fraction
+                        Geff[s][iz, ia] = (1.0 - fmu[s]) * num[s] + fmu[s] * num_mu[s]
+                    else:
+                        Geff[s][iz, ia] = num[s]  # W already normalised over alpha
         return Geff
 
     def cutoff_grid(
@@ -737,32 +895,12 @@ class MCEq3DFlux:
             )
         ups = np.where(~down)[0]
         if len(ups):
-            m_hat = gb.dipole_axis()
-            rs = np.linspace(r_hi, r_lo, n_scan)
-            r0, u0, R, idx = [], [], [], []
-            for iz in ups:
-                zdeg = np.degrees(np.arccos(np.clip(cos_zeniths[iz], -1, 1)))
-                for ia, az in enumerate(azimuths):
-                    latq, lonq, _, _ = farside_production(lat, lon, cos_zeniths[iz], az)
-                    Q = (gb.RE + 20e3) * gb._local_frame(latq, lonq)[0]
-                    d = gb.arrival_direction(lat, lon, zdeg, az)  # neutrino velocity
-                    for Ri in rs:
-                        r0.append(Q)
-                        u0.append(-d)
-                        R.append(Ri)
-                    idx.append((iz, ia))
-            allowed = gb.backtrace_vec(
-                np.array(r0), np.array(u0), np.array(R), date, m_hat
-            ).reshape(len(idx), n_scan)
-            for k, (iz, ia) in enumerate(idx):
-                forb = np.where(~allowed[k])[0]
-                rc[iz, ia] = (
-                    r_lo
-                    if len(forb) == 0
-                    else (
-                        r_hi if forb[0] == 0 else 0.5 * (rs[forb[0] - 1] + rs[forb[0]])
-                    )
-                )
+            zen_up = np.degrees(np.arccos(np.clip(cos_zeniths[ups], -1, 1)))
+            out_up = farside_cutoff_map(
+                lat, lon, date, zen_up, azimuths, n_scan=n_scan, r_lo=r_lo, r_hi=r_hi
+            )
+            for k, iz in enumerate(ups):
+                rc[iz] = out_up[k]
         if fpath is not None:
             os.makedirs(cache_dir, exist_ok=True)
             np.savez(fpath, rc=rc)
@@ -793,6 +931,8 @@ class MCEq3DFlux:
         with_base_spread=False,
         cone_cutoff=True,
         cone_sigma_scale=1.0,
+        channel_cone=True,
+        muon_bending=True,
     ):
         """Absolute Phi[species, cosZ, az, E] for a site (full sky).
 
@@ -863,13 +1003,16 @@ class MCEq3DFlux:
         **production-cone average** (:meth:`cone_geff`) rather than a single cutoff
         at the neutrino direction -- the geomagnetic analogue of E_off, and the
         physically-required treatment (it restores the near-horizon East-West
-        asymmetry; Section 4.1). It needs a full-sky cutoff map
-        (:meth:`finemap_rc`), which is memoised on the instance and cached to
-        ``cache_dir`` per site/date, so the ~one-off back-trace cost is paid once.
+        asymmetry; Section 4.1). It needs a **full-sphere** cutoff map
+        (:meth:`finemap_rc`, down-going detector cutoff + up-going far-side
+        cutoff), memoised on the instance and cached to ``cache_dir`` per
+        site/date, so the ~one-off back-trace cost is paid once. The full-sphere
+        map lets a near-horizon down-going cone extend continuously across the
+        limb (removing the extreme-horizon E-W overshoot; Section 6 v).
         Set ``cone_cutoff=False`` for the **fast single-cutoff approximation**
         (adequate away from the horizon, where the cone average -> the single
-        cutoff). The up-going hemisphere keeps the single far-side cutoff either
-        way (its cone extension is a documented, not-yet-implemented refinement).
+        cutoff). Up-going *neutrino* directions keep the single far-side cutoff
+        either way (their own cone extension is a further refinement).
         """
         if offaxis and full_3d:
             raise ValueError(
@@ -937,9 +1080,14 @@ class MCEq3DFlux:
         Geff = None
         if cone_cutoff:
             fine = self.finemap_rc(lat, lon, date, cache_dir=cache_dir)
+            b_enu = None
+            if channel_cone and muon_bending:
+                from muon_bending import local_field_enu
+                b_enu = local_field_enu(lat, lon, date)
             Geff = self.cone_geff(
                 cos_zeniths, azimuths, rc_map, rc_grid, G_by_z, fine,
-                sigma_scale=cone_sigma_scale,
+                sigma_scale=cone_sigma_scale, channel_cone=channel_cone,
+                muon_bending=muon_bending, b_enu=b_enu,
             )
 
         flux = {

@@ -9,11 +9,17 @@ bins at several *other* zeniths, at a few energies.
 
 Finding (matched bins): the amplitude has the correct sign, peak and >10 GeV
 vanishing, and overshoots Honda by ~5-6% at 63 deg and ~8-11% at 69 deg, growing
-to ~25-29% at the extreme horizon (87 deg). The growth toward the horizon is the
-down-going-cone-truncation limitation: the ~20 deg production cone there extends
-below the local horizon, where the down-going cutoff map is clamped (paper
-Section 6, limitation v). The comparison is apples-to-apples: Honda's max/min
-over azimuth vs this work's W/E, both in the same cos(zenith) bin.
+toward the extreme horizon. With the **limb-continuous full-sphere cutoff map**
+(finemap_rc full_sphere=True, the geomagnetic analogue of extending the cone
+across the horizon; paper Section 6, limitation v), the near-horizon production
+cone no longer clamps at the limb but samples the far-side up-going cutoff
+continuously, pulling the worst bins toward Honda: the extreme-horizon overshoot
+(87 deg) falls from ~25-29% to ~20-25% and the 81 deg overshoot from ~18-21% to
+~18%, largest where the cone crosses the limb most (lowest energy). Moderate
+zeniths (63/69 deg, cone does not reach the limb) are unchanged. A residual
+overshoot remains from the intrinsically sharp horizon E-W contrast. The
+comparison is apples-to-apples: Honda's max/min over azimuth vs this work's W/E,
+both in the same cos(zenith) bin.
 
 Run (from tools/mceq3d, needs honda_kam.npz and a writable .cache3d)::
 
@@ -31,7 +37,10 @@ from mceq3d_flux import MCEq3DFlux
 
 CACHE = ".cache3d"
 LAT, LON = 36.43, 137.31
-DATE = datetime(2020, 6, 1)
+# Epoch matches the engine default and validate_honda.py so both validation
+# scripts share one cached full-IGRF cutoff map (the 5-month IGRF drift is
+# negligible: the non-limb-crossing bins are identical between epochs).
+DATE = datetime(2020, 1, 1)
 # Honda down-going cosZ bins away from the ~0.25 (75 deg) diagnosis band
 TARGETS = (0.05, 0.15, 0.35, 0.45)
 PROBE_E = (0.5, 1.0, 2.0)

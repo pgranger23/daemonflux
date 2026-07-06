@@ -131,6 +131,45 @@ def muon_shape(e_query, n=6_000_000, seed=2, primary="H3a", moments=None):
     return _sigma_powerlaw(e_mu, th2, w, e_query)
 
 
+def mudecay_shape(e_query, b_gauss=0.45, zenith_deg=80.0):
+    """RMS angle sigma_mudecay(E_nu) [deg] of a **muon-decay** neutrino w.r.t. the
+    primary -- wider than the direct pion cone (:func:`channel_shapes`` ``['pi']``)
+    and carrying an **energy-independent floor** from in-flight muon bending.
+
+    Combines three uncorrelated contributions in quadrature (with E_mu ~ 3 E_nu,
+    the Michel mean):
+
+      * ``sigma_mu(E_mu)`` -- the muon direction w.r.t. the primary axis
+        (:func:`muon_shape`: generator pion angle folded with exact pi->mu nu),
+      * the **Michel decay** angle of the neutrino w.r.t. the muon (isotropic
+        rest-frame emission of a massless nu, exact boost), and
+      * the **in-flight bending** angle ``Delta_phi = qB tau/m`` -- energy
+        INDEPENDENT (:func:`muon_bending.bending_angle`), weighted by the
+        square-root of the decay-in-flight fraction (only muons that decay in
+        flight contribute the coherent bend).
+
+    ~40% of sub-GeV nu_mu and ~all nu_e come from muon decay
+    (:func:`channel_fractions`), so applying only the narrow pion cone to them
+    (as the geomagnetic cone did) under-smears the near-horizon E-W; this width is
+    the channel-weighted correction.
+    """
+    import muon_bending as mb
+
+    e_mu = 3.0 * np.asarray(e_query, dtype=float)
+    sig_mu = muon_shape(e_mu)  # muon direction vs primary [deg]
+    # Michel neutrino angle w.r.t. the muon: isotropic rest-frame ct, massless-nu
+    # boost tan(th) = sin th* / (gamma (ct + 1)); deterministic quadrature over ct.
+    ct = np.linspace(-0.9995, 0.9995, 4000)
+    gamma = (e_mu / M_MU)[:, None]
+    th = np.arctan2(np.sqrt(1.0 - ct[None, :] ** 2), gamma * (ct[None, :] + 1.0))
+    sig_numu = np.degrees(np.sqrt(np.mean(th**2, axis=1)))
+    # energy-independent bending, weighted by sqrt(decay-in-flight fraction)
+    sig_bend0 = np.degrees(mb.bending_angle(b_gauss))
+    fdec = mb.decay_in_flight_fraction(e_mu, zenith_deg=zenith_deg)
+    sig_bend = sig_bend0 * np.sqrt(np.clip(fdec, 0.0, 1.0))
+    return np.sqrt(sig_mu**2 + sig_numu**2 + sig_bend**2)
+
+
 def pion_alpha_pdf(e_grid, alpha_deg, n=3_000_000, seed=4, scale=1.0,
                    kernels="k_spliced.npz", primary="H3a", floor=800):
     """Sampled nu angular distribution W[nE, n_alpha] from the generator's full

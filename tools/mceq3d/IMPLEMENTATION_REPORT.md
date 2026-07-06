@@ -44,14 +44,20 @@ plots, 4 companion docs.** Tooling: Black + flake8 clean, NumPy docstrings.
     the genuinely-3D inter-direction residual is the small (~1–2%) part.
 * **Validated against Honda HKKM2014** (§8): the directional observables match the
   authoritative 3D tables — the East–West amplitude at Kamioka, compared at a
-  **matched** near-horizon zenith (cosZ 0.25, ~75°), now sits **≈11–14% above
-  Honda** across 0.4–2 GeV (2.10 vs 1.85 at 1.1 GeV) — correct sign, peak and
-  >10 GeV vanishing, a systematic overshoot at the edge of the Honda–Bartol
-  spread — using the production-cone-averaged cutoff after fixing the 20 GV
-  rigidity-scan cap that had clamped the near-horizon East cutoff. An
-  out-of-sample zenith scan gives ≈6% at 63° growing to ≈26% at the extreme
-  horizon (cone-truncation limitation); and the sec θ horizon enhancement tracks
-  Honda to ≈3–6% over 1–100 GeV (delivered-engine Fig 6).
+  **matched** near-horizon zenith (cosZ 0.25, ~75°), now sits **≈9–13% above
+  Honda** across 0.4–2 GeV (2.06 vs 1.85 at 1.1 GeV) — correct sign, peak and
+  >10 GeV vanishing, within the Honda–Bartol spread — from four first-principles
+  fixes: the 40 GV rigidity cap, the production-cone average, a **full-sphere
+  limb-continuous** cutoff map (`finemap_rc(full_sphere=True)`, down-going detector
+  cutoff stitched to the up-going far-side cutoff so the near-horizon cone stops
+  clamping at the limb), a **channel-weighted cone** (wider muon-decay cone with an
+  energy-independent bending floor, blended by the MCEq muon-decay fraction), and
+  the charge-signed **muon-bending** shift of the muon-decay cone. An out-of-sample
+  zenith scan gives ≈5% at 63° growing to ≈15–24% at the extreme horizon (87°) —
+  down from ≈25–29% pre-fix; the residual is the intrinsically sharp horizon
+  contrast a factorised G×Φ can't fully soften (quadrature, production-point
+  displacement and Honda binning all ruled out); and the sec θ horizon enhancement
+  tracks Honda to ≈3–6% over 1–100 GeV (delivered-engine Fig 6).
 * **A trustable *absolute, full-sky* directional engine** (`mceq3d_flux.py`,
   §5.11): returns the absolute Φ(E, cosθ, azimuth) for all four flavours over the
   **whole sky across 0.1–100 GeV** as **selectable 1D base × cascade-correct
@@ -957,13 +963,17 @@ mismatch):
 | sec θ horizon/vertical @100 GeV | **2.19** | **2.33** | +6% |
 
 The **East–West asymmetry** has the correct sign, peak and >10 GeV vanishing, and
-at matched zenith 75° sits ≈11–14% above Honda across 0.4–2 GeV (a systematic
-overshoot at the edge of the Honda–Bartol spread) — a large improvement over the
-pre-fix ≈14% deficit, from the `r_hi` fix (§7) plus the production-cone average,
-both first-principles and default-on. An **out-of-sample** zenith scan (bands not
-used in the diagnosis) gives ≈5–6% at 63° and ≈8–11% at 69°, the overshoot
-growing to ≈25–29% at the extreme horizon (87°) where the production cone
-truncates at the down-going limb (an understood, localised limitation, §9). The
+at matched zenith 75° sits ≈9–13% above Honda across 0.4–2 GeV (within the
+Honda–Bartol spread) — a large improvement over the pre-fix ≈14% deficit, from
+four first-principles, default-on fixes: the `r_hi`=40 GV cap (§7), the
+production-cone average, the full-sphere limb-continuous cutoff map
+(`finemap_rc(full_sphere=True)`), the channel-weighted cone (wider muon-decay cone
+blended by the MCEq muon-decay fraction), and the charge-signed muon-bending shift.
+An **out-of-sample** zenith scan (bands not used in the diagnosis) gives ≈5% at 63°
+and ≈6–9% at 69°, the overshoot growing to ≈15–24% at the extreme horizon (87°) —
+down from ≈25–29% pre-fix; a residual overshoot remains from the intrinsically
+sharp horizon contrast a factorised G×Φ can't fully soften (quadrature,
+production-point displacement, Honda binning all ruled out, §9). The
 **sec θ horizon enhancement** tracks Honda to ≈3–6% over 1–100 GeV, undershooting
 only at the very-low-E turnover (1.48 vs 1.83 at 0.3 GeV — a base/curvature
 effect, not geomagnetic). Plot: `validate_honda.png`. The directional structure
