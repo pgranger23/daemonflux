@@ -89,6 +89,33 @@ class MCEqCascade3D:
         """MCEq's injected primary state vector _phi0 (nucleons), shape (N,)."""
         return self.mceq._phi0.copy()
 
+    def rho_h(self, h_km):
+        """Air density [g/cm^3] at altitude ``h_km`` in MCEq's CORSIKA atmosphere
+        (vectorised via the depth<->density splines h2X, X2rho)."""
+        dm = self.mceq.density_model
+        h_cm = np.clip(np.asarray(h_km, float), 0.0, None) * 1e5
+        return np.asarray(dm.X2rho(dm.h2X(h_cm)))
+
+    def march_curved(self, phi0_per_dir, zeniths_deg):
+        """Absolute directional flux with **curved per-direction columns**: each
+        direction develops down its own slant atmosphere, so the sec(theta) horizon
+        enhancement is carried self-consistently. Uses MCEq's own per-zenith
+        integration path (adaptively stepped -> forward-Euler-stable even at the
+        extreme horizon, where a naive common-grid dX blows up), so each column
+        reproduces MCEq for that zenith to machine precision. Returns phi[dir, N].
+
+        (The inter-direction couplings -- force, production cone -- need a
+        *synchronised* grid; because near-horizon stability forces very fine steps,
+        that is done by operator-splitting: march each column with MCEq's fine steps
+        between a set of common altitude checkpoints and couple at the checkpoints.
+        This method delivers the validated curved-column layer; the checkpoint
+        coupling is the next increment.)"""
+        out = np.empty((len(zeniths_deg), phi0_per_dir.shape[1]))
+        for i, z in enumerate(zeniths_deg):
+            nsteps, dX, rho_inv = self.path(z)
+            out[i] = self.march(phi0_per_dir[i][None, :], nsteps, dX, rho_inv)[0]
+        return out
+
 
 def _force_operator(casc, TH, PH, b_enu_gauss):
     """Return a per-step force callable that rotates the charged-species blocks of
