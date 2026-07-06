@@ -74,7 +74,8 @@ class MCEqCascade3D:
 
         ex = getattr(self, "_tpool", None)
         if ex is None:
-            ex = self._tpool = ThreadPoolExecutor(max(1, (os.cpu_count() or 2) - 1))
+            n = int(os.environ.get("MCEQ3D_THREADS", max(1, (os.cpu_count() or 2) - 1)))
+            ex = self._tpool = ThreadPoolExecutor(n)
         return ex
 
     def path(self, zenith_deg=0.0):
