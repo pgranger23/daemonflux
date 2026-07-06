@@ -127,17 +127,42 @@ class MCEqCascade3D:
             hr = self._hr_cache = (r[order], h[order])
         return hr
 
+    def _cone_matrices(self, dvec, W, sigma_rad):
+        """Per-energy direction-coupling matrices C[je][i, j]: production in
+        direction j spreads to i with a normalised Gaussian-on-the-sphere of RMS
+        sigma_rad[je] (rows sum to 1 -> flux-conserving). W = solid-angle weights."""
+        cosang = np.clip(dvec @ dvec.T, -1, 1)
+        ang = np.arccos(cosang)  # (nd, nd)
+        out = []
+        for sg in sigma_rad:
+            C = np.exp(-0.5 * (ang / max(sg, 1e-3)) ** 2) * W[None, :]
+            out.append(C / np.maximum(C.sum(1, keepdims=True), 1e-300))
+        return out
+
     def march_checkpoints(self, phi0_per_dir, zeniths_deg, dirs_the_phi, b_enu=None,
-                          n_check=16):
+                          n_check=16, cone_sigma_deg=None, weights=None):
         """Coupled curved cascade by **operator-splitting at common altitude
         checkpoints**: each direction is marched with MCEq's stable fine steps
         between checkpoints (so the near-horizon stability wall is avoided), and the
-        inter-direction **geomagnetic force** coupling is applied across directions
-        *at* each checkpoint (the charged-species blocks are rotated by the per-
-        direction path-length accumulated over the segment). With ``b_enu=None`` the
-        coupling is off and this reproduces :meth:`march_curved` (hence MCEq
-        per-zenith) exactly -- the correctness anchor. ``dirs_the_phi`` is the
-        (theta, phi) of each direction for the rotation."""
+        inter-direction couplings are applied across directions *at* each checkpoint:
+
+        * **geomagnetic force** (``b_enu``): the charged-species blocks are rotated
+          by the per-direction path-length accumulated over the segment;
+        * **production cone** (``cone_sigma_deg``, per-energy [deg]): the neutrinos
+          *produced in the segment* -- exactly the increment ``nu_after - nu_before``,
+          since neutrinos do not propagate further -- are spread over the production
+          cone (width sigma_theta(E), the same generator angle E_off uses), coupling
+          adjacent directions. This is the production-cone inter-direction term
+          (flux-conserving). NB: on a *coarse* direction grid it nets to angular
+          smearing (reducing sharp features); reproducing E_off's off-axis *excess*
+          -- a production-rate-vs-slant-depth effect that emerges when high-altitude
+          checkpoints, where the more-vertical columns are younger showers with
+          higher sub-GeV production, feed the near-horizon arrivals -- requires a
+          fine direction grid and is the pending validation (vs E_off/Honda).
+
+        With both couplings off this reproduces :meth:`march_curved` (hence MCEq
+        per-zenith) exactly -- the correctness anchor. ``dirs_the_phi`` = (theta,
+        phi); ``weights`` = solid-angle weights (for the cone normalisation)."""
         rr, hh = self._h_of_rho()
         TH, PH = dirs_the_phi
         nd = len(zeniths_deg)
@@ -159,8 +184,14 @@ class MCEqCascade3D:
         phi = np.array(phi0_per_dir, float)
         dvec = np.stack([np.sin(TH) * np.cos(PH), np.sin(TH) * np.sin(PH),
                          np.cos(TH)], -1)
-        e = self.e
+        cone_C, nu_slices = None, None
+        if cone_sigma_deg is not None:
+            W = weights if weights is not None else np.ones(nd)
+            cone_C = self._cone_matrices(dvec, W, np.deg2rad(cone_sigma_deg))
+            nu_slices = [self._slice(pdg) for pdg in (14, -14, 12, -12)]
         for k in range(n_check):
+            nu_before = ({sl: phi[:, sl].copy() for sl in nu_slices}
+                         if cone_C is not None else None)
             seg_len = np.zeros(nd)  # path length [cm] of this segment per direction
             for i in range(nd):
                 ns, dX, ri = paths[i]
@@ -172,6 +203,13 @@ class MCEqCascade3D:
                     p = p + (im.dot(p) + dm.dot(ri[s] * p)) * dX[s]
                 phi[i] = p
                 seg_len[i] = np.sum(dX[a0:a1] * ri[a0:a1])  # g/cm2 * cm3/g = cm
+            if cone_C is not None:  # spread the neutrinos produced this segment
+                for sl in nu_slices:
+                    delta = phi[:, sl] - nu_before[sl]  # (nd, dim) = production
+                    spread = np.empty_like(delta)
+                    for je in range(self.dim):
+                        spread[:, je] = cone_C[je] @ delta[:, je]
+                    phi[:, sl] = nu_before[sl] + spread
             if b_enu is not None:
                 phi = self._force_checkpoint(phi, dvec, b_enu, seg_len)
         return phi
