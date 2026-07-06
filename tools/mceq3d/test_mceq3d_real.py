@@ -70,6 +70,8 @@ def test_directional_march_is_per_direction_and_absolute(casc):
     # multiple directions marched at once, same primary -> identical absolute flux
     numu = casc._slice(14)
     nsteps, dX, rho_inv = casc.path(0.0)
+    casc.mceq.set_theta_deg(0.0)
+    casc.mceq.solve()  # path() no longer solves; get MCEq's own vertical reference
     ref = casc.mceq.get_solution("numu", mag=0).copy()
     phi0 = np.repeat(casc.mceq_primary()[None, :], 4, axis=0)
     phi = casc.march(phi0, nsteps, dX, rho_inv)

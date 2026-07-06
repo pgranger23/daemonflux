@@ -65,9 +65,25 @@ class MCEqCascade3D:
         p = self.mceq.pman[(pdg, 0)]
         return slice(p.lidx, p.uidx)
 
+    def _pool(self):
+        """Lazy shared thread pool. scipy's sparse matvec releases the GIL, so the
+        independent per-direction marches parallelise across cores with no copying
+        and identical results."""
+        import os
+        from concurrent.futures import ThreadPoolExecutor
+
+        ex = getattr(self, "_tpool", None)
+        if ex is None:
+            ex = self._tpool = ThreadPoolExecutor(max(1, (os.cpu_count() or 2) - 1))
+        return ex
+
     def path(self, zenith_deg=0.0):
+        """The per-zenith integration path (nsteps, dX, rho_inv). Uses MCEq's
+        ``_calculate_integration_path`` -- the cheap atmosphere stepping -- rather
+        than a full ``solve()`` (we march the cascade ourselves), so setting up a
+        direction is milliseconds, not the ~10 s of a solve."""
         self.mceq.set_theta_deg(float(zenith_deg))
-        self.mceq.solve()  # populates integration_path (and validates our extract)
+        self.mceq._calculate_integration_path(None, "X")
         nsteps, dX, rho_inv, _ = self.mceq.integration_path
         return nsteps, np.asarray(dX), np.asarray(rho_inv)
 
@@ -110,11 +126,15 @@ class MCEqCascade3D:
         between a set of common altitude checkpoints and couple at the checkpoints.
         This method delivers the validated curved-column layer; the checkpoint
         coupling is the next increment.)"""
-        out = np.empty((len(zeniths_deg), phi0_per_dir.shape[1]))
-        for i, z in enumerate(zeniths_deg):
-            nsteps, dX, rho_inv = self.path(z)
-            out[i] = self.march(phi0_per_dir[i][None, :], nsteps, dX, rho_inv)[0]
-        return out
+        # the paths need the (serial) MCEq set_theta+solve; the marches are then
+        # independent -> run them in parallel across threads (GIL-released matvec).
+        paths = [self.path(z) for z in zeniths_deg]
+
+        def _one(i):
+            nsteps, dX, rho_inv = paths[i]
+            return self.march(phi0_per_dir[i][None, :], nsteps, dX, rho_inv)[0]
+
+        return np.array(list(self._pool().map(_one, range(len(zeniths_deg)))))
 
     def _h_of_rho(self):
         """altitude(density) inverse [km], cached, for placing altitude checkpoints
@@ -192,17 +212,25 @@ class MCEqCascade3D:
         for k in range(n_check):
             nu_before = ({sl: phi[:, sl].copy() for sl in nu_slices}
                          if cone_C is not None else None)
+            # march each direction's segment in PARALLEL across threads: the
+            # directions are independent between checkpoints, and scipy's sparse
+            # matvec releases the GIL, so this is a ~cores-fold speed-up with
+            # *identical* per-direction physics (each column marches its own MCEq
+            # path steps). Coupling below is applied once, serially, at the checkpoint.
             seg_len = np.zeros(nd)  # path length [cm] of this segment per direction
-            for i in range(nd):
-                ns, dX, ri = paths[i]
+
+            def _march_seg(i):
                 a0, a1 = seg_idx[i][k], seg_idx[i][k + 1]
                 if a1 <= a0:
-                    continue
+                    return phi[i]
+                _, dX, ri = paths[i]
                 p = phi[i].copy()
                 for s in range(a0, a1):
                     p = p + (im.dot(p) + dm.dot(ri[s] * p)) * dX[s]
-                phi[i] = p
                 seg_len[i] = np.sum(dX[a0:a1] * ri[a0:a1])  # g/cm2 * cm3/g = cm
+                return p
+
+            phi = np.array(list(self._pool().map(_march_seg, range(nd))))
             if cone_C is not None:  # spread the neutrinos produced this segment
                 for sl in nu_slices:
                     delta = phi[:, sl] - nu_before[sl]  # (nd, dim) = production
@@ -311,6 +339,8 @@ def main(argv=None):
 
     # --- VALIDATION: our hand-march reproduces MCEq exactly (vertical) ---
     nsteps, dX, rho_inv = casc.path(0.0)
+    casc.mceq.set_theta_deg(0.0)
+    casc.mceq.solve()  # MCEq's own reference (path() no longer solves)
     ref = casc.mceq.get_solution("numu", mag=0).copy()
     phi = casc.march(casc.mceq_primary()[None, :], nsteps, dX, rho_inv)[0]
     mine = phi[numu]
