@@ -1,4 +1,8 @@
-"""Deterministic 3D cascade with MCEq's REAL matrices (step 1 toward the validated
+"""
+[RESEARCH - active] Production-vertex closure vehicle; NOT imported by the
+delivered mceq3d_flux engine. See ARCHITECTURE.md and the open closure task.
+
+Deterministic 3D cascade with MCEq's REAL matrices (step 1 toward the validated
 3D MCEq): replace the parametrised scaling cascade of ``mceq3d_deterministic`` by
 MCEq's actual interaction/decay matrices, so the flux is absolutely normalised and
 carries the real SIBYLL/H3a physics -- while still marching the cascade ourselves
@@ -106,6 +110,28 @@ class MCEqCascade3D:
         """MCEq's injected primary state vector _phi0 (nucleons), shape (N,)."""
         return self.mceq._phi0.copy()
 
+    def march_profile(self, zenith_deg=0.0, pdg=14, n_rec=80):
+        """Depth-resolved march of one curved column: returns (X_slant [g/cm2],
+        Phi[n_rec, nE]) -- the accumulated flux of species ``pdg`` at ``n_rec``
+        slant-depth checkpoints. The local production per slant depth
+        ``p(X,E) = dPhi/dX`` is the ingredient the production-vertex cone integrates
+        (mceq3d_prodvertex.py). Marches MCEq's real matrices (validated to reproduce
+        MCEqRun to machine precision), so p(X) carries the absolute SIBYLL/H3a physics
+        for this zenith's real slant density profile."""
+        nsteps, dX, rho_inv = self.path(zenith_deg)
+        im, dm = self.mceq.int_m, self.mceq.dec_m
+        sl = self._slice(pdg)
+        phi = self.mceq_primary().astype(float)
+        xcum = np.cumsum(dX)
+        rec = set(np.linspace(0, nsteps - 1, n_rec).astype(int).tolist())
+        Xrec, Prec = [], []
+        for s in range(nsteps):
+            phi = phi + (im.dot(phi) + dm.dot(rho_inv[s] * phi)) * dX[s]
+            if s in rec:
+                Xrec.append(xcum[s])
+                Prec.append(phi[sl].copy())
+        return np.asarray(Xrec), np.asarray(Prec)
+
     def rho_h(self, h_km):
         """Air density [g/cm^3] at altitude ``h_km`` in MCEq's CORSIKA atmosphere
         (vectorised via the depth<->density splines h2X, X2rho)."""
@@ -148,20 +174,47 @@ class MCEqCascade3D:
             hr = self._hr_cache = (r[order], h[order])
         return hr
 
-    def _cone_matrices(self, dvec, W, sigma_rad):
+    def _cone_matrices(self, dvec, W, sigma_rad, cone_norm="row"):
         """Per-energy direction-coupling matrices C[je][i, j]: production in
-        direction j spreads to i with a normalised Gaussian-on-the-sphere of RMS
-        sigma_rad[je] (rows sum to 1 -> flux-conserving). W = solid-angle weights."""
+        direction j spreads to i with a Gaussian-on-the-sphere of RMS sigma_rad[je].
+        W = solid-angle weights.
+
+        ``cone_norm`` selects the physical operator:
+          * "row" (rows sum to 1): each ARRIVAL i receives a normalised average of
+            its neighbours' production -> flux-conserving angular SMEARING with no
+            net directional excess (this is the original behaviour: it nets to the
+            ~0.97 smearing found in `validate_3d_deterministic`).
+          * "col" (columns sum to 1): each production SOURCE j distributes its
+            neutrinos over arrival directions i.
+            TESTED AND REFUTED (diag_prodvertex.py, 2026-07-16): this does NOT
+            reproduce E_off. It gives a horizon *deficit* (emergent ~0.40-0.48,
+            not E_off's ~1.35 excess): the near-horizon column's large sec-theta
+            per-segment production is shipped OUT to mid-zenith. Conclusion: the
+            production-vertex excess is not a cone-normalisation choice; capturing
+            it needs the cone applied inside the production source term (splitting
+            int_m by the cone-primary slant depths), not a reweighting of the
+            already-produced arrival-flux increment. Kept only as the record of
+            this ruled-out shortcut; do not use for physics."""
         cosang = np.clip(dvec @ dvec.T, -1, 1)
         ang = np.arccos(cosang)  # (nd, nd)
         out = []
         for sg in sigma_rad:
-            C = np.exp(-0.5 * (ang / max(sg, 1e-3)) ** 2) * W[None, :]
-            out.append(C / np.maximum(C.sum(1, keepdims=True), 1e-300))
+            K = np.exp(-0.5 * (ang / max(sg, 1e-3)) ** 2)
+            if cone_norm == "col":
+                # weight by the ARRIVAL (row) solid angle, normalise each source
+                # column to 1 so every produced neutrino lands somewhere in-grid.
+                C = K * W[:, None]
+                C = C / np.maximum(C.sum(0, keepdims=True), 1e-300)
+            else:
+                C = K * W[None, :]
+                C = C / np.maximum(C.sum(1, keepdims=True), 1e-300)
+            out.append(C)
         return out
 
     def march_checkpoints(self, phi0_per_dir, zeniths_deg, dirs_the_phi, b_enu=None,
-                          n_check=16, cone_sigma_deg=None, weights=None):
+                          n_check=16, cone_sigma_deg=None, weights=None,
+                          cone_norm="row", cone_target="neutrino",
+                          force_species=None):
         """Coupled curved cascade by **operator-splitting at common altitude
         checkpoints**: each direction is marched with MCEq's stable fine steps
         between checkpoints (so the near-horizon stability wall is avoided), and the
@@ -205,14 +258,39 @@ class MCEqCascade3D:
         phi = np.array(phi0_per_dir, float)
         dvec = np.stack([np.sin(TH) * np.cos(PH), np.sin(TH) * np.sin(PH),
                          np.cos(TH)], -1)
-        cone_C, nu_slices = None, None
+        cone_C, nu_slices, parent_slices = None, None, None
         if cone_sigma_deg is not None:
             W = weights if weights is not None else np.ones(nd)
-            cone_C = self._cone_matrices(dvec, W, np.deg2rad(cone_sigma_deg))
+            # cone_target="parents" (task-5 production-vertex experiment): spread the
+            # PARENT meson/muon blocks (col-norm) at each checkpoint BEFORE they decay,
+            # so the younger, higher-sub-GeV-production near-vertical columns feed the
+            # horizon's neutrino PRODUCTION -- the production-vertex mechanism the
+            # arrival-flux spread (cone_target="neutrino") cannot inject.
+            # RESULT (diag_prodvertex2.py, 2026-07-16): emergent factor ~= 1.000 at
+            # all zeniths -- this operator is NEUTRAL on the az-averaged cz-marginal
+            # (exact-1.000 warrants a no-op check before ruling it out definitively).
+            # Together with the refuted neutrino-arrival row/col-norm spreads, this
+            # shows E_off is not reproducible by a cone reweighting bolted onto the
+            # march: closing it needs the cone inside the production SOURCE integral
+            # against the isotropic primary flux (a solver rewrite, not an operator).
+            cn = "col" if cone_target == "parents" else cone_norm
+            cone_C = self._cone_matrices(dvec, W, np.deg2rad(cone_sigma_deg),
+                                         cone_norm=cn)
             nu_slices = [self._slice(pdg) for pdg in (14, -14, 12, -12)]
+            parent_slices = [self._slice(pdg) for pdg in
+                             (211, -211, 321, -321, 13, -13)]
         for k in range(n_check):
+            if cone_C is not None and cone_target == "parents":
+                # spread parents across arrival directions before the segment march
+                for sl in parent_slices:
+                    blk = phi[:, sl]
+                    new = np.empty_like(blk)
+                    for je in range(self.dim):
+                        new[:, je] = cone_C[je] @ blk[:, je]
+                    phi[:, sl] = new
             nu_before = ({sl: phi[:, sl].copy() for sl in nu_slices}
-                         if cone_C is not None else None)
+                         if cone_C is not None and cone_target == "neutrino"
+                         else None)
             # march each direction's segment in PARALLEL across threads: the
             # directions are independent between checkpoints, and scipy's sparse
             # matvec releases the GIL, so this is a ~cores-fold speed-up with
@@ -232,7 +310,7 @@ class MCEqCascade3D:
                 return p
 
             phi = np.array(list(self._pool().map(_march_seg, range(nd))))
-            if cone_C is not None:  # spread the neutrinos produced this segment
+            if cone_C is not None and cone_target == "neutrino":
                 for sl in nu_slices:
                     delta = phi[:, sl] - nu_before[sl]  # (nd, dim) = production
                     spread = np.empty_like(delta)
@@ -240,13 +318,23 @@ class MCEqCascade3D:
                         spread[:, je] = cone_C[je] @ delta[:, je]
                     phi[:, sl] = nu_before[sl] + spread
             if b_enu is not None:
-                phi = self._force_checkpoint(phi, dvec, b_enu, seg_len)
+                phi = self._force_checkpoint(phi, dvec, b_enu, seg_len,
+                                             species=force_species)
         return phi
 
-    def _force_checkpoint(self, phi, dvec, b_enu, seg_len):
+    def _force_checkpoint(self, phi, dvec, b_enu, seg_len, species=None):
         """Rotate the charged-species blocks by the Lorentz bending accumulated over
         a checkpoint segment: angle[dir, E] = seg_len[dir] / r_g(E), r_g = R/(0.3 B),
-        R~E. Pull formulation: new[dir] = phi[nearest(dir back-rotated), E]."""
+        R~E. Pull formulation: new[dir] = phi[nearest(dir back-rotated), E].
+
+        ``species`` (pdg->sign dict) restricts which charged blocks are bent. Default
+        (all CHARGED) is WRONG for a coupled solve: the nucleons' (proton) geomagnetic
+        deflection is already fully encoded in the back-traced cutoff, so bending them
+        again in-cascade double-counts and washes out the E-W (verified: it collapses
+        W/E from ~3 to ~1.3, coupled_ew_diag.py). Pass only the CASCADE-produced
+        charged species -- mesons/muons {211,-211,321,-321,13,-13} -- which the
+        primary cutoff does not account for."""
+        charged = CHARGED if species is None else species
         Bmag = np.linalg.norm(b_enu)
         k = np.asarray(b_enu) / Bmag
         e = self.e
@@ -254,7 +342,7 @@ class MCEqCascade3D:
         out = phi.copy()
         kv0 = np.cross(np.broadcast_to(k, dvec.shape), dvec)
         kd0 = dvec @ k
-        for pdg, sign in CHARGED.items():
+        for pdg, sign in charged.items():
             sl = self._slice(pdg)
             block = phi[:, sl]  # (nd, dim)
             for je in range(self.dim):

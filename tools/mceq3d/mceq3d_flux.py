@@ -547,8 +547,14 @@ class MCEq3DFlux:
         every daughter neutrino (muon-decay neutrinos included -- NOT a flat
         pedestal), so E_off is **flavour-independent**: one table for all species;
         the nu_e-vs-nu_mu flux difference lives entirely in the per-flavour base.
-        No reference flux is used; validated to reproduce the Honda and Bartol
-        nu_mu *and* nu_e zenith shapes to ~5% sub-GeV (`offaxis_mc.py --validate`).
+        No reference flux is used. The delivered cone uses the exact NA61-validated
+        moment sigma_pi (the sampled full kernel was root-caused as ~16-37% too wide
+        -- a theta-binning artefact; diag_kernel_consistency), giving nu_mu AND nu_e
+        zenith shapes within ~0-8% of BOTH Honda and Bartol over 0.3-1 GeV; the
+        ~7-8% residual at 1-3 GeV is the base sec-theta, not E_off. E_off is
+        near-flux-conserving (<E_off>_Omega within 4-6% of 1 in 0.2-1 GeV;
+        `diag_eoff_conservation.py`), i.e. a redistribution, not a pedestal (the
+        residual grows to ~8% at 0.11 GeV, the factorised extrapolation edge).
         E_off->1 at high E; applied to ``|cosZ|``; =1 outside the tabulated E range
         (0.1-100 GeV -- below 0.1 GeV the excess is large and NOT modelled).
 

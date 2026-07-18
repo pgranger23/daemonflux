@@ -8,7 +8,10 @@ excess, and is the single 3D-production term used by ``mceq3d_flux`` (``offaxis=
 E_off is **flavour-independent** (the excess is geometric, inherited from meson
 production and common to all pi/K/muon decay chains): one table is applied to each
 flavour's own 1D base. ``--validate`` confirms this reproduces *both* the Honda and
-Bartol nu_mu and nu_e zenith shapes to ~5% sub-GeV; the much larger nu_e flux
+Bartol nu_mu and nu_e zenith shapes to ~5% at 0.3 GeV and above ~3 GeV, but
+OVERSHOOTS both independent references by ~6-14% at 0.5-1 GeV (beyond their
+~4-6% mutual spread) -- a genuine mid-sub-GeV overshoot, see offaxis_mc
+--validate and diag_eoff_conservation. The much larger nu_e flux
 horizon-enhancement is entirely in the more horizon-peaked nu_e base.
 
 Mechanism (Lipari 2000; Honda et al.). A neutrino arriving at the detector from
@@ -334,7 +337,7 @@ def _regrid(arr, e_src, e_dst):
 
 
 def offaxis_excess(cz, x_grid, ep_grid, p, geom, n_alpha=44, n_beta=18, moments=None,
-                   sigma_scale=1.0):
+                   sigma_scale=1.0, cone_kernel="moments"):
     """Off-axis 3D-production excess E_off(cosZ, E) -- **flavour-independent**.
 
     The near-horizon excess is a geometric property of *where the parent pions are
@@ -364,10 +367,22 @@ def offaxis_excess(cz, x_grid, ep_grid, p, geom, n_alpha=44, n_beta=18, moments=
 
     kw = {} if moments is None else {"moments": moments}
     alpha_deg = np.linspace(0.5, 89.0, n_alpha)
-    # pion channel: full sampled angular distribution from the generator's
-    # (x_L, theta) kernel histograms + exact decay (no Gaussian assumption);
-    # kaon channel: Gaussian sigma_K (no full kaon kernel available).
-    W = pion_alpha_pdf(ep_grid, alpha_deg, scale=sigma_scale)
+    # pion channel angular distribution:
+    #   "sampled"  -- the full (x_L, theta) generator kernel histograms + exact
+    #                 decay (pion_alpha_pdf); the original choice.
+    #   "moments"  -- a Gaussian of the NA61-VALIDATED moment variance sigma_pi
+    #                 (channel_shapes). Preferred at 0.5-1 GeV: the sampled kernel
+    #                 (k_spliced.npz) is ~20-30% WIDER in RMS than the moment
+    #                 sigma_pi (m_spliced.npz) there -- an inconsistency between the
+    #                 two angular products that grows with energy and inflates the
+    #                 E_off horizon excess by ~12-15% (outside the Honda-Bartol
+    #                 spread). The moment sigma_pi is the NA61 <p_T>-validated input
+    #                 and its Gaussian cone matches BOTH references (diag_cone_shape,
+    #                 diag_kernel_stats). Same p95/RMS ~ 1.8 either way (no genuine
+    #                 tail lost), so this is a consistency fix, not a Gaussian
+    #                 approximation loss.
+    W = None if cone_kernel == "moments" else pion_alpha_pdf(
+        ep_grid, alpha_deg, scale=sigma_scale)
     sig_pi = channel_shapes(ep_grid, **kw)["pi"] * sigma_scale  # Gaussian fallback
     sig_k = channel_shapes(ep_grid, **kw)["k"] * sigma_scale
     p_nonk = p["tot"] - p["k"]  # direct pi + muon-decay + rest: pion geometry
@@ -394,7 +409,21 @@ def cone_excess(cz, sigma_deg, x_grid, ep_grid, p, geom, n_alpha=44, n_beta=18):
     )
 
 
-def build(out="offaxis_excess.npz"):
+def build(out="offaxis_excess.npz", cone_kernel="moments"):
+    """Build the E_off table. ``cone_kernel``: "moments" (DEFAULT, recommended --
+    Gaussian of the NA61-validated moment sigma_pi) or "sampled" (legacy -- the full
+    (x_L,theta) generator kernel).
+
+    Why "moments" is now the default (root-caused 2026-07-16, diag_kernel_consistency
+    / diag_kernel_stats / diag_cone_fix): the sampled kernel k_spliced.npz is
+    ~16-37% WIDER in per-secondary MESON-angle RMS than the exact moment m_spliced.npz,
+    the discrepancy growing with energy as the true angle shrinks toward the kernel's
+    coarse 0.667-deg theta bins -- a histogram bin-center inflation of the forward-
+    peaked production angle. m_spliced is exact (theta=arctan(pT/pL) per secondary, no
+    binning) and NA61-<pT>-validated, so it is the accurate input. Using it removes
+    the sampled kernel's 0.5-1 GeV horizon overshoot (nu_mu +12.5%->+4.8%, nu_e
+    +5.3%->-1.9% vs Honda; matches Bartol too, both flavours), leaving 0.3 GeV and
+    high-E agreement intact. Rebuild the legacy table with cone_kernel="sampled"."""
     global _RHO
 
     print("[1/3] MCEq depth-resolved production profile p(X,E) ...")
@@ -406,16 +435,17 @@ def build(out="offaxis_excess.npz"):
     print("[2/3] curved-atmosphere slant-depth table X_slant(h,psi) ...")
     geom = slant_depth_table(_RHO)
 
-    print("[3/3] off-axis excess (sampled pion kernel + Gaussian kaon term) ...")
+    print(f"[3/3] off-axis excess (cone_kernel={cone_kernel!r} pion + Gaussian kaon)")
     from kinematic_kernel import muon_shape
 
     cz = np.round(np.arange(0.05, 1.0, 0.1), 2)  # Honda-style bin centres
-    E_off = offaxis_excess(cz, x_grid, ep_grid, p, geom)
+    ck = {"cone_kernel": cone_kernel}
+    E_off = offaxis_excess(cz, x_grid, ep_grid, p, geom, **ck)
     # NA61 +-12% pion-angle variants -> nuisance-parameter Jacobian for the
     # engine's covariance (sigma_pi_NA61 pull, see mceq3d_flux.solve).
     print("      +-12% NA61 sigma variants (covariance pull) ...")
-    E_hi = offaxis_excess(cz, x_grid, ep_grid, p, geom, sigma_scale=1.12)
-    E_lo = offaxis_excess(cz, x_grid, ep_grid, p, geom, sigma_scale=0.88)
+    E_hi = offaxis_excess(cz, x_grid, ep_grid, p, geom, sigma_scale=1.12, **ck)
+    E_lo = offaxis_excess(cz, x_grid, ep_grid, p, geom, sigma_scale=0.88, **ck)
     # Muon-calibration closure: the same off-axis factor evaluated with the
     # muon angular kernel must be ~1 in daemonflux's calibration region
     # (E_mu >~ 5 GeV), otherwise folding E_off onto the muon-calibrated base
@@ -522,11 +552,16 @@ def validate(plot=False):
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--build", action="store_true")
+    ap.add_argument("--cone-kernel", choices=("sampled", "moments"),
+                    default="moments",
+                    help="pion cone: 'moments' (default, NA61-validated sigma_pi "
+                         "Gaussian) or 'sampled' (legacy full kernel, ~20-30% too "
+                         "wide at 0.5-1 GeV -> horizon overshoot)")
     ap.add_argument("--validate", action="store_true")
     ap.add_argument("--plot", action="store_true", help="save offaxis_excess.png")
     args = ap.parse_args(argv)
     if args.build:
-        build()
+        build(cone_kernel=args.cone_kernel)
     if args.validate or args.plot:
         validate(plot=args.plot)
     if not (args.build or args.validate or args.plot):

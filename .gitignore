@@ -147,3 +147,6 @@ tools/mceq3d/bartol/
 
 # Demo export from calib_uncertainty.py
 tools/mceq3d/calib_export_*.npz
+
+# Local backup of the pre-moment-cone E_off table (regenerable: offaxis_mc.py --cone-kernel sampled)
+tools/mceq3d/offaxis_excess.sampled.bak.npz
