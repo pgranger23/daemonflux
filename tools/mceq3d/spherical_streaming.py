@@ -1,4 +1,9 @@
-"""Spherical-streaming transport -- the off-axis PDE term, built and validated.
+"""
+[PROTOTYPE] Research/de-risking scaffolding -- NOT part of the delivered flux
+(mceq3d_flux). Kept for the record; do not depend on it in the paper. See
+ARCHITECTURE.md.
+
+Spherical-streaming transport -- the off-axis PDE term, built and validated.
 
 `prototype_streaming` proved the slab-P_N streaming operator stays sparse and
 ~linear; the one term it omitted is the **curvature** ``(1-mu^2)/r d/dmu`` that a

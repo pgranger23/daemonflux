@@ -1,4 +1,9 @@
-"""P_N (spherical) angular transport -- large-angle cross-check of Fokker-Planck.
+"""
+[PROTOTYPE] Research/de-risking scaffolding -- NOT part of the delivered flux
+(mceq3d_flux). Kept for the record; do not depend on it in the paper. See
+ARCHITECTURE.md.
+
+P_N (spherical) angular transport -- large-angle cross-check of Fokker-Planck.
 
 The Fokker-Planck solve (:mod:`fokker_planck_3d`) is a *small-angle* (Gaussian)
 approximation. This module transports the *full* angular distribution on the

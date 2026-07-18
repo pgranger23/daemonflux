@@ -1,4 +1,8 @@
-"""Fine-grid physics validation of the deterministic 3D MCEq: does the coupled
+"""
+[RESEARCH - active] Production-vertex closure vehicle; NOT imported by the
+delivered mceq3d_flux engine. See ARCHITECTURE.md and the open closure task.
+
+Fine-grid physics validation of the deterministic 3D MCEq: does the coupled
 production-cone spread reproduce the off-axis excess E_off, from first principles?
 
 Runs the real-matrix, curved-column, checkpoint-coupled cascade on a whole-sky

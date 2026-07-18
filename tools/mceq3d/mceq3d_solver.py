@@ -1,4 +1,9 @@
-"""mceq3d -- an integrated 3D atmospheric-cascade solver (research engine).
+"""
+[PROTOTYPE] Research/de-risking scaffolding -- NOT part of the delivered flux
+(mceq3d_flux). Kept for the record; do not depend on it in the paper. See
+ARCHITECTURE.md.
+
+mceq3d -- an integrated 3D atmospheric-cascade solver (research engine).
 
 This assembles every validated/de-risked component of the project into one
 coupled solver:

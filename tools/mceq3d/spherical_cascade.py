@@ -1,4 +1,9 @@
-"""Spherical cascade -- the energy cascade coupled to the curved atmosphere.
+"""
+[PROTOTYPE] Research/de-risking scaffolding -- NOT part of the delivered flux
+(mceq3d_flux). Kept for the record; do not depend on it in the paper. See
+ARCHITECTURE.md.
+
+Spherical cascade -- the energy cascade coupled to the curved atmosphere.
 
 This is the final coupling: it runs the multi-species energy cascade
 ``N -> pi/K -> nu`` **down the curved line of sight** of each arrival direction,

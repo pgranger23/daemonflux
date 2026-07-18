@@ -1,4 +1,9 @@
-"""Unify the two 3D corrections into one directional low-energy flux.
+"""
+[PROTOTYPE] Research/de-risking scaffolding -- NOT part of the delivered flux
+(mceq3d_flux). Kept for the record; do not depend on it in the paper. See
+ARCHITECTURE.md.
+
+Unify the two 3D corrections into one directional low-energy flux.
 
 This project produced two independent 3D pieces, both expressed as multiplicative
 corrections to the calibrated 1D flux:

@@ -1,4 +1,9 @@
-"""Integrated directional 3D flux -- wiring all the pieces together.
+"""
+[PROTOTYPE] Research/de-risking scaffolding -- NOT part of the delivered flux
+(mceq3d_flux). Kept for the record; do not depend on it in the paper. See
+ARCHITECTURE.md.
+
+Integrated directional 3D flux -- wiring all the pieces together.
 
 This combines the validated components into a single directional neutrino flux
 ``Phi(E, zenith, azimuth)`` for a detector site:

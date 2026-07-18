@@ -1,4 +1,9 @@
-"""Curved-atmosphere production geometry -- the Honda horizontal excess.
+"""
+[PROTOTYPE] Research/de-risking scaffolding -- NOT part of the delivered flux
+(mceq3d_flux). Kept for the record; do not depend on it in the paper. See
+ARCHITECTURE.md.
+
+Curved-atmosphere production geometry -- the Honda horizontal excess.
 
 This supplies the one genuinely-3D ingredient that the multiplicative-correction
 chain and the single-column cascade could not: the **off-axis / curved-shell

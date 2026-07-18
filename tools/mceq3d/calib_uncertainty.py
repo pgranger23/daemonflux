@@ -1,4 +1,9 @@
-"""Propagate daemonflux's muon-calibration uncertainty to the directional flux.
+"""
+[PROTOTYPE] Research/de-risking scaffolding -- NOT part of the delivered flux
+(mceq3d_flux). Kept for the record; do not depend on it in the paper. See
+ARCHITECTURE.md.
+
+Propagate daemonflux's muon-calibration uncertainty to the directional flux.
 
 daemonflux carries a nuisance-parameter covariance (its defining feature) and an
 ``error()`` method. The directional flux here is ``Phi_3D = Phi_df * G * S`` with the

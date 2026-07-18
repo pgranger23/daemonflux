@@ -1,4 +1,9 @@
-"""Deterministic 3D atmospheric cascade -- a "3D MCEq" (first assembled version).
+"""
+[PROTOTYPE] Research/de-risking scaffolding -- NOT part of the delivered flux
+(mceq3d_flux). Kept for the record; do not depend on it in the paper. See
+ARCHITECTURE.md.
+
+Deterministic 3D atmospheric cascade -- a "3D MCEq" (first assembled version).
 
 The factorised engine (Phi_1D x E_off x G) drops two couplings: the charged-shower
 inter-direction development and the coupling between the directional geomagnetic

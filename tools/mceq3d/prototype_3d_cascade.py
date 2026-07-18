@@ -1,4 +1,9 @@
-"""De-risking prototype: a coupled (energy x angle) deterministic cascade.
+"""
+[PROTOTYPE] Research/de-risking scaffolding -- NOT part of the delivered flux
+(mceq3d_flux). Kept for the record; do not depend on it in the paper. See
+ARCHITECTURE.md.
+
+De-risking prototype: a coupled (energy x angle) deterministic cascade.
 
 This is the minimal "3D-MCEq" core requested to test two things before committing
 to a full build:

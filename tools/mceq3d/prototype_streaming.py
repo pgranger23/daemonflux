@@ -1,4 +1,9 @@
-"""Streaming feasibility prototype: does spatial transport stay cheap?
+"""
+[PROTOTYPE] Research/de-risking scaffolding -- NOT part of the delivered flux
+(mceq3d_flux). Kept for the record; do not depend on it in the paper. See
+ARCHITECTURE.md.
+
+Streaming feasibility prototype: does spatial transport stay cheap?
 
 The single-column prototype (:mod:`prototype_3d_cascade`) showed the angular
 *production* operator is free in the Legendre basis because, with no spatial

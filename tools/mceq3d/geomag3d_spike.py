@@ -1,4 +1,9 @@
-"""De-risking spike for a deterministic (non-Monte-Carlo) 3D geomagnetic cascade.
+"""
+[PROTOTYPE] Research/de-risking scaffolding -- NOT part of the delivered flux
+(mceq3d_flux). Kept for the record; do not depend on it in the paper. See
+ARCHITECTURE.md.
+
+De-risking spike for a deterministic (non-Monte-Carlo) 3D geomagnetic cascade.
 
 The unified deterministic 3D-MCEq programme rests on ONE numerical risk: can a
 deterministic full-sphere angular basis carry the **sharp near-horizon

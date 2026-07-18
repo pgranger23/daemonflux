@@ -1,4 +1,9 @@
-"""Independent closure of E_off: a from-scratch straight-line ray-traced coupled
+"""
+[PROTOTYPE] Research/de-risking scaffolding -- NOT part of the delivered flux
+(mceq3d_flux). Kept for the record; do not depend on it in the paper. See
+ARCHITECTURE.md.
+
+Independent closure of E_off: a from-scratch straight-line ray-traced coupled
 neutrino transport, cross-checked against the delivered ``offaxis_factor``.
 
 Neutrinos do not scatter, so their full 3D transport from production to the

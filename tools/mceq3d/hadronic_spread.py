@@ -1,4 +1,9 @@
-"""Hadronic interaction-model spread of the 1D base -- a proxy for the
+"""
+[PROTOTYPE] Research/de-risking scaffolding -- NOT part of the delivered flux
+(mceq3d_flux). Kept for the record; do not depend on it in the paper. See
+ARCHITECTURE.md.
+
+Hadronic interaction-model spread of the 1D base -- a proxy for the
 inter-calculation (Bartol/FLUKA/Honda) envelope.
 
 The differences between full atmospheric-flux calculations are driven largely by

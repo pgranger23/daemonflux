@@ -1,4 +1,9 @@
-"""Solar-modulation knob: force-field modulation of the primary -> flux factor.
+"""
+[PROTOTYPE] Research/de-risking scaffolding -- NOT part of the delivered flux
+(mceq3d_flux). Kept for the record; do not depend on it in the paper. See
+ARCHITECTURE.md.
+
+Solar-modulation knob: force-field modulation of the primary -> flux factor.
 
 The 11-year solar cycle modulates the sub-GeV primary cosmic-ray flux (higher solar
 activity -> stronger heliospheric field -> lower flux at Earth). This is a real

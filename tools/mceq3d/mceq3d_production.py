@@ -1,4 +1,9 @@
-"""Production 3D engine: MCEq solved per multipole (full physics + angular layer).
+"""
+[PROTOTYPE] Research/de-risking scaffolding -- NOT part of the delivered flux
+(mceq3d_flux). Kept for the record; do not depend on it in the paper. See
+ARCHITECTURE.md.
+
+Production 3D engine: MCEq solved per multipole (full physics + angular layer).
 
 This is the production-grade architecture. Instead of reimplementing the cascade
 with toy yields, it **wraps MCEq**: the angular distribution of each species about
