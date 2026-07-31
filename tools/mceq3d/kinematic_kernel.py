@@ -221,14 +221,35 @@ def pion_alpha_pdf(e_grid, alpha_deg, n=3_000_000, seed=4, scale=1.0,
     return W
 
 
-def channel_fractions(e_query, flavour="numu", cache="channel_fractions.npz"):
+def channel_fractions(e_query, flavour="numu", cache="channel_fractions.npz",
+                      zenith_deg=0.0):
     """Energy-dependent flux fractions f_pi, f_k, f_mu from MCEq (cached).
 
     ``flavour`` is "numu" or "nue". For nu_e the direct pi channel is helicity-
-    suppressed (~0) and the flux is dominated by muon decay."""
+    suppressed (~0) and the flux is dominated by muon decay.
+
+    ``zenith_deg`` (default 0 = vertical) selects the zenith at which the MCEq
+    cascade is solved. This matters: the muon-decay fraction ``f_mu`` rises
+    strongly toward the horizon (longer slant path -> more decay in flight), so
+    applying the vertical value at all zeniths under-weights the (wide)
+    muon-decay production cone exactly where it is largest. Fractions are cached
+    per zenith in ``<cache>`` under a ``<key>_<zen>`` naming scheme; the vertical
+    (0 deg) entry stays backward-compatible with the original flat layout.
+    """
     import os
 
-    if not os.path.exists(cache):
+    ztag = f"{float(zenith_deg):.0f}"
+    suffix = "" if ztag == "0" else f"_z{ztag}"
+
+    def _has(d, fl):
+        return all(f"{k}_{fl}{suffix}" in d for k in ("pi", "k", "mu"))
+
+    d = dict(np.load(cache)) if os.path.exists(cache) else {}
+    if d and "tag" in d and str(d["tag"]) != "SIBYLL23D_HillasGaisser2012-H3a":
+        raise ValueError(
+            f"{cache} was built for {d['tag']}; delete it to regenerate"
+        )
+    if not (d and _has(d, flavour)):
         import importlib.util  # noqa: F401  (MCEq config touches importlib.util)
         import mceq_config as cfg
 
@@ -239,26 +260,23 @@ def channel_fractions(e_query, flavour="numu", cache="channel_fractions.npz"):
         mc = MCEqRun(
             interaction_model="SIBYLL23D",
             primary_model=(crf.HillasGaisser2012, "H3a"),
-            theta_deg=0.0,
+            theta_deg=float(zenith_deg),
         )
         mc.solve()
         e = mc.e_grid
-        out = {"e": e, "tag": "SIBYLL23D_HillasGaisser2012-H3a"}
+        d.setdefault("e", e)
+        d["tag"] = "SIBYLL23D_HillasGaisser2012-H3a"
         for fl in ("numu", "nue"):
             tot = mc.get_solution(f"total_{fl}", 0)
             for k in ("pi", "k", "mu"):
-                out[f"{k}_{fl}"] = mc.get_solution(f"{k}_{fl}", 0) / np.maximum(
+                d[f"{k}_{fl}{suffix}"] = mc.get_solution(f"{k}_{fl}", 0) / np.maximum(
                     tot, 1e-300
                 )
-        np.savez(cache, **out)
-    d = np.load(cache)
-    if "tag" in d and str(d["tag"]) != "SIBYLL23D_HillasGaisser2012-H3a":
-        raise ValueError(
-            f"{cache} was built for {d['tag']}; delete it to regenerate"
-        )
+        np.savez(cache, **d)
     le = np.log(d["e"])
     return {
-        k: np.interp(np.log(e_query), le, d[f"{k}_{flavour}"]) for k in ("pi", "k", "mu")
+        k: np.interp(np.log(e_query), le, d[f"{k}_{flavour}{suffix}"])
+        for k in ("pi", "k", "mu")
     }
 
 

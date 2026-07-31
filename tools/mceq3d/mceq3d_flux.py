@@ -737,25 +737,38 @@ class MCEq3DFlux:
 
         # channel-weighted cone: a second (wider) muon-decay cone weight W_mu, and
         # the per-species muon-decay flux fraction f_mu to blend the two averages.
-        W_mu, fmu = None, None
+        #
+        # BOTH are ZENITH-DEPENDENT and are therefore evaluated per direction below
+        # (memoised on the instance per rounded zenith). The muon-decay fraction
+        # f_mu rises strongly toward the horizon (longer slant path -> more decay
+        # in flight: ~0.3 vertical -> ~0.5 saturated at 85 deg), and the muon-decay
+        # cone width likewise depends on the decay-in-flight fraction. Using the
+        # vertical values everywhere (the previous behaviour) under-weighted the
+        # wide muon-decay cone exactly at the horizon, where it matters most, and
+        # suppressed the delivered sub-GeV horizon/vertical ratio by ~15-19%
+        # (diag_shape_decompose.py).
         if channel_cone:
             from kinematic_kernel import mudecay_shape, channel_fractions
 
-            sig_mu = getattr(self, "_sig_mudecay", None)
-            if sig_mu is None:
-                sig_mu = self._sig_mudecay = mudecay_shape(self.e)
-            sig_mu = np.maximum(sig_mu * sigma_scale, 1e-3)
-            W_mu = np.exp(-0.5 * (alpha_deg[None, :] / sig_mu[:, None]) ** 2) \
+        def _channel_at_zenith(zen_deg):
+            """(W_mu, fmu) for a given zenith [deg], memoised per 10-deg bucket."""
+            key = int(round(zen_deg / 10.0) * 10)
+            cache = getattr(self, "_channel_by_zen", None)
+            if cache is None:
+                cache = self._channel_by_zen = {}
+            if key in cache:
+                return cache[key]
+            sig_mu = np.maximum(mudecay_shape(self.e, zenith_deg=float(key))
+                                * sigma_scale, 1e-3)
+            w = np.exp(-0.5 * (alpha_deg[None, :] / sig_mu[:, None]) ** 2) \
                 * np.sin(np.deg2rad(alpha_deg))[None, :]
-            W_mu = W_mu / np.maximum(W_mu.sum(1, keepdims=True), 1e-300)
-            fcache = getattr(self, "_fmu_by_species", None)
-            if fcache is None:
-                fcache = self._fmu_by_species = {
-                    s: channel_fractions(self.e,
-                                         "nue" if "nue" in s else "numu")["mu"]
-                    for s in SPECIES
-                }
-            fmu = fcache
+            w = w / np.maximum(w.sum(1, keepdims=True), 1e-300)
+            f = {s: channel_fractions(self.e,
+                                      "nue" if "nue" in s else "numu",
+                                      zenith_deg=float(key))["mu"]
+                 for s in SPECIES}
+            cache[key] = (w, f)
+            return cache[key]
 
         # coherent muon-bending shift of the muon-decay cone axis (charge-signed):
         # nu from mu+ (anti-nu_mu, nu_e) shift one way, nu from mu- (nu_mu,
@@ -790,6 +803,9 @@ class MCEq3DFlux:
                         Geff[s][iz, ia] = single[s]
                     continue
                 th = np.arccos(np.clip(cz, -1, 1))
+                # per-direction channel cone (zenith-dependent f_mu / cone width)
+                if channel_cone:
+                    W_mu, fmu = _channel_at_zenith(np.degrees(th))
                 phi = np.radians(azd)
                 n = np.array([np.sin(th) * np.cos(phi), np.sin(th) * np.sin(phi),
                               np.cos(th)])  # (north, east, up)
