@@ -4,7 +4,91 @@ A precise, self-critical account of what was built, where it is approximate or
 cuts corners, every validation actually run, and the leftover issues. Read this
 before trusting any number downstream.
 
-## Resolution status (update)
+---
+
+## ⚠️ CURRENT STATUS (2026-07-23) — read this first
+
+**Everything below the "Resolution status" heading predates commit `71dd9d9` and is
+superseded where it conflicts with this block.** Authoritative sources, in order:
+`ARCHITECTURE.md` (module map), `PAPER_DRAFT.md` §4-6 (physics + validation), then
+this file (history and the older approximation inventory).
+
+### What changed since the old review
+
+* **`E_off` cone kernel (delivered physics change).** The sampled `(x_L,θ)` kernel
+  (`k_spliced.npz`) was root-caused as **16-37% too wide** in per-secondary
+  meson-angle RMS — a 0.667° θ-binning artefact that grows with energy. The
+  delivered cone now uses the exact, NA61-validated **moment `σ_π`**
+  (`offaxis_mc.py`, `cone_kernel="moments"`, the default; legacy via
+  `--cone-kernel sampled`). Brings νμ and νe horizon/vertical onto **both** Honda
+  and Bartol. See `diag_kernel_consistency.py`, `diag_cone_fix.py`.
+* **Production-vertex closure — the old "no coupled solve" item is CLOSED.**
+  `mceq3d_prodvertex.py` reproduces the delivered `E_off` to **~1-2%** from an
+  independently hand-marched real-matrix cascade, with both gates passing
+  (cone→0 ⇒ `E_off`→1 to 5e-4; →1 at high E). Physics reframe: neutrinos
+  free-stream, so there is **no transport coupling** for them — the entire 3D
+  neutrino effect is production geometry, which `E_off` already integrates.
+  Caveat: independent *code path*, same underlying model — not independent physics.
+* **Absolute validation now exists across all four species.** `diag_full_comparison.py`
+  compares against Honda's full 10×12×101 table: absolute flux **0.82-1.10×** Honda
+  everywhere 0.15-100 GeV; grid-wide median |log10 ratio| ~0.03 (~8%), 90th pct
+  ~17-23%. Flavour ratio within a few %, charge ratios within ~5%. Bartol
+  (Honda-independent) confirms 0.94-1.04× over most of the range.
+
+### The one systematic that remains (and it is ONE, not several)
+
+The extreme-horizon **East-West overshoot** (+15-24% at 87°) and the **sub-GeV
+zenith-shape deficit** (11-15% at 0.3-1 GeV) are the **same underlying systematic**:
+the factorised cone-average **under-softens the sharp back-traced cutoff** relative
+to Honda's full 3D treatment. Evidence: inverting each observable to an effective
+cutoff gives a consistent, nearly **energy-flat** downward shift (E-W: Honda ~27-29
+GV East vs ours ~33-39; zenith: Honda ~11-17 GV horizon vs ours ~14-20, i.e. ~3 GV).
+Honda's implied *vertical* cutoff matches ours, so the vertical is correct and only
+the high-cutoff directions are under-softened.
+
+Ruled out as the cause, each with a dedicated diagnostic: inter-direction coupling
+(<1%, `coupled_ew_diag.py`), production-point displacement (~4%, `diag_ew_cause.py`
+— note an earlier version of that script had a root-selection bug that overstated
+it), penumbra sharpness (the real cutoff is *sharper* than our erf,
+`diag_ew_penumbra.py`), hadronic interaction model (~1/6, DPMJET-III-19.3,
+`diag_ew_dpmjet.py`), cutoff averaging over the production region (~2 GV,
+`diag_ew_prodregion.py`), and the muon-decay channel width (~4%,
+`diag_ew_muon.py`). For the zenith shape specifically, `diag_G_zenith.py` shows the
+per-zenith cascade **response curve is correct** (0.97-1.00) and the cone averaging
+already *helps* (lifts HV_G 0.598→0.855) — the residual is the cutoff values.
+
+**Do not tune this to Honda.** Quote it as a systematic of the fast factorised
+treatment. Any future fix should target the softening of high-cutoff directions
+(energy-flat) and would improve both observables at once.
+
+### Confirmed structural gap: charge-dependent East-West
+
+The model predicts ≈zero ν-vs-ν̄ E-W amplitude splitting; Honda shows a factor 2-3
+(νμ diff -0.91 to -1.53; νe +1.7 to +3.3). Verified via **two independent
+implementations** — the factorised coherent shift scaled to 30× (saturates at ~20%
+of Honda) and the fully coupled multi-species transport with charge-signed Lorentz
+bending (exact null) — with the latter's null confirmed **not** to be a
+checkpoint-resolution artefact by a 10× scan (`diag_checkpoint_resolution.py`).
+π⁺/π⁻ cone widths are equal to 1-3% (refuted directly from data). K⁺/K⁻ widths do
+differ (~8-9% at 1-2 GeV) but `cone_geff` has **no kaon-parent cone term at all** —
+a real, currently-missing piece, too small alone to close the gap. The one untested
+lever is a spatially-varying **B(r)** along the ~1000 km near-horizon path (both
+implementations use a single detector-point field vector).
+
+### Known-and-accepted approximations (still true)
+
+* `channel_fractions`/`mudecay_shape` were vertical-only; now zenith-dependent, but
+  this is worth only ~0.3% (the two cone widths it blends are nearly identical).
+* Below ~0.15 GeV the factorised geometry is an extrapolation: the `E_off`
+  flux-conservation residual grows to ~8% at 0.11 GeV (guardrail deliberately
+  loosened there, `test_offaxis_conservation.py`).
+* Honda/Bartol are **models, not data**. All "validation" against them is
+  model-self-consistency. The genuine data-level test (Super-K measured E-W) is
+  still not done — this remains the single biggest gap in the validation story.
+
+---
+
+## Resolution status (update, pre-`71dd9d9` — historical)
 
 Worked through the action items in priority order:
 

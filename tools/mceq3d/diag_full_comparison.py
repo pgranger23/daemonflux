@@ -238,9 +238,20 @@ def main():
             Eb, czb, gb = vb.load_bartol(fl, "fmin")
             ivb = int(np.argmin(np.abs(czb - 0.95)))
             print(f"\n[{sp}] ours/Bartol, vertical:")
+            # NB the cached Bartol table is the LOW-energy (20-bin) file only:
+            # it stops at 9.441 GeV. np.interp does not extrapolate -- it clamps
+            # to the last value -- so a linear request at 10 GeV silently reused
+            # the 9.441 GeV flux and overstated Bartol by ~21% on this steeply
+            # falling (~E^-2.9) spectrum, faking a 0.79 ratio for numu. Use
+            # log-log (consistent with the rest of the codebase) and refuse to
+            # report points beyond the table's range.
             for E in (0.3, 0.5, 1.0, 3.0, 10.0):
-                o = float(np.interp(E, e, F[sp][iv].mean(0)))
-                b = float(np.interp(E, Eb, gb[ivb]))
+                o = log_at(F[sp][iv].mean(0), e, E)
+                if E > Eb.max():
+                    print(f"  E={E:6.2f}  ours={o:.3e}  Bartol=  (out of table "
+                          f"range, max {Eb.max():.2f} GeV -- skipped)")
+                    continue
+                b = log_at(gb[ivb], Eb, E)
                 print(f"  E={E:6.2f}  ours={o:.3e}  Bartol={b:.3e}  "
                       f"ratio={o/max(b,1e-300):.2f}")
     except Exception as ex:
