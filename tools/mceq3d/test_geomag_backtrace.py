@@ -104,6 +104,32 @@ def test_igrf_field_magnitude():
     assert 25.0 < mag_uT < 65.0
 
 
+def test_far_field_matches_validated_dipole_beyond_switch():
+    """Beyond r_switch the vectorised field must equal the validated scalar
+    :func:`bfield`, INCLUDING sign.
+
+    Regression guard: the far-field branch of ``_bfield_igrf_cart`` originally
+    omitted the leading minus of the dipole formula, so it returned -B for
+    r > r_switch. It survived because the only existing coverage
+    (``test_igrf_field_magnitude``) probes a near-surface point -- inside the
+    switch radius, where the real IGRF overwrites the dipole -- and checks a
+    magnitude, which is sign-blind. Test both branches and the sign here.
+    """
+    import datetime
+    from geomag_backtrace import _bfield_igrf_cart, bfield
+
+    m_hat = dipole_axis()
+    date = datetime.datetime(2020, 1, 1)
+    for r_re in (5.0, 8.0):  # comfortably beyond the default r_switch=4
+        pos = np.array([[RE * r_re * 0.6, RE * r_re * 0.0, RE * r_re * 0.8]])
+        got = _bfield_igrf_cart(pos, date, m_hat)[0]
+        want = bfield(pos[0], m_hat)
+        assert np.allclose(got, want, rtol=1e-10), (
+            f"far-field dipole disagrees with validated bfield() at r={r_re} R_E: "
+            f"{got} vs {want} (ratio {got / want})"
+        )
+
+
 def test_east_west_sign():
     # Positive cosmic rays are easier from the West: at the equator, zenith 45,
     # a rigidity (~18 GV) between the two cutoffs (West ~11.5, East ~24 GV) is

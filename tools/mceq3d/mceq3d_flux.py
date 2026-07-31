@@ -83,6 +83,13 @@ import numpy as np
 _CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "flux_cache")
 
 CM2_PER_M2 = 1.0e4  # MCEq flux is per cm^2; Honda/this engine report per m^2
+RE_KM = 6371.0  # mean Earth radius [km] (production-point displacement geometry)
+# Effective neutrino production altitude [km] for the production-point
+# displacement in cone_geff. The MCEq depth-resolved production weight along a
+# near-horizon slant path peaks at h ~ 24-32 km (diag_ew_prodregion.py), well
+# above the ~15-20 km often quoted for the vertical, because the near-horizon
+# ray traverses the upper atmosphere at grazing incidence.
+H_PROD_KM = 30.0
 SPECIES = ("total_numu", "total_antinumu", "total_nue", "total_antinue")
 SP_LABEL = {
     "total_numu": "numu",
@@ -674,7 +681,8 @@ class MCEq3DFlux:
 
     def cone_geff(self, cos_zeniths, azimuths, rc_map, rc_grid, G_by_z,
                   fine, n_alpha=12, n_beta=12, sigma_scale=1.0, channel_cone=True,
-                  muon_bending=True, b_enu=None):
+                  muon_bending=True, b_enu=None, prod_displacement=False,
+                  h_prod_km=H_PROD_KM):
         """Production-cone-averaged geomagnetic factor G_eff[species][cz, az, E].
 
         The parent primary of a neutrino from direction ``n`` arrives from a cone
@@ -718,6 +726,28 @@ class MCEq3DFlux:
         are tracked separately (not charge-summed), each carries the *full* shift
         (not the ~0.3 deg net cancellation). Implemented as a coherent shift of the
         muon-decay cone axis per species (:func:`muon_bending.bending_deflection`).
+
+        ``prod_displacement`` (default **False**, opt-in): evaluate each cone
+        sample's cutoff in the local frame of the **production point** rather than
+        the detector's. The neutrino is produced hundreds of km up the arrival ray
+        near the horizon (272 km at 87 deg / h=20 km; 370 km at h=30 km), where the
+        local vertical has rotated by ~L/R_E, so the same primary direction has a
+        less extreme local zenith there (87 -> 83.7 deg at h=30 km) and hence a
+        LOWER cutoff. Evaluating at the detector therefore over-estimates R_c and
+        over-suppresses the horizon. The correction is exactly zero at the vertical
+        and maximal at the horizon, and is energy-independent -- matching the
+        signature of the residual Honda discrepancy.
+
+        MEASURED EFFECT (diag_prod_displacement.py): correctly signed but SMALL --
+        it removes ~15% of the extreme-horizon E-W overshoot (ON/H 1.183->1.145 at
+        0.5 GeV) and only ~5% of the sub-GeV zenith-shape deficit (0.889->0.899 at
+        1 GeV; marginally *worse* at 0.3 GeV, 0.833->0.828). This is much less than
+        the raw -2.3 GV cutoff shift suggests, because (i) the +-20 deg cone average
+        (further smoothed by the ~7 deg finemap zenith spacing) dilutes a rigid
+        ~3 deg axis shift, and (ii) at a ~40 GV horizon cutoff G_s is already deeply
+        suppressed for the relevant primaries, so a 40->37.7 GV change barely moves
+        the ratio. Kept opt-in: physically more correct, but too marginal and too
+        mixed in sign across energy to justify changing delivered numbers.
         """
         from kinematic_kernel import pion_alpha_pdf, channel_shapes
 
@@ -778,6 +808,45 @@ class MCEq3DFlux:
         if do_bend:
             import muon_bending as _mb
 
+        def _prod_frame(n_vec, h_km):
+            """Local (up, north) at the production point, in the detector's frame.
+
+            The neutrino arriving from direction ``n_vec`` (a unit vector in the
+            detector's north/east/up frame) was produced at altitude ``h_km``, a
+            distance L up that ray -- hundreds of km near the horizon. The local
+            vertical there is tilted by ~L/R_E relative to the detector's, so the
+            SAME primary direction has a less extreme local zenith at the
+            production point than at the detector. Returns the production point's
+            up and north unit vectors expressed in the detector frame, or None if
+            the displacement is negligible.
+            """
+            cz_n = float(n_vec[2])
+            r = RE_KM + h_km
+            disc = (RE_KM * cz_n) ** 2 + (r * r - RE_KM * RE_KM)
+            L = -RE_KM * cz_n + np.sqrt(max(disc, 0.0))
+            if L < 1.0:
+                return None
+            # detector at (0,0,RE) in its own frame; P = detector + L * n
+            P = np.array([L * n_vec[0], L * n_vec[1], RE_KM + L * n_vec[2]])
+            up_p = P / np.linalg.norm(P)
+            # local north at P: component of the detector's north orthogonal to up_p
+            north_det = np.array([1.0, 0.0, 0.0])
+            north_p = north_det - np.dot(north_det, up_p) * up_p
+            nn = np.linalg.norm(north_p)
+            if nn < 1e-9:
+                return None
+            return up_p, north_p / nn
+
+        def _local_angles(vec, frame):
+            """(zenith, azimuth) [deg] of ``vec`` in a production-point frame."""
+            up_p, north_p = frame
+            east_p = np.cross(up_p, north_p)
+            cz = float(np.dot(vec, up_p))
+            th = np.degrees(np.arccos(np.clip(cz, -1.0, 1.0)))
+            ph = np.degrees(np.arctan2(np.dot(vec, east_p),
+                                       np.dot(vec, north_p))) % 360.0
+            return th, ph
+
         def rc_at(th_deg, ph_deg):  # bilinear, periodic azimuth, clamp zenith
             th = np.clip(th_deg, zen_f[0], zen_f[-1])
             ph = ph_deg % 360.0
@@ -809,6 +878,9 @@ class MCEq3DFlux:
                 phi = np.radians(azd)
                 n = np.array([np.sin(th) * np.cos(phi), np.sin(th) * np.sin(phi),
                               np.cos(th)])  # (north, east, up)
+                # production-point frame: the cutoff seen by the parent primary is
+                # the one at the PRODUCTION point, not at the detector.
+                pframe = _prod_frame(n, h_prod_km) if prod_displacement else None
                 e1 = np.array([0.0, 0.0, 1.0]) - n[2] * n  # toward vertical
                 nn = np.linalg.norm(e1)
                 e1 = e1 / nn if nn > 1e-9 else np.array([1.0, 0.0, 0.0])
@@ -829,8 +901,11 @@ class MCEq3DFlux:
                     for b in beta:
                         npv = np.cos(a) * n + np.sin(a) * (
                             np.cos(b) * e1 + np.sin(b) * e2)
-                        th_p = np.degrees(np.arccos(np.clip(npv[2], -1, 1)))
-                        ph_p = np.degrees(np.arctan2(npv[1], npv[0]))
+                        if pframe is not None:
+                            th_p, ph_p = _local_angles(npv, pframe)
+                        else:
+                            th_p = np.degrees(np.arccos(np.clip(npv[2], -1, 1)))
+                            ph_p = np.degrees(np.arctan2(npv[1], npv[0]))
                         rcp = float(rc_at(th_p, ph_p))
                         for s in SPECIES:
                             gbar[s] += _interp_rc(rcp, rc_grid, G_by_z[iz][s])
@@ -841,12 +916,16 @@ class MCEq3DFlux:
                             pp = pp / np.linalg.norm(pp)
                             pm = npv - d_cone
                             pm = pm / np.linalg.norm(pm)
-                            rc_p = float(rc_at(
-                                np.degrees(np.arccos(np.clip(pp[2], -1, 1))),
-                                np.degrees(np.arctan2(pp[1], pp[0]))))
-                            rc_m = float(rc_at(
-                                np.degrees(np.arccos(np.clip(pm[2], -1, 1))),
-                                np.degrees(np.arctan2(pm[1], pm[0]))))
+                            if pframe is not None:
+                                rc_p = float(rc_at(*_local_angles(pp, pframe)))
+                                rc_m = float(rc_at(*_local_angles(pm, pframe)))
+                            else:
+                                rc_p = float(rc_at(
+                                    np.degrees(np.arccos(np.clip(pp[2], -1, 1))),
+                                    np.degrees(np.arctan2(pp[1], pp[0]))))
+                                rc_m = float(rc_at(
+                                    np.degrees(np.arccos(np.clip(pm[2], -1, 1))),
+                                    np.degrees(np.arctan2(pm[1], pm[0]))))
                             for s in SPECIES:
                                 rc_s = rc_p if s in MU_PLUS else rc_m
                                 gbar_mu[s] += _interp_rc(rc_s, rc_grid, G_by_z[iz][s])
@@ -955,6 +1034,7 @@ class MCEq3DFlux:
         cone_sigma_scale=1.0,
         channel_cone=True,
         muon_bending=True,
+        prod_displacement=False,
     ):
         """Absolute Phi[species, cosZ, az, E] for a site (full sky).
 
@@ -1110,6 +1190,7 @@ class MCEq3DFlux:
                 cos_zeniths, azimuths, rc_map, rc_grid, G_by_z, fine,
                 sigma_scale=cone_sigma_scale, channel_cone=channel_cone,
                 muon_bending=muon_bending, b_enu=b_enu,
+                prod_displacement=prod_displacement,
             )
 
         flux = {

@@ -136,11 +136,20 @@ def _bfield_igrf_cart(r_cart_m, date, m_hat, r_switch=4.0):
 
     r = np.linalg.norm(r_cart_m, axis=1)  # m
     rhat = r_cart_m / r[:, None]
+    # dipole everywhere (default; overwritten by real IGRF below r_switch).
+    # NOTE the leading minus: same sign convention as the validated scalar
+    # :func:`bfield` above (field points north at the equator, down at the
+    # geomagnetic north pole). It was missing here, so the far-field branch
+    # returned -B beyond r_switch. Impact is small in practice -- beyond
+    # r_switch=4 R_E the field is <2% of its surface value, and patching the
+    # sign leaves the escape/return verdict of a near-horizon boundary
+    # trajectory unchanged (Kamioka 87 deg E, 42 GV: escapes either way,
+    # 1224 vs 1218 RK4 steps) -- but the field was simply wrong there.
     B = (
-        B0
+        -B0
         * (RE / r)[:, None] ** 3
         * (3 * (rhat @ m_hat)[:, None] * rhat - m_hat[None, :])
-    )  # dipole everywhere (default)
+    )
 
     near = r < r_switch * RE
     if np.any(near):
