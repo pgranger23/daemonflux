@@ -1,0 +1,6 @@
+tables.dat
+__pycache__/
+*.pyc
+.pytest_cache/
+# regenerated in ~8 s by `python build_tables.py`; 4.9 MB, not worth tracking
+mceq_tables_*.npz
