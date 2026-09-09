@@ -1,10 +1,15 @@
 """Turn the regenerated (x_L, p_T) kernel into angular transport objects.
 
 This is the bridge from :mod:`kernel_regeneration` to a deterministic 3D
-solver. A secondary produced with transverse momentum ``p_T`` and longitudinal
-momentum ``p_L`` leaves the interaction at a production angle
+solver. A secondary of total lab momentum ``p`` with transverse component
+``p_T`` leaves the interaction at a production angle
 
-    theta = arctan(p_T / p_L),   p_L = sqrt(E_sec^2 - m^2),  E_sec = x_L E_proj
+    theta = arcsin(p_T / p),   p = sqrt(E_sec^2 - m^2),  E_sec = x_L E_proj
+
+(``p_T = p sin theta``, so the *longitudinal* momentum is
+``p_z = sqrt(p^2 - p_T^2)``, not ``p``. The single definition lives in
+``kernel_regeneration.production_angle``; using ``arctan(p_T / p)`` there was a
+bug until 2026-09.)
 
 relative to the projectile axis. The double-differential kernel
 ``d2N/(dx_L dp_T)`` therefore encodes the angular redistribution that a 1D
@@ -33,6 +38,8 @@ import argparse
 from typing import Dict, Tuple
 
 import numpy as np
+
+from kernel_regeneration import production_angle as _production_angle
 
 M_PION = 0.13957
 
@@ -84,8 +91,7 @@ def production_angle(axes: Dict[str, np.ndarray], mass: float = M_PION) -> np.nd
     xl = axes["xl_centers"][None, :, None]
     pt = axes["pt_centers"][None, None, :]
     e_sec = xl * e_proj
-    p_l = np.sqrt(np.maximum(e_sec**2 - mass**2, 1e-12))
-    return np.arctan2(pt, p_l)
+    return _production_angle(e_sec, pt, mass)
 
 
 def angle_moments(
@@ -200,8 +206,7 @@ def discrete_ordinate_row(
 
     dpt = np.diff(axes["pt_edges"])
     pt = axes["pt_centers"]
-    p_l = np.sqrt(max(e_sec[j] ** 2 - mass**2, 1e-12))
-    mu = np.cos(np.arctan2(pt, p_l))  # (npt,)
+    mu = np.cos(_production_angle(e_sec[j], pt, mass))  # (npt,)
     w = kernel[i_proj, j, :] * dpt  # (npt,)
 
     hist, _ = np.histogram(mu, bins=mu_edges, weights=w)
@@ -249,11 +254,12 @@ def pool_moments_by_energy(
     high-energy bin floor. ``D_theta = <theta^2>/2`` is the Fokker-Planck
     angular-diffusion coefficient and -> 0 as E_sec -> inf, recovering 1D.
 
-    Also returns ``pt_eff = <theta> * p_L`` [GeV], the effective mean transverse
-    momentum. ``<theta>`` deviates from a naive ``<p_T>/E`` with constant
-    ``<p_T>`` precisely because ``pt_eff`` rises with energy (and turns over at
-    low energy from mass/large-angle effects) -- this is physical, and is the
-    quantity to validate against fixed-target data (NA61), not against MCEq
+    Also returns ``pt_eff = p sin(<theta>)`` [GeV], the effective mean transverse
+    momentum (``p`` the total momentum). ``<theta>`` deviates from a naive
+    ``<p_T>/E`` with constant ``<p_T>`` precisely because ``pt_eff`` rises with
+    energy (and turns over at low energy from mass/large-angle effects) -- this
+    is physical, and is the quantity to validate against fixed-target data
+    (NA61), not against MCEq
     (whose 1D kernels contain no angular information).
     """
     e = mom["e_sec"].ravel()
@@ -276,7 +282,7 @@ def pool_moments_by_energy(
             mean_th[b] = np.sum(th[sel] * w) / w.sum()
             mean_th2[b] = np.sum(th2[sel] * w) / w.sum()
             weight[b] = w.sum()
-    p_l = np.sqrt(np.maximum(centers**2 - mass**2, 1e-12))
+    p_tot = np.sqrt(np.maximum(centers**2 - mass**2, 1e-12))
     # Reliability mask: the highest-E_sec bins are reached only via the x_L -> 1
     # corner (the *leading particle*: p_T -> 0 by kinematics, vanishing yield), so
     # they are leading-particle-biased and statistics-starved -- not physical. A
@@ -290,7 +296,9 @@ def pool_moments_by_energy(
         "theta_mean": mean_th,
         "theta_sq": mean_th2,
         "d_theta": 0.5 * mean_th2,
-        "pt_eff": mean_th * p_l,
+        # p_T = p sin(theta) exactly (see kernel_regeneration.production_angle);
+        # the small-angle form <theta> * p over-states p_T_eff below ~1 GeV.
+        "pt_eff": p_tot * np.sin(mean_th),
         "weight": weight,
         "reliable": reliable,
     }

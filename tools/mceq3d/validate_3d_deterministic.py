@@ -66,9 +66,12 @@ def main():
     Eoff_det = Fon / np.maximum(Foff, 1e-300)  # emergent off-axis factor
 
     # delivered factorised E_off and Honda-implied excess
-    from mceq3d_flux import MCEq3DFlux
+    from mceq3d_flux import MCEq3DFlux, EOFF_TABLE_FLAT
     eng = MCEq3DFlux(base_model="mceq", e_min=0.3)
-    Eoff_deliv = eng.offaxis_factor(cz)["total_numu"]  # (n_cz, nE_eng)
+    # the closure target is the FLAT single-pion-cone table: this script's own
+    # integral uses one pion cone, while the default table
+    # (offaxis_excess_channel_v2.npz) is channel-weighted and species-resolved.
+    Eoff_deliv = eng.offaxis_factor(cz, path=EOFF_TABLE_FLAT)["total_numu"]  # (n_cz, nE_eng)
     de = eng.e
     h = dict(np.load("honda_kam.npz"))
     He, Hcz, nm = h["E"], h["czlo"], h["numu"]

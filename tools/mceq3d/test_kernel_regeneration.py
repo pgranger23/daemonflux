@@ -17,6 +17,7 @@ from kernel_regeneration import (
     marginalize_theta,
     to_angular_kernel,
     compare_to_reference,
+    production_angle,
     M_PION,
 )
 
@@ -60,11 +61,60 @@ def test_marginalize_is_total_yield():
 def test_angle_conversion_monotonicity():
     grid = _small_grid()
     theta, jac = to_angular_kernel(np.ones(grid.shape), grid)
+    # Restrict to kinematically allowed cells: theta = arcsin(p_T/p) saturates
+    # at 90 deg once p_T >= p (and p is undefined for E_sec < m_pi).
+    e_sec = grid.xl_centers[None, :, None] * grid.proj_energies[:, None, None]
+    p_tot = np.sqrt(np.maximum(e_sec**2 - M_PION**2, 0.0))
+    ok = grid.pt_centers[None, None, :] < 0.98 * p_tot
     # angle grows with p_T at fixed (E, x_L)
-    assert np.all(np.diff(theta, axis=2) > 0)
+    pair = ok[..., :-1] & ok[..., 1:]
+    assert np.all(np.diff(theta, axis=2)[pair] > 0)
     # angle shrinks with projectile energy at fixed (x_L, p_T)
     assert np.all(theta[0] >= theta[1] - 1e-12)
-    assert np.all(jac > 0)
+    assert np.all(jac[ok] > 0)
+
+
+def test_production_angle_uses_arcsin():
+    """Regression guard: theta = arcsin(p_T/p), NOT arctan(p_T/p).
+
+    Synthetic secondary with p_T/p = 0.5 -> 30 deg (arcsin) vs 26.57 deg
+    (the pre-2026-09 bug). The bug biased <theta^2> low by ~16% at
+    E_sec ~ 0.36 GeV, i.e. where the sub-GeV production cone drives E_off.
+    """
+    p_tot, p_t = 1.0, 0.5
+    e_sec = np.hypot(p_tot, M_PION)
+    th = production_angle(e_sec, p_t, M_PION)
+    assert np.isclose(np.degrees(th), 30.0)
+    assert np.degrees(np.arctan2(p_t, p_tot)) < 27.0  # the old, wrong value
+    # exactly transverse -> 90 deg
+    assert np.isclose(np.degrees(production_angle(e_sec, p_tot, M_PION)), 90.0)
+    # small-angle limit: the two definitions converge
+    assert np.isclose(
+        production_angle(100.0, 0.3, M_PION), np.arctan2(0.3, 100.0), rtol=1e-4
+    )
+
+
+def test_build_moments_angles_exceed_arctan_convention():
+    """The moments built from the fixed angle must be *wider* than the old ones
+    at low secondary energy and converge at high energy."""
+    grid = KernelGrid(
+        xl_edges=np.logspace(-3, 0, 31),
+        pt_edges=np.linspace(0.0, 3.0, 21),
+        proj_energies=np.array([50.0]),
+    )
+    mom = build_moments(ToySource(), grid, M_PION, n_interactions=20000)
+    e_sec = mom["e_sec"][0]
+    th2 = mom["theta_sq"][0]
+    lo = np.isfinite(th2) & (e_sec > 0.3) & (e_sec < 0.6)
+    hi = np.isfinite(th2) & (e_sec > 20.0)
+    assert lo.any() and hi.any()
+    # old convention on the same secondaries, reconstructed from <theta>:
+    # arctan(x) < arcsin(x), so the fixed moments are strictly larger at low E.
+    p_lo = np.sqrt(e_sec[lo] ** 2 - M_PION**2)
+    # a 0.3-0.6 GeV pion with <p_T> ~ 0.3 GeV has sin/tan mismatch >> 1%
+    assert np.all(np.sqrt(th2[lo]) > 0.5)  # > ~29 deg
+    assert np.all(p_lo > 0)
+    assert np.all(np.sqrt(th2[hi]) < 0.05)  # < ~3 deg at E_sec > 20 GeV
 
 
 def test_angular_kernel_matches_pt_marginal():

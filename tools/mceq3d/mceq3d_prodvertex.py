@@ -68,9 +68,12 @@ def main():
     Eoff_zero = eoff_from_marched_p(cz, e, sig_pi * 1e-3, Xrec, p_march, geom)
 
     # delivered E_off + Honda-implied
-    from mceq3d_flux import MCEq3DFlux
+    from mceq3d_flux import MCEq3DFlux, EOFF_TABLE_FLAT
     eng = MCEq3DFlux(base_model="mceq", daemonflux_location="generic")
-    Edeliv = eng.offaxis_factor(cz)["total_numu"]
+    # the closure target is the FLAT single-pion-cone table: this script's own
+    # integral uses one pion cone, while the default table
+    # (offaxis_excess_channel_v2.npz) is channel-weighted and species-resolved.
+    Edeliv = eng.offaxis_factor(cz, path=EOFF_TABLE_FLAT)["total_numu"]
     de = eng.e
     h = dict(np.load("honda_kam.npz"))
     He, Hcz, nm = h["E"], h["czlo"], h["numu"]

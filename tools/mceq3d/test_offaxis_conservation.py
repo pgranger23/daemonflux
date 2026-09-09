@@ -96,3 +96,51 @@ def test_eoff_vanishes_at_high_energy(table):
     assert np.allclose(E_off[:, k], 1.0, atol=0.03), (
         f"E_off not ~1 at 10 GeV: {E_off[:, k]}"
     )
+
+
+# --------------------------------------------------------------------------
+# Same guardrail for the per-species channel-weighted tables
+# --------------------------------------------------------------------------
+CHANNEL_TABLES = [
+    os.path.join(HERE, n) for n in
+    ("offaxis_excess_channel.npz", "offaxis_excess_channel_v2.npz",
+     "offaxis_excess_v2.npz", "offaxis_excess_rebuild_old.npz")
+]
+
+# The channel-weighted cone is genuinely wider for the muon-decay component, so a
+# somewhat larger net (non-redistributive) residual is expected -- but only
+# somewhat: a cone change that manufactured flux rather than moving it would be
+# an artefact, not physics. This is the honest ceiling, not a fitted one.
+W_MAX_CHANNEL = 1.15
+
+
+@pytest.mark.parametrize("path", CHANNEL_TABLES)
+def test_species_tables_do_not_inflate_total_flux(path):
+    if not os.path.exists(path):
+        pytest.skip(f"{path} not built")
+    d = np.load(path)
+    cz, e, tab = d["cz"], d["e"], d["E_off_s"]
+    for isp, sp in enumerate(d["species"]):
+        for k, en in enumerate(e):
+            if en < E_MODELLED_MIN:
+                continue
+            w = _omega_avg(tab[isp, :, k], cz)
+            assert w <= W_MAX_CHANNEL, (
+                f"{os.path.basename(path)} {sp}: <E_off>_Omega = {w:.3f} at "
+                f"{en:.2f} GeV inflates the angle-integrated flux"
+            )
+
+
+@pytest.mark.parametrize("path", CHANNEL_TABLES)
+def test_species_tables_are_redistributions(path):
+    """Sub-GeV: horizon enhanced, vertical suppressed, for every species."""
+    if not os.path.exists(path):
+        pytest.skip(f"{path} not built")
+    d = np.load(path)
+    cz, e, tab = d["cz"], d["e"], d["E_off_s"]
+    ih, iv = int(np.argmin(cz)), int(np.argmax(cz))
+    for isp, sp in enumerate(d["species"]):
+        for E in (0.3, 0.5):
+            k = int(np.argmin(np.abs(e - E)))
+            assert tab[isp, ih, k] > 1.03, (sp, E, tab[isp, ih, k])
+            assert tab[isp, iv, k] < 1.0, (sp, E, tab[isp, iv, k])

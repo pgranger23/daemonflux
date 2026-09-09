@@ -44,8 +44,24 @@ ESTAR_K = (M_K**2 - M_MU**2) / (2 * M_K)
 EMU_PI = (M_PI**2 + M_MU**2) / (2 * M_PI)
 PSTAR_PI = ESTAR_PI
 
-# charge-combined generator moment files per meson species (chromo: UrQMD+SIBYLL)
+# Charge-combined generator moment files per meson species (chromo: UrQMD+SIBYLL).
+#
+# DEFAULT (2026-09-04): the **arcsin-corrected** ``*_v2`` regeneration
+# (``regen_moments_mp.py``; same UrQMD-3.4 <=80 GeV / SIBYLL-2.3d >80 GeV splice
+# recipe as ``KERNEL_GENERATION.md``).  The original files extracted the
+# production angle as ``arctan(p_T/p_total)`` instead of ``arcsin(p_T/p)``,
+# biasing ``sqrt(<theta^2>)`` ~16% too narrow at 0.3 GeV (<1% above 3 GeV);
+# ``kernel_regeneration.production_angle`` is the canonical definition.
+# Until 2026-09-04 the corrected set was opt-in through the ``moments=`` /
+# ``cone_moments=`` keyword chain, so every default call silently used the old
+# files.  ``_MOMENTS_LEGACY`` keeps them reachable for A/B work.
 _MOMENTS = {
+    "pi": ["m_spliced_v2.npz", "m_piminus_v2.npz"],
+    "k": ["m_Kplus_v2.npz", "m_Kminus_v2.npz"],
+}
+
+#: the pre-2026-09 (``arctan``) moment files -- A/B only, never the default.
+_MOMENTS_LEGACY = {
     "pi": ["m_spliced.npz", "m_piminus.npz"],
     "k": ["m_Kplus.npz", "m_Kminus.npz"],
 }
@@ -170,6 +186,149 @@ def mudecay_shape(e_query, b_gauss=0.45, zenith_deg=80.0):
     return np.sqrt(sig_mu**2 + sig_numu**2 + sig_bend**2)
 
 
+def _sigma_binned(e_nu, th2, w, e_query, emin=0.15, emax=15.0, nbin=20,
+                  floor=2000):
+    """Flux-weighted space-angle RMS [deg] in log-E bins, returned by **log-log
+    interpolation** of the binned values (clamped at the ends).
+
+    Unlike :func:`_sigma_powerlaw` this makes no power-law assumption. That
+    matters for the muon-decay channel, whose width is the quadrature sum of a
+    falling (kinematic) part and an energy-*independent* geomagnetic-bending
+    floor: a single power-law fit through such a curve is badly biased at both
+    ends (it under-predicts the high-E floor and over-predicts nothing at low E,
+    or vice versa depending on the lever arm). The pion channel is close to a
+    power law, so the two agree there to <2%; :func:`channel_shapes` keeps the
+    power-law fit so the delivered table is bit-for-bit unchanged.
+    """
+    edges = np.geomspace(emin, emax, nbin + 1)
+    ec, sg = [], []
+    for lo, hi in zip(edges[:-1], edges[1:]):
+        m = (e_nu >= lo) & (e_nu < hi)
+        if m.sum() < floor:
+            continue
+        ec.append(np.sqrt(lo * hi))
+        sg.append(np.degrees(np.sqrt(np.average(th2[m], weights=w[m]))))
+    ec, sg = np.asarray(ec), np.asarray(sg)
+    lg = np.interp(np.log(np.asarray(e_query, dtype=float)), np.log(ec),
+                   np.log(sg), left=np.log(sg[0]), right=np.log(sg[-1]))
+    return np.exp(lg)
+
+
+def _michel_x(rng, n, kind):
+    """Rest-frame x = 2E_nu/m_mu for an **unpolarised** muon decay:
+    dN/dx ~ 2x^2(3-2x) for the nu_mu, 12x^2(1-x) for the nu_e (Michel).
+    (Only the rest-frame *angle* enters the lab opening angle for a massless
+    daughter -- x fixes which lab energy bin the event lands in.)"""
+    out = np.empty(n)
+    fmax = 2.0 if kind == "numu" else 1.78
+    filled = 0
+    while filled < n:
+        m = n - filled
+        x = rng.random(m)
+        f = 2 * x**2 * (3 - 2 * x) if kind == "numu" else 12 * x**2 * (1 - x)
+        acc = rng.random(m) * fmax < f
+        k = int(acc.sum())
+        out[filled:filled + k] = x[acc]
+        filled += k
+    return out
+
+
+def direct_shape_mc(e_query, n=4_000_000, seed=11, primary="H3a", moments=None,
+                    species="numu"):
+    """**Exact** direct-channel cone: space-angle RMS [deg] of a ``pi -> mu nu_mu``
+    neutrino w.r.t. the primary axis, vs E_nu.
+
+    Same physics as :func:`channel_shapes` ``['pi']`` but with the exact two-body
+    boost (``beta_pi < 1`` in both E_nu and the opening angle, where
+    :func:`channel_shapes` uses beta = 1) and the binned interpolation of
+    :func:`_sigma_binned` instead of a power-law fit. Provided as the correctness
+    reference for the delivered ``sigma_pi``; the two agree to ~5%.
+    """
+    import crflux.models as crf
+
+    pm = crf.HillasGaisser2012(primary)
+    rng = np.random.default_rng(seed)
+    e_m, t2 = meson_theta2("pi", moments=moments)
+    e_pi = np.exp(rng.uniform(np.log(0.2), np.log(300.0), n))
+    w = pm.tot_nucleon_flux(e_pi) * e_pi
+    ct = rng.uniform(-1, 1, n)
+    g = e_pi / M_PI
+    b = np.sqrt(np.maximum(1 - 1 / g**2, 0.0))
+    e_nu = g * ESTAR_PI * (1 + b * ct)
+    th = np.arctan2(np.sqrt(1 - ct**2), g * (ct + b))
+    th2 = theta2_interp(e_pi, e_m, t2) + th**2
+    return _sigma_binned(e_nu, th2, w, e_query)
+
+
+def mudecay_shape_mc(e_query, species="numu", n=4_000_000, seed=12,
+                     primary="H3a", moments=None, bending=False,
+                     b_gauss=0.45, zenith_deg=80.0):
+    """**Exact** muon-decay-channel cone: space-angle RMS [deg] of a
+    ``pi -> mu -> e nu nu`` neutrino w.r.t. the **primary** axis, vs E_nu.
+
+    This is the cone that Eq. (8) of the off-axis construction needs for the
+    muon-decay component: the distribution of the primary direction given the
+    *neutrino* direction accumulates over the whole decay chain (Lipari 2000),
+
+        theta_tot^2 = theta_had^2(E_pi) + theta_(pi->mu)^2 + theta_(mu->nu)^2
+                      [ + theta_bend^2 ] ,
+
+    added in quadrature (uncorrelated azimuths). Improvements over the earlier
+    :func:`mudecay_shape`:
+
+      * the muon energy is **sampled** from exact ``pi -> mu nu`` two-body
+        kinematics and the neutrino energy from the exact Michel boost, instead of
+        the fixed ``E_mu = 3 E_nu`` surrogate. On a steeply falling spectrum the
+        correct convolution puts more low-E_mu (wide-angle) muons under a given
+        E_nu, so the cone comes out wider;
+      * the massless-daughter boost uses ``beta_mu < 1`` (the old code used
+        ``ct + 1``, which loses the backward-emitted tail entirely);
+      * the width is returned by log-log interpolation of the binned RMS
+        (:func:`_sigma_binned`), not a power-law fit, which the energy-independent
+        bending floor breaks.
+
+    ``bending`` is **off by default**: the in-flight bending angle depends on the
+    local |B|, and E_off is meant to be a site-independent production factor.
+    Switch it on to bound the effect (it adds an energy-flat ~5 deg in
+    quadrature, i.e. it matters only above ~1 GeV).
+
+    The rest-frame decay is treated as unpolarised. Muons from pion decay are
+    fully polarised, but for a *massless* daughter the lab opening angle depends
+    only on (theta*, gamma) -- not on E* -- so the polarisation enters only
+    through the (x*, theta*) correlation that decides which lab energy bin an
+    event falls in; see ``--polarisation-scan`` for the bound.
+    """
+    import crflux.models as crf
+    import muon_bending as mb
+
+    pm = crf.HillasGaisser2012(primary)
+    rng = np.random.default_rng(seed)
+    e_m, t2 = meson_theta2("pi", moments=moments)
+    e_pi = np.exp(rng.uniform(np.log(0.2), np.log(300.0), n))
+    w = pm.tot_nucleon_flux(e_pi) * e_pi
+    # pi -> mu nu, exact (massive daughter)
+    ct1 = rng.uniform(-1, 1, n)
+    g1 = e_pi / M_PI
+    b1 = np.sqrt(np.maximum(1 - 1 / g1**2, 0.0))
+    e_mu = g1 * (EMU_PI + b1 * PSTAR_PI * ct1)
+    th1 = np.arctan2(PSTAR_PI * np.sqrt(1 - ct1**2),
+                     g1 * (PSTAR_PI * ct1 + b1 * EMU_PI))
+    # mu -> e nu nu, exact boost of a massless neutrino
+    e_mu = np.maximum(e_mu, M_MU * (1 + 1e-7))
+    g2 = e_mu / M_MU
+    b2 = np.sqrt(np.maximum(1 - 1 / g2**2, 0.0))
+    ct2 = rng.uniform(-1, 1, n)
+    xs = _michel_x(rng, n, "nue" if "nue" in species else "numu")
+    e_nu = g2 * (0.5 * M_MU * xs) * (1 + b2 * ct2)
+    th2a = np.arctan2(np.sqrt(1 - ct2**2), g2 * (ct2 + b2))
+    tot = theta2_interp(e_pi, e_m, t2) + th1**2 + th2a**2
+    if bending:
+        sb = mb.bending_angle(b_gauss)
+        tot = tot + sb**2 * np.clip(
+            mb.decay_in_flight_fraction(e_mu, zenith_deg=zenith_deg), 0, 1)
+    return _sigma_binned(e_nu, tot, w, e_query)
+
+
 def pion_alpha_pdf(e_grid, alpha_deg, n=3_000_000, seed=4, scale=1.0,
                    kernels="k_spliced.npz", primary="H3a", floor=800):
     """Sampled nu angular distribution W[nE, n_alpha] from the generator's full
@@ -266,7 +425,13 @@ def channel_fractions(e_query, flavour="numu", cache="channel_fractions.npz",
         e = mc.e_grid
         d.setdefault("e", e)
         d["tag"] = "SIBYLL23D_HillasGaisser2012-H3a"
-        for fl in ("numu", "nue"):
+        # Include the ANTI-species: the muon-decay fraction differs between a
+        # neutrino and its antineutrino (the muon charge ratio is ~1.27), and by
+        # lepton-flavour conservation the neutrino species already fixes the parent
+        # muon charge -- mu_numu is 100% from mu-, mu_antinumu 100% from mu+
+        # (verified: the opposite combinations are identically zero). So reading
+        # both gives the charge-resolved fractions with no extra machinery.
+        for fl in ("numu", "nue", "antinumu", "antinue"):
             tot = mc.get_solution(f"total_{fl}", 0)
             for k in ("pi", "k", "mu"):
                 d[f"{k}_{fl}{suffix}"] = mc.get_solution(f"{k}_{fl}", 0) / np.maximum(

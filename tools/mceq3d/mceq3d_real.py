@@ -64,6 +64,9 @@ class MCEqCascade3D:
                             theta_deg=0.0)
         self.e = self.mceq.e_grid
         self.dim = self.mceq.dim
+        # solid-angle weights of the current direction grid, set by
+        # march_checkpoints; used by _force_checkpoint to pin the rotated total.
+        self._sa_weights = None
 
     def _slice(self, pdg):
         p = self.mceq.pman[(pdg, 0)]
@@ -255,6 +258,7 @@ class MCEqCascade3D:
             seg_idx.append([0] + [min(i, len(a)) for i in idx])
 
         im, dm = self.mceq.int_m, self.mceq.dec_m
+        self._sa_weights = None if weights is None else np.asarray(weights, float)
         phi = np.array(phi0_per_dir, float)
         dvec = np.stack([np.sin(TH) * np.cos(PH), np.sin(TH) * np.sin(PH),
                          np.cos(TH)], -1)
@@ -325,7 +329,9 @@ class MCEqCascade3D:
     def _force_checkpoint(self, phi, dvec, b_enu, seg_len, species=None):
         """Rotate the charged-species blocks by the Lorentz bending accumulated over
         a checkpoint segment: angle[dir, E] = seg_len[dir] / r_g(E), r_g = R/(0.3 B),
-        R~E. Pull formulation: new[dir] = phi[nearest(dir back-rotated), E].
+        R~E. Pull formulation: every direction reads the field at its own
+        back-rotated position, interpolated from the k nearest grid directions
+        (exact identity in the zero-rotation limit; see the comment below).
 
         ``species`` (pdg->sign dict) restricts which charged blocks are bent. Default
         (all CHARGED) is WRONG for a coupled solve: the nucleons' (proton) geomagnetic
@@ -338,7 +344,16 @@ class MCEqCascade3D:
         Bmag = np.linalg.norm(b_enu)
         k = np.asarray(b_enu) / Bmag
         e = self.e
-        r_g_cm = (e / (0.3 * Bmag)) * 1e5  # gyroradius [cm] for R[GV]~E, B[gauss]
+        # Gyroradius [cm] for rigidity R[GV] ~ E and B in GAUSS.
+        #   r_g[m] = R[GV] / (0.3 * B[T]) and B[T] = B[gauss] * 1e-4
+        #   => r_g[m]  = R/(0.3*B_gauss) * 1e4
+        #   => r_g[cm] = R/(0.3*B_gauss) * 1e6
+        # This previously used 1e5, i.e. it treated the gauss value as if it were
+        # tesla, making the gyroradius 10x too SMALL and every in-cascade rotation
+        # angle 10x too LARGE (E=0.3 GeV, B=0.474 G: 2.11 km instead of 21.1 km).
+        # Every other B use in this codebase converts explicitly
+        # (muon_bending.py:55,129).
+        r_g_cm = (e / (0.3 * Bmag)) * 1e6
         out = phi.copy()
         kv0 = np.cross(np.broadcast_to(k, dvec.shape), dvec)
         kd0 = dvec @ k
@@ -349,12 +364,59 @@ class MCEqCascade3D:
                 ang = sign * seg_len / max(r_g_cm[je], 1e-30)  # (nd,) per direction
                 if np.max(np.abs(ang)) < 1e-9:
                     continue
-                # back-rotate every direction by its own angle, nearest source
+                # Back-rotate every direction by its own angle and resample.
                 ca, sa = np.cos(-ang)[:, None], np.sin(-ang)[:, None]
                 dr = (dvec * ca + kv0 * sa
                       + np.broadcast_to(k, dvec.shape) * (kd0[:, None] * (1 - ca)))
-                idx = np.argmax(dr @ dvec.T, axis=1)
-                out[:, sl.start + je] = block[idx, je]
+                # FLUX-CONSERVING INTERPOLATION, not nearest-neighbour.
+                #
+                # This previously did `idx = argmax(dr @ dvec.T); out = block[idx]`
+                # -- a nearest-neighbour PULL. That is not an interpolation and is
+                # not even bijective: argmax can map many outputs to one source,
+                # silently duplicating or dropping flux. Worse, it cannot represent
+                # any rotation smaller than the direction-grid spacing (identity),
+                # while for rotations LARGER than the spacing the index map becomes
+                # an incoherent, charge-blind reshuffle. Feeding an identical smooth
+                # E-W dipole through it with sign +1 vs -1 gave uncorrelated results
+                # -- i.e. the charge-dependent signal it was supposed to carry was
+                # numerical noise.
+                #
+                # Instead interpolate: every output direction reads the field at
+                # its own back-rotated position from the k nearest sources with
+                # inverse-square-distance (Shepard) weights, ROW-normalised.
+                #
+                # Row normalisation is what makes the operator EXACT in the
+                # identity limit: as ang -> 0 the back-rotated direction coincides
+                # with a grid direction, its distance -> 0, its weight -> 1 and all
+                # others -> 0, so the operator -> I. A Gaussian kernel whose width
+                # is the local grid spacing does NOT do this -- on a 2-direction
+                # grid it hands 38% of one column's flux to the other at zero
+                # rotation -- and column-normalising it (the "conserve the total"
+                # variant) makes that worse, because it destroys the reduction
+                # anchor the whole operator-splitting scheme rests on. A rotation
+                # is measure preserving, so the correct operator conserves the
+                # solid-angle-weighted total automatically up to interpolation
+                # error; that residual is removed explicitly below.
+                cosang = np.clip(dr @ dvec.T, -1.0, 1.0)      # (nd, nd)
+                # squared chord distance 2(1-cos) = d_ang^2 + O(d_ang^4): monotone
+                # in the angle, so it orders the neighbours identically and gives
+                # the same inverse-square weights, without a full arccos.
+                chord2 = 2.0 * (1.0 - cosang)
+                nd_ = chord2.shape[1]
+                knn = min(3, nd_)                             # >= 1 for any grid
+                idx = np.argpartition(chord2, knn - 1, axis=1)[:, :knn]
+                dk = np.take_along_axis(chord2, idx, axis=1)
+                wk = 1.0 / np.maximum(dk, 1e-24)
+                wk /= wk.sum(1, keepdims=True)
+                src = block[:, je][idx]                       # (nd, knn)
+                new = (wk * src).sum(1)
+                # pin the solid-angle-weighted total (pure interpolation error)
+                sa = self._sa_weights if self._sa_weights is not None \
+                    else np.ones(nd_)
+                tot0, tot1 = float(sa @ block[:, je]), float(sa @ new)
+                if tot1 > 0 and tot0 > 0:
+                    new = new * (tot0 / tot1)
+                out[:, sl.start + je] = new
         return out
 
 

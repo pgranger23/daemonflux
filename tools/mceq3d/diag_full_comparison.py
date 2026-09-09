@@ -61,8 +61,7 @@ def main():
           f"{len(az)} az x {len(SPECIES)} species ...")
     eng = MCEq3DFlux(base_model="hybrid", primary=("GlobalSplineFitBeta", None),
                      daemonflux_location="kamioka")
-    r = eng.solve(LAT, LON, cz, az, offaxis=True, use_cache=True, cone_cutoff=True,
-                 cache_dir=CACHE, date=DATE)
+    r = eng.solve(LAT, LON, cz, az, use_cache=True, cache_dir=CACHE, date=DATE)
     e = r["e"]
     F = {s: r["flux"][s] for s in SPECIES}  # (n_cz, n_az, nE)
     print("... done.\n")

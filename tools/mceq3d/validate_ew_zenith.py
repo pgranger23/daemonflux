@@ -54,8 +54,10 @@ def main():
 
     cz = np.array(TARGETS)
     az = np.array([90.0, 270.0])  # E, W
-    r = eng.solve(LAT, LON, cz, az, offaxis=True, use_cache=True,
-                  cone_cutoff=True, cache_dir=CACHE, date=DATE)
+    # bare call: offaxis / cone_cutoff / joint_cone / joint_channels /
+    # cone_kernel="moments" (v2 moments) / sublimb="prod_point" are solve()'s
+    # own defaults since 2026-09-04.
+    r = eng.solve(LAT, LON, cz, az, use_cache=True, cache_dir=CACHE, date=DATE)
     e = r["e"]
     probe = np.array(PROBE_E)
 

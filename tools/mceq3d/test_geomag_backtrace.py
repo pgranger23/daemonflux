@@ -12,6 +12,7 @@ from geomag_backtrace import (
     bfield,
     arrival_direction,
     is_allowed,
+    _local_frame,
     RE,
     B0,
 )
@@ -137,3 +138,130 @@ def test_east_west_sign():
     kw = dict(m_hat=MZ, ds=8.0e4, max_s=6.0e8, r_escape=15.0)
     assert is_allowed(0.0, 0.0, 45.0, 270.0, 18.0, **kw) is True  # from West
     assert is_allowed(0.0, 0.0, 45.0, 90.0, 18.0, **kw) is False  # from East
+
+
+# ---------------------------------------------------------------------------
+# Frame / convention pins
+# ---------------------------------------------------------------------------
+def test_dipole_axis_points_at_the_geomagnetic_north_pole():
+    """The axis must be the geomagnetic NORTH pole: 80.6 N, 72.7 W (2020).
+
+    Regression guard.  ``dipole_axis`` used to take the tilt from ``-g10`` but
+    the longitude from ``atan2(h11, g11)``.  ``(g11, h11, g10)`` points at the
+    geomagnetic *SOUTH* pole (80.6 S, 107.3 E), so keeping that longitude while
+    flipping the latitude put the axis at 80.6 N, **107.3 E** -- 18.8 deg from
+    the truth, i.e. the dipole tilt leaning to the opposite side of the globe.
+    Only the tilt angle was covered before (``test_dipole_tilt_is_about_9_4``),
+    and the tilt is unchanged by the error.
+    """
+    m = dipole_axis()
+    lat = np.degrees(np.arcsin(m[2]))
+    lon = np.degrees(np.arctan2(m[1], m[0]))
+    assert abs(lat - 80.6) < 0.5, lat
+    assert abs(lon - (-72.7)) < 1.0, lon
+
+
+def test_dipole_axis_gives_the_right_geomagnetic_latitude_at_kamioka():
+    """Physical consequence of the axis: Kamioka sits at geomagnetic ~26-29 N.
+
+    With the old (180-deg-rotated) axis Kamioka came out at 44.4 N, which is a
+    factor ~2 in ``cos^4(lambda)`` -- i.e. a completely different Stoermer
+    cutoff for the far-field part of every back-trace.
+    """
+    up = _local_frame(36.43, 137.31)[0]
+    glat = 90.0 - np.degrees(np.arccos(np.clip(up @ dipole_axis(), -1, 1)))
+    assert 25.0 < glat < 30.0, glat
+
+
+def test_arrival_direction_azimuth_is_clockwise_from_north():
+    """``azimuth`` is the compass bearing OF THE SOURCE (N=0, E=90, S=180,
+    W=270) and the returned vector is the particle VELOCITY, so it points away
+    from the source and downwards."""
+    lat, lon = 0.0, 0.0
+    up, north, east = _local_frame(lat, lon)
+    # horizontal arrivals: velocity is exactly opposite the source bearing
+    for az, src in ((0.0, north), (90.0, east), (180.0, -north), (270.0, -east)):
+        d = arrival_direction(lat, lon, 90.0, az)
+        assert np.allclose(d, -src, atol=1e-12), (az, d)
+    # a 60 deg zenith arrival from the East: down-going, horizontal part West
+    d = arrival_direction(lat, lon, 60.0, 90.0)
+    assert np.isclose(d @ up, -np.cos(np.radians(60.0)))
+    assert np.isclose(d @ east, -np.sin(np.radians(60.0)))
+    assert np.isclose(d @ north, 0.0, atol=1e-12)
+
+
+def test_backtrace_launch_state_is_the_reversed_trajectory(monkeypatch):
+    """The scan must launch FROM the detector, AWAY from it, along ``-d_hat``
+    (the reversed velocity); the charge reversal is in ``backtrace_vec``.
+
+    A sign slip in either the launch direction or the charge mirrors or rotates
+    the whole cutoff sky, so pin the launch state explicitly.
+    """
+    import geomag_backtrace as gb
+
+    seen = {}
+
+    def fake(r0, u0, R, date, m_hat, charge=+1, **kw):
+        seen["r0"], seen["u0"], seen["q"] = np.array(r0), np.array(u0), charge
+        return np.ones(len(np.atleast_1d(R)), bool)  # everything allowed
+
+    monkeypatch.setattr(gb, "backtrace_vec", fake)
+    lat, lon, zen, az = 36.43, 137.31, 60.0, 90.0
+    gb.cutoff_igrf(lat, lon, zen, az, "2020-01-01")
+    up, north, east = _local_frame(lat, lon)
+    assert np.allclose(seen["r0"][0], RE * up)  # launched at the detector
+    assert np.allclose(seen["u0"][0], -arrival_direction(lat, lon, zen, az))
+    assert seen["u0"][0] @ up > 0  # leaves the Earth
+    assert seen["u0"][0] @ east > 0  # towards the source (East) bearing
+    assert seen["q"] == +1  # the reversal is inside backtrace_vec, not here
+
+
+# ---------------------------------------------------------------------------
+# Stoermer physics pins (pure centred dipole, where the analytic answer holds)
+# ---------------------------------------------------------------------------
+MZ_DATE = "2020-01-01"
+
+
+def _pure_dipole_cutoff(lat, zeniths, azimuths, n_jobs=8):
+    """Cutoff map in a centred ALIGNED dipole (``r_switch=0`` -> no IGRF)."""
+    import geomag_backtrace as gb
+
+    return gb.cutoff_map(
+        lat, 0.0, MZ_DATE, zeniths, azimuths, m_hat=MZ, r_lo=0.5, r_hi=70.0,
+        n_jobs=n_jobs, r_switch=0.0, warn_saturated=False,
+    )
+
+
+def test_vertical_cutoff_matches_stoermer_in_an_aligned_dipole():
+    """Absolute normalisation: R_c(vertical) = 14.9 cos^4(lambda) GV.
+
+    This pins B0, the rigidity-to-curvature conversion and the escape criterion
+    all at once; the aligned dipole is the only case where Stoermer is exact.
+    """
+    for lat, want in ((0.0, 14.9), (30.0, 14.9 * np.cos(np.radians(30.0)) ** 4)):
+        got = _pure_dipole_cutoff(lat, [0.0], [0.0], n_jobs=1)[0, 0]
+        assert abs(got - want) / want < 0.15, (lat, got, want)
+
+
+def test_east_cutoff_exceeds_west_and_peaks_at_magnetic_east():
+    """Stoermer sign + axis, in the aligned dipole where magnetic East IS az 90.
+
+    * positive particles are cut harder from the East than from the West;
+    * the near-horizon maximum of R_c(azimuth) sits at magnetic East to within
+      one 15-deg azimuth bin.
+
+    NOTE what this does *not* claim: R_c(az) is strongly skewed towards the
+    North (the shadow cone; from the North the reversed trajectory mirrors in
+    the converging field and is blocked far above the Stoermer main cone), so
+    its FIRST FOURIER HARMONIC peaks ~20 deg clockwise of magnetic East even
+    here.  That phase shift is a property of the shadow cone, not a frame error.
+    """
+    az = np.arange(0.0, 360.0, 15.0)
+    rc = _pure_dipole_cutoff(30.0, [80.0], az)[0]
+    i_e, i_w = int(np.argmin(abs(az - 90))), int(np.argmin(abs(az - 270)))
+    assert rc[i_e] > 3.0 * rc[i_w], (rc[i_e], rc[i_w])
+    peak_az = az[int(np.argmax(rc))]
+    assert min(abs(peak_az - 90.0), abs(peak_az - 90.0 + 360)) <= 15.0, peak_az
+    # ... and the North/South cut is NOT symmetric: the shadow cone is.
+    i_n, i_s = int(np.argmin(abs(az - 0))), int(np.argmin(abs(az - 180)))
+    assert rc[i_n] > 1.5 * rc[i_s], (rc[i_n], rc[i_s])

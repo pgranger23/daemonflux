@@ -18,11 +18,14 @@ def main():
     cz = np.round(np.arange(0.05, 1.0, 0.1), 2)
     ih, iv = 0, int(np.argmax(cz))
 
-    from mceq3d_flux import MCEq3DFlux
+    from mceq3d_flux import MCEq3DFlux, EOFF_TABLE_FLAT
     eng = MCEq3DFlux(base_model="mceq", daemonflux_location="generic")
     e = eng.e
     base = eng.base(cz)["total_numu"]                 # (n_cz, nE)
-    Eoff = eng.offaxis_factor(cz)["total_numu"]       # (n_cz, nE)
+    # the closure target is the FLAT single-pion-cone table: this script's own
+    # integral uses one pion cone, while the default table
+    # (offaxis_excess_channel_v2.npz) is channel-weighted and species-resolved.
+    Eoff = eng.offaxis_factor(cz, path=EOFF_TABLE_FLAT)["total_numu"]       # (n_cz, nE)
 
     h = dict(np.load("honda_kam.npz"))
     He, Hcz, nm = h["E"], h["czlo"], h["numu"]

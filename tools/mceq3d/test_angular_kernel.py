@@ -2,6 +2,7 @@
 
 import numpy as np
 
+from kernel_regeneration import production_angle as _production_angle
 from angular_kernel import (
     production_angle,
     angle_moments,
@@ -43,12 +44,30 @@ def _axes(proj_energies):
 def test_production_angle_matches_kinematics():
     axes = _axes([100.0])
     theta = production_angle(axes)
-    # at a chosen (x_L, p_T) bin, theta == arctan(p_T / p_L)
+    # at a chosen (x_L, p_T) bin, sin(theta) == p_T / p  (p = TOTAL momentum)
     j, k = 20, 5
     e_sec = axes["xl_centers"][j] * axes["proj_energies"][0]
-    p_l = np.sqrt(e_sec**2 - M_PION**2)
-    expected = np.arctan2(axes["pt_centers"][k], p_l)
+    p_tot = np.sqrt(e_sec**2 - M_PION**2)
+    expected = np.arcsin(axes["pt_centers"][k] / p_tot)
     assert np.isclose(theta[0, j, k], expected)
+
+
+def test_production_angle_is_arcsin_not_arctan():
+    """Regression guard for the pre-2026-09 bug ``theta = arctan(p_T / p)``.
+
+    Synthetic secondary with ``p_T / p = 0.5`` exactly: arcsin gives 30 deg,
+    the old (wrong) arctan gives 26.57 deg -- a 13% bias, visible well above
+    any statistical noise.
+    """
+    mass = M_PION
+    p_tot = 1.0
+    e_sec = np.sqrt(p_tot**2 + mass**2)
+    p_t = 0.5 * p_tot
+    theta = _production_angle(e_sec, p_t, mass)
+    assert np.isclose(np.degrees(theta), 30.0)
+    assert not np.isclose(theta, np.arctan2(p_t, p_tot))
+    # and the boundary case p_T -> p is a right angle, not 45 deg
+    assert np.isclose(np.degrees(_production_angle(e_sec, p_tot, mass)), 90.0)
 
 
 def test_angle_decreases_with_energy():

@@ -6,7 +6,7 @@ MCEq solves the *one-dimensional* cascade equations: its interaction/decay
 matrices are inclusive secondary yields ``dN/dx_L`` in the lab energy fraction
 ``x_L = E_secondary / E_projectile``, with the transverse momentum *integrated
 out*. A deterministic 3D MCEq needs the **double-differential** kernel
-``d2N / (dx_L dp_T)`` so that the production angle ``theta ~ p_T / p_L`` enters
+``d2N / (dx_L dp_T)`` so that the production angle ``theta = arcsin(p_T / p)`` enters
 the transport as an angular-redistribution operator.
 
 This tool regenerates that double-differential kernel by re-running the *same*
@@ -124,11 +124,18 @@ class SecondaryBatch:
     n_interactions : int
         Number of inelastic interactions generated (for per-interaction
         normalization of the yield).
+    p_z : np.ndarray, optional
+        *Signed* longitudinal momentum [GeV], when the backend can supply it.
+        The moments do not use it (they are built from ``(x_L, p_T)`` so that
+        every consumer of the kernel can reproduce them), but it lets a
+        diagnostic measure how much the forward-folding in
+        :func:`production_angle` costs -- see ``diag_angle_convention.py``.
     """
 
     x_L: np.ndarray
     p_T: np.ndarray
     n_interactions: int
+    p_z: Optional[np.ndarray] = None
 
 
 class ToySource:
@@ -205,12 +212,14 @@ class ChromoSource:
         secondary: str = "piplus",
         target: Tuple[int, int] = (14, 7),
         projectile=2212,
+        seed=None,
     ):
         self.model_name = model
         self.secondary = secondary
         self.sec_pid = PDG[secondary]
         self.target = target
         self.projectile = projectile
+        self.seed = seed
         self._model = None  # lazily created
 
     def _ensure_model(self, e_proj: float):
@@ -220,7 +229,7 @@ class ChromoSource:
         evt_kin = FixedTarget(e_proj * GeV, self.projectile, self.target)
         ModelCls = getattr(chromo.models, self.model_name)
         if self._model is None:
-            self._model = ModelCls(evt_kin)
+            self._model = ModelCls(evt_kin, seed=self.seed)
         else:
             # Update beam energy without recompiling the generator.
             self._model.kinematics = evt_kin
@@ -241,6 +250,50 @@ class ChromoSource:
         p_T = np.concatenate(pts) if pts else np.empty(0)
         x_L = np.clip(x_L, xmin, 1.0)
         return SecondaryBatch(x_L=x_L, p_T=p_T, n_interactions=n_interactions)
+
+
+class ChromoMultiSource(ChromoSource):
+    """``ChromoSource`` that histograms **several** secondary species from a
+    single event sample.
+
+    The generator call dominates the cost, so producing pi+/pi-/K+/K- from one
+    pass is ~4x cheaper than four independent runs (the optimisation flagged in
+    ``KERNEL_GENERATION.md`` section 8). The four resulting moment files are
+    then statistically correlated with one another, which is harmless: they are
+    used as independent per-species angular widths, never differenced.
+    """
+
+    def __init__(self, model="Sibyll23d", secondaries=("piplus",), **kw):
+        super().__init__(model=model, secondary=secondaries[0], **kw)
+        self.secondaries = list(secondaries)
+        self._pids = {s: PDG[s] for s in self.secondaries}
+
+    def generate_all(self, e_proj, n_interactions, xmin):
+        """Return ``{species: SecondaryBatch}`` from one pass of the generator."""
+        self._ensure_model(e_proj)
+        acc = {s: ([], [], []) for s in self.secondaries}
+        for event in self._model(n_interactions):
+            fs = event.final_state()
+            pid, en, pt, pz = fs.pid, fs.en, fs.pt, fs.pz
+            for s in self.secondaries:
+                mask = pid == self._pids[s]
+                if not np.any(mask):
+                    continue
+                acc[s][0].append(en[mask] / e_proj)
+                acc[s][1].append(pt[mask])
+                acc[s][2].append(pz[mask])
+        out = {}
+        for s, (xs, pts, pzs) in acc.items():
+            x_L = np.concatenate(xs) if xs else np.empty(0)
+            p_T = np.concatenate(pts) if pts else np.empty(0)
+            p_z = np.concatenate(pzs) if pzs else np.empty(0)
+            out[s] = SecondaryBatch(
+                x_L=np.clip(x_L, xmin, 1.0),
+                p_T=p_T,
+                n_interactions=n_interactions,
+                p_z=p_z,
+            )
+        return out
 
 
 # ---------------------------------------------------------------------------
@@ -289,6 +342,44 @@ def marginalize_pt(kernel: np.ndarray, grid: KernelGrid) -> np.ndarray:
     return np.sum(kernel * dpt[np.newaxis, np.newaxis, :], axis=2)
 
 
+# ---------------------------------------------------------------------------
+# Production angle (single canonical definition)
+# ---------------------------------------------------------------------------
+def production_angle(e_sec, p_T, mass):
+    """Production angle [rad] of a secondary w.r.t. the projectile axis.
+
+    ``p_T`` is the momentum component *transverse* to the projectile axis and
+    ``p = sqrt(E_sec^2 - m^2)`` is the **total** momentum, so
+
+        sin(theta) = p_T / p,       i.e.   theta = arcsin(p_T / p)
+
+    equivalently ``theta = arctan2(p_T, p_z)`` with the *longitudinal*
+    ``p_z = sqrt(p^2 - p_T^2)`` (this form is used below: it is numerically
+    stable as ``p_T -> p``).
+
+    .. warning::
+       Using ``theta = arctan2(p_T, p)`` -- i.e. mistaking the total momentum
+       for the longitudinal one -- was a bug in this module until 2026-09.
+       It biases ``<theta^2>`` low, and strongly so at low secondary energy:
+       on identical event samples the pion ``sqrt(<theta^2>)`` is 46% larger at
+       ``E_sec = 0.3 GeV`` with the correct relation, +32% at 0.5, +13% at 1,
+       +4.6% at 2, +1.1% at 5 and +0.3% at 10 GeV -- i.e. the bias sits exactly
+       in the sub-GeV region that drives the off-axis excess ``E_off``, and is
+       far larger there than the +-12% NA61 systematic.
+       See ``diag_angle_convention.py``.
+
+    The magnitude of ``p_z`` is recovered from ``p`` and ``p_T``; its *sign* is
+    not, so backward-produced secondaries (``p_z < 0``, only relevant in the
+    target-fragmentation region of the lowest-energy points) are folded into
+    the forward hemisphere. Their weight is negligible for the moments used
+    downstream.
+    """
+    p = np.sqrt(np.maximum(np.asarray(e_sec, dtype=float) ** 2 - mass**2, 1e-12))
+    p_T = np.minimum(np.asarray(p_T, dtype=float), p)
+    p_z = np.sqrt(np.maximum(p**2 - p_T**2, 0.0))
+    return np.arctan2(p_T, p_z)
+
+
 def build_angular_kernel(
     source,
     grid: KernelGrid,
@@ -300,8 +391,9 @@ def build_angular_kernel(
 
     Unlike :func:`to_angular_kernel`, which resamples a coarse pre-binned p_T
     kernel and therefore aliases into a comb at low energy, this computes the
-    production angle ``theta = arctan(p_T / p_L)`` of *each secondary* from its
-    own ``x_L`` and ``p_T`` (``p_L = sqrt((x_L E_proj)^2 - m^2)``) and histograms
+    production angle ``theta = arcsin(p_T / p)`` of *each secondary* from its
+    own ``x_L`` and ``p_T`` (``p = sqrt((x_L E_proj)^2 - m^2)`` is the TOTAL
+    momentum -- see :func:`production_angle`) and histograms
     once in ``(x_L, theta)``. The result is smooth and is the correct input for
     the discrete-ordinates / Fokker-Planck angular operator.
 
@@ -319,8 +411,7 @@ def build_angular_kernel(
     for i, e_proj in enumerate(grid.proj_energies):
         batch = source.generate(e_proj, n_interactions, xmin)
         e_sec = batch.x_L * e_proj
-        p_l = np.sqrt(np.maximum(e_sec**2 - mass**2, 1e-12))
-        theta = np.degrees(np.arctan2(batch.p_T, p_l))
+        theta = np.degrees(production_angle(e_sec, batch.p_T, mass))
         counts, _, _ = np.histogram2d(
             batch.x_L, theta, bins=[grid.xl_edges, theta_edges_deg]
         )
@@ -334,10 +425,39 @@ def marginalize_theta(kernel: np.ndarray, theta_edges_deg: np.ndarray) -> np.nda
     return np.sum(kernel * dth[np.newaxis, np.newaxis, :], axis=2)
 
 
+def moments_from_batch(batch, grid: KernelGrid, mass: float, e_proj: float):
+    """Per-x_L angular moments of one :class:`SecondaryBatch`.
+
+    Returns ``theta_mean``/``theta_sq`` (nan where the bin is empty),
+    ``dndx`` and the raw ``counts`` -- the latter is the weight needed to merge
+    same-energy shards without biasing the mean (see
+    ``KERNEL_GENERATION.md`` section 6).
+    """
+    dxl = np.diff(grid.xl_edges)
+    e_sec = batch.x_L * e_proj
+    theta = production_angle(e_sec, batch.p_T, mass)  # rad, exact per secondary
+    counts, _ = np.histogram(batch.x_L, bins=grid.xl_edges)
+    s1, _ = np.histogram(batch.x_L, bins=grid.xl_edges, weights=theta)
+    s2, _ = np.histogram(batch.x_L, bins=grid.xl_edges, weights=theta**2)
+    nz = counts > 0
+    th_mean = np.full(len(dxl), np.nan)
+    th_sq = np.full(len(dxl), np.nan)
+    th_mean[nz] = s1[nz] / counts[nz]
+    th_sq[nz] = s2[nz] / counts[nz]
+    return {
+        "theta_mean": th_mean,
+        "theta_sq": th_sq,
+        "dndx": counts / batch.n_interactions / dxl,
+        "counts": counts.astype(float),
+        "sum_theta": s1,
+        "sum_theta_sq": s2,
+    }
+
+
 def build_moments(source, grid: KernelGrid, mass: float, n_interactions: int = 20000):
     """Per-(E_proj, x_L) angular moments computed *directly* from secondaries.
 
-    This is gridless in theta: ``theta = arctan(p_T / p_L)`` is evaluated for
+    This is gridless in theta: ``theta = arcsin(p_T / p)`` is evaluated for
     each secondary and averaged within each x_L bin, so the moments are exact at
     every energy and ``<theta^2> -> 0`` as ``E_sec -> inf`` by construction (no
     bin floor). ``<theta^2>`` is the Fokker-Planck angular-diffusion input; a
@@ -356,20 +476,17 @@ def build_moments(source, grid: KernelGrid, mass: float, n_interactions: int = 2
     theta_mean = np.full((nE, nxl), np.nan)
     theta_sq = np.full((nE, nxl), np.nan)
     dndx = np.zeros((nE, nxl))
+    counts_out = np.zeros((nE, nxl))
     for i, e_proj in enumerate(grid.proj_energies):
         batch = source.generate(e_proj, n_interactions, xmin)
-        e_sec = batch.x_L * e_proj
-        p_l = np.sqrt(np.maximum(e_sec**2 - mass**2, 1e-12))
-        theta = np.arctan2(batch.p_T, p_l)  # rad, exact per secondary
-        counts, _ = np.histogram(batch.x_L, bins=grid.xl_edges)
-        s1, _ = np.histogram(batch.x_L, bins=grid.xl_edges, weights=theta)
-        s2, _ = np.histogram(batch.x_L, bins=grid.xl_edges, weights=theta**2)
-        nz = counts > 0
-        theta_mean[i, nz] = s1[nz] / counts[nz]
-        theta_sq[i, nz] = s2[nz] / counts[nz]
-        dndx[i] = counts / batch.n_interactions / dxl
+        row = moments_from_batch(batch, grid, mass, e_proj)
+        theta_mean[i] = row["theta_mean"]
+        theta_sq[i] = row["theta_sq"]
+        dndx[i] = row["dndx"]
+        counts_out[i] = row["counts"]
     e_sec = grid.xl_centers[None, :] * grid.proj_energies[:, None]
     return {
+        "counts": counts_out,
         "theta_mean": theta_mean,
         "theta_sq": theta_sq,
         "dndx": dndx,
@@ -385,8 +502,8 @@ def to_angular_kernel(
 ) -> Tuple[np.ndarray, np.ndarray]:
     """Convert d2N/(dx_L dp_T) to the production-angle density d2N/(dx_L dtheta).
 
-    The production angle of a secondary of lab momentum ``p_L`` is
-    ``theta = arctan(p_T / p_L)`` with ``p_L = sqrt(E_sec^2 - m^2)`` and
+    The production angle of a secondary of total lab momentum ``p`` is
+    ``theta = arcsin(p_T / p)`` with ``p = sqrt(E_sec^2 - m^2)`` and
     ``E_sec = x_L * E_proj``. This is the bridge from the regenerated kernel to
     the angular-redistribution operator of a discrete-ordinates / Fokker-Planck
     3D solver.
@@ -397,16 +514,16 @@ def to_angular_kernel(
         Production angle [rad] at each (E_proj, x_L, p_T) bin center.
     dndtheta_jac : np.ndarray, same shape
         d(p_T)/d(theta) Jacobian to turn a p_T-density into a theta-density:
-        ``d2N/dx_L dtheta = d2N/dx_L dp_T * dp_T/dtheta``.
+        ``d2N/dx_L dtheta = d2N/dx_L dp_T * dp_T/dtheta``, i.e. ``p cos(theta)``.
     """
     e_proj = grid.proj_energies[:, None, None]
     xl = grid.xl_centers[None, :, None]
     pt = grid.pt_centers[None, None, :]
     e_sec = xl * e_proj
-    p_l = np.sqrt(np.maximum(e_sec**2 - M_PION**2, 1e-12))
-    theta = np.arctan2(pt, p_l)
-    # p_T = p_L tan(theta)  ->  dp_T/dtheta = p_L / cos^2(theta)
-    dpt_dtheta = p_l / np.cos(theta) ** 2
+    p_tot = np.sqrt(np.maximum(e_sec**2 - M_PION**2, 1e-12))
+    theta = production_angle(e_sec, pt, M_PION)
+    # p_T = p sin(theta)  ->  dp_T/dtheta = p cos(theta)
+    dpt_dtheta = p_tot * np.cos(theta)
     return theta, dpt_dtheta
 
 

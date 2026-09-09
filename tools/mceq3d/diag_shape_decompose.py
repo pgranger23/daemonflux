@@ -61,8 +61,8 @@ def decompose(label, base_model, primary, location, use_G):
     eoff = eng.offaxis_factor(cz)["total_numu"]   # (2, nE)
 
     if use_G:
-        r = eng.solve(LAT, LON, cz, az, offaxis=True, use_cache=True,
-                     cone_cutoff=True, cache_dir=CACHE, date=DATE)
+        r = eng.solve(LAT, LON, cz, az, use_cache=True, cache_dir=CACHE,
+                      date=DATE)
         full = r["flux"]["total_numu"].mean(1)    # az-avg -> (2, nE)
     else:
         full = base * eoff

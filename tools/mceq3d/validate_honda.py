@@ -132,8 +132,7 @@ def my_east_west(energies, lat=36.43, lon=137.31, zenith=75.0):
     cone-smeared amplitude (4-9% vs HKKM2014 over 0.5-2 GeV)."""
     eng = _engine()
     cz = np.array([np.cos(np.radians(zenith))])
-    r = eng.solve(lat, lon, cz, np.array([90.0, 270.0]), offaxis=True,
-                  use_cache=True, cone_cutoff=True,
+    r = eng.solve(lat, lon, cz, np.array([90.0, 270.0]), use_cache=True,
                   cache_dir=CACHE_DIR)  # az: 90=E, 270=W
     e = r["e"]
     we = r["flux"]["total_numu"][0, 1] / r["flux"]["total_numu"][0, 0]  # W/E
@@ -148,8 +147,8 @@ def my_sec_theta(energies, lat=36.43, lon=137.31):
     # cone_cutoff is unnecessary here: the horizon/vertical ratio is
     # azimuth-averaged, and cone smearing only redistributes flux in azimuth
     # (it leaves the azimuth mean, hence sec-theta, essentially unchanged).
-    r = eng.solve(lat, lon, np.array([0.95, 0.05]), az, offaxis=True,
-                  use_cache=True, cache_dir=CACHE_DIR)
+    r = eng.solve(lat, lon, np.array([0.95, 0.05]), az, use_cache=True,
+                  cache_dir=CACHE_DIR)
     e = r["e"]
     f = r["flux"]["total_numu"].mean(1)  # azimuth-average -> (cz, E)
     return np.interp(energies, e, f[1] / f[0])

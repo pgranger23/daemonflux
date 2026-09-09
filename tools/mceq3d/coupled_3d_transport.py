@@ -234,10 +234,13 @@ def main(argv=None):
     # delivered E_off (offaxis_factor) at the same directions, for the closure
     deliv = None
     try:
-        from mceq3d_flux import MCEq3DFlux
+        from mceq3d_flux import MCEq3DFlux, EOFF_TABLE_FLAT
         eng = MCEq3DFlux(base_model="mceq", e_min=0.1)
         de = eng.e
-        off = eng.offaxis_factor(cz)["total_numu"]  # (cz, nE_engine)
+        # the closure target is the FLAT single-pion-cone table: this script's own
+        # integral uses one pion cone, while the default table
+        # (offaxis_excess_channel_v2.npz) is channel-weighted and species-resolved.
+        off = eng.offaxis_factor(cz, path=EOFF_TABLE_FLAT)["total_numu"]  # (cz, nE_engine)
         deliv = np.array([[float(np.interp(e[j], de, off[iz])) for j in ie]
                           for iz in range(len(cz))])
     except Exception as ex:  # pragma: no cover

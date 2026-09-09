@@ -48,9 +48,12 @@ def main():
         return f[:, numu].reshape(len(cz), naz, len(e)).mean(1)
 
     Foff, Fpar = az_avg(off), az_avg(par)
-    from mceq3d_flux import MCEq3DFlux
+    from mceq3d_flux import MCEq3DFlux, EOFF_TABLE_FLAT
     eng = MCEq3DFlux(base_model="mceq", e_min=0.3)
-    Edeliv = eng.offaxis_factor(cz)["total_numu"]
+    # the closure target is the FLAT single-pion-cone table: this script's own
+    # integral uses one pion cone, while the default table
+    # (offaxis_excess_channel_v2.npz) is channel-weighted and species-resolved.
+    Edeliv = eng.offaxis_factor(cz, path=EOFF_TABLE_FLAT)["total_numu"]
     de = eng.e
 
     print("\nEmergent parents-cone factor vs delivered E_off:")

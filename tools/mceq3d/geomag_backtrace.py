@@ -38,19 +38,51 @@ B0 = 3.07e-5  # dipole equatorial surface field [T] (from IGRF dipole moment)
 # IGRF-13 (epoch 2020) main dipole Gauss coefficients [nT]
 G10, G11, H11 = -29404.8, -1450.9, 4652.5
 
+# ---------------------------------------------------------------------------
+# Rigidity-scan resolution (see :func:`scan_upper_cutoff`)
+# ---------------------------------------------------------------------------
+# Ceiling of the cutoff scan.  MUST exceed the true maximum cutoff over the sky
+# or the map saturates (flat, zero gradient); Kamioka peaks at ~49.5 GV near the
+# horizon in the East, so 55 GV leaves ~5 GV of margin.  Every GV of extra
+# headroom costs real time (rigidities above the cutoff are ALLOWED and their
+# back-traces run to r_escape, ~900 RK4 steps, vs ~30 for a forbidden one).
+RC_MAX_GV = 55.0
+# Step of the coarse top-down ladder.  Must be smaller than the narrowest
+# forbidden band above the true cutoff, or the scan steps over it and lands in a
+# penumbral allowed island below (the 2.37 GV delivered step did exactly that at
+# the Kamioka vertical: island [9.63, 10.13] -> 8.79 GV instead of ~11.5 GV).
+COARSE_STEP_GV = 1.0
+# Bisection target: the delivered R_c is then good to ~+-0.05 GV, i.e. the
+# rigidity quantisation is no longer a term in the flux error budget.
+BISECT_TOL_GV = 0.1
+# Tag identifying this scan scheme AND the field it integrates in; it goes into
+# every cutoff-map cache key so maps built with an older scheme -- or with the
+# old, 180-deg-rotated :func:`dipole_axis` -- are never silently reused.
+# History: "bisect1.0-0.1" = coarse ladder + bisection, tilted-dipole far field
+# with the wrong axis longitude; "-dax" = the corrected geomagnetic-north axis.
+CUTOFF_SCHEME = "bisect1.0-0.1-dax"
+
 
 def dipole_axis():
     """Unit vector of the geomagnetic dipole axis from the IGRF coefficients.
 
     Tilt ~9.4 deg from the rotation (z) axis; the moment points roughly south
-    (g10 < 0). Returned axis is the geomagnetic *north* (m_hat in B ~ -m_hat).
+    (g10 < 0). Returned axis is the geomagnetic *north* (m_hat in B ~ -m_hat),
+    i.e. it points at the geomagnetic north pole -- 80.6 N, **72.7 W** for
+    IGRF-13/2020.
+
+    The dipole part of the Gauss expansion has moment direction
+    ``(g11, h11, g10)``; with ``g10 < 0`` that vector points at the geomagnetic
+    *SOUTH* pole (80.6 S, 107.3 E), so the geomagnetic north axis is its
+    negative.  Taking only ``lon = atan2(h11, g11)`` (as this function did)
+    keeps the *south* pole's longitude while flipping the latitude, which puts
+    the axis at 80.6 N, 107.3 E -- 18.8 deg away from the true axis and with the
+    dipole tilt leaning to the wrong side of the globe.  The tilted dipole is
+    used for r > ``r_switch`` in :func:`_bfield_igrf_cart` and everywhere in the
+    scalar :func:`bfield`/:func:`is_allowed` path.
     """
-    # geomagnetic north pole colatitude/longitude from the dipole terms
-    tilt = np.arctan2(np.hypot(G11, H11), -G10)  # from -z because g10<0
-    lon = np.arctan2(H11, G11)
-    return np.array(
-        [np.sin(tilt) * np.cos(lon), np.sin(tilt) * np.sin(lon), np.cos(tilt)]
-    )
+    m = -np.array([G11, H11, G10], dtype=float)  # geomagnetic NORTH direction
+    return m / np.linalg.norm(m)
 
 
 def bfield(r, m_hat):
@@ -167,6 +199,156 @@ def _bfield_igrf_cart(r_cart_m, date, m_hat, r_switch=4.0):
     return B
 
 
+def scan_upper_cutoff(
+    allowed_fn,
+    n_dirs,
+    r_lo=0.5,
+    r_hi=RC_MAX_GV,
+    coarse_step=COARSE_STEP_GV,
+    tol=BISECT_TOL_GV,
+    return_admittance=False,
+):
+    """Upper cutoff ``R_U`` for ``n_dirs`` directions: coarse top-down scan then
+    bisection.  Tracer-agnostic (unit-testable on a synthetic admittance).
+
+    ``R_U`` semantics -- **unchanged**: the highest rigidity that is *forbidden*,
+    i.e. the first forbidden sample met when scanning from ``r_hi`` downwards.
+    (This is deliberately NOT a penumbra-averaged effective cutoff ``R_eff``;
+    commit ``5a5ef11`` refuted that alternative on a fine admittance scan.)
+
+    Why the two stages
+    ------------------
+    A single linear ladder of ``n_scan`` points is not a robust way to find
+    ``R_U``: the topmost forbidden band can be *narrower than the step*, and the
+    penumbra contains narrow **allowed islands**.  With the delivered
+    ``n_scan=24`` over 0.5-55 GV (2.37 GV step) the Kamioka vertical ladder
+    samples 9.98 GV, which sits inside the allowed island [9.63, 10.13] found by
+    ``diag_admittance_fine.py``; the scan therefore steps straight over the
+    forbidden band that ends at ~11.5 GV and reports 8.79 GV instead --
+    a 2.7 GV (24%) error, on 37% of the down-going cells.
+
+    Stage 1 walks a ladder whose step is ``<= coarse_step`` (1 GV by default,
+    below the width of the topmost forbidden band everywhere on the sky at
+    Kamioka) and takes the first forbidden sample.  Stage 2 bisects the bracket
+    [last allowed, first forbidden] down to ``tol`` (~0.1 GV), which costs only
+    ``ceil(log2(coarse_step/tol))`` ~ 4 extra traces per direction instead of the
+    ~550 a 0.1 GV ladder would need.
+
+    ``allowed_fn(idx, R) -> bool array`` must back-trace direction ``idx[j]`` at
+    rigidity ``R[j]``.  Cells forbidden already at ``r_hi`` saturate (returned as
+    ``r_hi``) and are flagged in the returned ``saturated`` mask.
+
+    Returns ``(rc, saturated)``, or ``(rc, saturated, rs, A)`` with
+    ``return_admittance`` (``rs`` the coarse ladder, high->low; ``A`` its
+    0/1 admittance, ``(n_dirs, len(rs))``).
+    """
+    n_coarse = int(np.ceil((r_hi - r_lo) / float(coarse_step))) + 1
+    rs = np.linspace(r_hi, r_lo, n_coarse)
+    idx = np.repeat(np.arange(n_dirs), n_coarse)
+    A = allowed_fn(idx, np.tile(rs, n_dirs)).reshape(n_dirs, n_coarse)
+
+    forb_any = ~A.all(axis=1)
+    first_forb = np.argmin(A, axis=1)  # index of first False (valid if forb_any)
+    saturated = forb_any & (first_forb == 0)
+    rc = np.full(n_dirs, r_lo)
+    rc[saturated] = r_hi
+
+    # bracket [lo (forbidden), hi (allowed)] for the bisection stage
+    act = np.where(forb_any & ~saturated)[0]
+    if len(act):
+        lo = rs[first_forb[act]]
+        hi = rs[first_forb[act] - 1]
+        n_bis = max(0, int(np.ceil(np.log2(max(coarse_step, 1e-9) / max(tol, 1e-9)))))
+        for _ in range(n_bis):
+            mid = 0.5 * (lo + hi)
+            a = allowed_fn(act, mid)
+            lo = np.where(a, lo, mid)  # mid forbidden -> R_U is at/above mid
+            hi = np.where(a, mid, hi)  # mid allowed   -> R_U is below mid
+        rc[act] = 0.5 * (lo + hi)
+    if return_admittance:
+        return rc, saturated, rs, A.astype(float)
+    return rc, saturated
+
+
+def _states_worker(args):
+    """Fork worker: run :func:`scan_upper_cutoff` on one chunk of directions."""
+    r0c, u0c, date, m_hat, charge, r_lo, r_hi, coarse_step, tol, ret_a, kw = args
+    n = len(r0c)
+
+    def allowed_fn(idx, R):
+        return backtrace_vec(r0c[idx], u0c[idx], R, date, m_hat, charge, **kw)
+
+    return scan_upper_cutoff(
+        allowed_fn, n, r_lo, r_hi, coarse_step, tol, return_admittance=ret_a
+    )
+
+
+def cutoff_from_states(
+    r0_m,
+    u0,
+    date,
+    m_hat=None,
+    charge=+1,
+    r_lo=0.5,
+    r_hi=RC_MAX_GV,
+    coarse_step=COARSE_STEP_GV,
+    tol=BISECT_TOL_GV,
+    n_jobs=None,
+    return_admittance=False,
+    **kw,
+):
+    """Upper cutoff ``R_U`` [GV] for N back-trace launch states ``(r0_m, u0)``.
+
+    One entry point for every cutoff in this package: the detector map
+    (:func:`cutoff_map`, launch at the surface) and the far-side / production-point
+    maps (``mceq3d_flux.farside_cutoff_map``, launch at the production point) differ
+    only in the launch state, so they share this scan, its resolution guarantee and
+    its parallelism.
+
+    Directions are split over ``n_jobs`` forked workers (default
+    ``os.cpu_count()//2``).  Each worker keeps its own large rigidity batch, which
+    matters: the IGRF field call has a ~16 ms fixed overhead and only ~45 us per
+    point, so batches of a few hundred trajectories are ~100x more efficient per
+    trajectory than single traces.
+
+    Returns ``(rc, saturated)``, plus ``(rs, A)`` if ``return_admittance``.
+    """
+    if m_hat is None:
+        m_hat = dipole_axis()
+    r0_m = np.ascontiguousarray(r0_m, float)
+    u0 = np.ascontiguousarray(u0, float)
+    n = len(r0_m)
+    if n == 0:
+        empty = (np.zeros(0), np.zeros(0, bool))
+        return empty + (np.zeros(0), np.zeros((0, 0))) if return_admittance else empty
+    if n_jobs is None:
+        n_jobs = max(1, (os.cpu_count() or 2) // 2)
+    n_jobs = max(1, min(int(n_jobs), n))
+
+    chunks = np.array_split(np.arange(n), n_jobs)
+    args = [
+        (
+            r0_m[c], u0[c], date, m_hat, charge, r_lo, r_hi, coarse_step, tol,
+            return_admittance, kw,
+        )
+        for c in chunks
+        if len(c)
+    ]
+    if len(args) == 1:
+        results = [_states_worker(args[0])]
+    else:
+        import multiprocessing as mp
+
+        with mp.get_context("fork").Pool(len(args)) as pool:
+            results = pool.map(_states_worker, args)
+
+    rc = np.concatenate([r[0] for r in results])
+    sat = np.concatenate([r[1] for r in results])
+    if return_admittance:
+        return rc, sat, results[0][2], np.concatenate([r[3] for r in results])
+    return rc, sat
+
+
 def cutoff_map(
     lat_deg,
     lon_deg,
@@ -176,75 +358,123 @@ def cutoff_map(
     m_hat=None,
     charge=+1,
     r_lo=0.5,
-    r_hi=40.0,
-    n_scan=32,
+    r_hi=RC_MAX_GV,
+    n_scan=None,
+    coarse_step=COARSE_STEP_GV,
+    tol=BISECT_TOL_GV,
+    n_jobs=None,
     return_admittance=False,
+    warn_saturated=True,
     **kw,
 ):
     """Full-IGRF cutoff [GV] on a (zenith x azimuth) sky grid for a site.
 
-    ``r_hi`` defaults to 40 GV: the near-horizon *East* cutoff at a mid-latitude
-    site exceeds the old 20 GV ceiling, and capping it there under-suppressed the
-    East and gave a ~20% too-weak East-West asymmetry. ``n_scan`` is raised to
-    keep ~1 GV rigidity resolution over the wider range.
+    ``r_hi`` defaults to :data:`RC_MAX_GV` (55 GV): the near-horizon *East* cutoff
+    at a mid-latitude site reaches ~49.5 GV at Kamioka, and a lower ceiling
+    *saturates* those cells -- a flat map with zero gradient, which silently kills
+    every direction-shift effect.  Cells still forbidden at ``r_hi`` are returned
+    as ``r_hi`` and warned about (``warn_saturated``).
 
-    All directions and rigidities are batched into a single vectorized
-    back-trace (ppigrf's per-call overhead is amortized), so a coarse sky map is
-    a few minutes rather than hours.
+    Resolution: see :func:`scan_upper_cutoff` -- a ``coarse_step`` (1 GV) top-down
+    ladder followed by bisection to ``tol`` (0.1 GV), NOT a single linear ladder.
+    ``n_scan`` is accepted for backward compatibility and may only *refine* the
+    coarse step (``(r_hi-r_lo)/(n_scan-1)`` if that is smaller than
+    ``coarse_step``); it can no longer coarsen it past the 1 GV guarantee, which
+    is what made the delivered vertical cutoff land inside an allowed island.
 
-    ``return_admittance``: also return ``(rs, A)`` -- ``rs`` the rigidity scan
-    grid [GV] (high->low) and ``A[n_zen, n_az, n_scan]`` the **penumbral
-    admittance** (allowed fraction, 0/1 per traced rigidity). Collapsing A to the
-    highest forbidden rigidity gives the single cutoff ``out``; keeping A whole
-    preserves the penumbra (e.g. allowed islands below the main forbidden band)
-    that the analytic erf step cannot represent.
+    ``return_admittance``: also return ``(rs, A)`` -- ``rs`` the *coarse* rigidity
+    ladder [GV] (high->low) and ``A[n_zen, n_az, len(rs)]`` its 0/1 admittance.
+    Collapsing A to the highest forbidden rigidity gives (to ``coarse_step``) the
+    cutoff ``out``; keeping A whole preserves the penumbra (e.g. allowed islands
+    below the main forbidden band) that the analytic erf step cannot represent.
+
+    CAVEAT -- this map is **anchored at the detector**: every trajectory is
+    launched from ``RE * up`` at ``(lat, lon)``.  Near the horizon the primary
+    that makes a neutrino arriving here reaches the atmosphere hundreds of km
+    away (370 km at zenith 87 deg for h_prod = 30 km), where the *site* -- not
+    just the local vertical -- has moved by L/R_E in geomagnetic latitude.  That
+    displacement is not a small correction to the AZIMUTHAL SHAPE of the map:
+    at Kamioka, zenith 87 deg (``diag_dipole_phase.py --sections prodpoint``)
+
+        launch        N      E      S      W    N/S   peak   1st-harm
+        detector   23.78  42.99  10.26   7.60   2.32  68.9     61.7
+        prod_point 19.91  37.13  12.10   7.95   1.65  88.1     72.4
+
+    i.e. the detector-anchored map's R_c(azimuth) is skewed ~11 deg further
+    clockwise (and its North/South contrast is 40% larger) than the map the
+    primaries actually see.  ``mceq3d_flux.MCEq3DFlux.cone_geff``'s
+    ``sublimb="prod_point"`` rotates the production point's local *vertical* but
+    still reads this detector-anchored map, so the latitude part of the
+    displacement is currently unmodelled.  See
+    :func:`cutoff_from_states`, which takes an arbitrary launch state and is the
+    entry point a production-point map would use.
     """
-    if m_hat is None:
-        m_hat = dipole_axis()
+    if n_scan is not None:
+        coarse_step = min(coarse_step, (r_hi - r_lo) / max(int(n_scan) - 1, 1))
     up = _local_frame(lat_deg, lon_deg)[0]
-    rs = np.linspace(r_hi, r_lo, n_scan)
-    dirs = [(z, a) for z in zeniths for a in azimuths]
-    r0, u0, R = [], [], []
-    for z, a in dirs:
-        d_hat = arrival_direction(lat_deg, lon_deg, z, a)
-        for R_i in rs:
-            r0.append(RE * up)
-            u0.append(-d_hat)
-            R.append(R_i)
-    allowed = backtrace_vec(
-        np.array(r0), np.array(u0), np.array(R), date, m_hat, charge, **kw
-    ).reshape(len(dirs), n_scan)
-    out = np.zeros((len(zeniths), len(azimuths)))
-    for d_idx, (iz, ia) in enumerate(
-        [(iz, ia) for iz in range(len(zeniths)) for ia in range(len(azimuths))]
-    ):
-        forb = np.where(~allowed[d_idx])[0]
-        out[iz, ia] = (
-            r_lo
-            if len(forb) == 0
-            else (r_hi if forb[0] == 0 else 0.5 * (rs[forb[0] - 1] + rs[forb[0]]))
+    nz, na = len(zeniths), len(azimuths)
+    r0 = np.tile(RE * up, (nz * na, 1))
+    u0 = np.array(
+        [
+            -arrival_direction(lat_deg, lon_deg, z, a)
+            for z in zeniths
+            for a in azimuths
+        ]
+    )
+    res = cutoff_from_states(
+        r0, u0, date, m_hat, charge, r_lo, r_hi, coarse_step, tol, n_jobs,
+        return_admittance, **kw,
+    )
+    rc, sat = res[0], res[1]
+    if warn_saturated and sat.any():
+        import warnings
+
+        warnings.warn(
+            f"cutoff_map: {int(sat.sum())} of {sat.size} cells are forbidden even "
+            f"at the r_hi={r_hi:g} GV ceiling and were clamped there (flat map, "
+            "zero gradient). Raise r_hi.",
+            stacklevel=2,
         )
+    out = rc.reshape(nz, na)
     if return_admittance:
-        return out, rs, allowed.astype(float).reshape(
-            len(zeniths), len(azimuths), n_scan
-        )
+        return out, res[2], res[3].reshape(nz, na, -1)
     return out
 
 
 def backtrace_vec(
-    r0_m, u0, rigidity_GV, date, m_hat, charge=+1, r_escape=15.0, ds=1.0e5, max_s=1.6e9
+    r0_m, u0, rigidity_GV, date, m_hat, charge=+1, r_escape=15.0, ds=1.0e5,
+    max_s=1.6e9, r_floor=None, r_switch=4.0,
 ):
-    """Vectorized back-tracing of N trajectories. Returns allowed mask (N,)."""
+    """Vectorized back-tracing of N trajectories. Returns allowed mask (N,).
+
+    Trajectories that have already escaped or returned are **dropped from the
+    batch** rather than merely masked: a forbidden trace terminates in ~30 steps
+    and an allowed one in ~900, while the loop bound is ``max_s/ds`` = 16000, so
+    without compaction the whole batch paid the cost of its slowest (trapped)
+    member at full width.  The verdicts are identical either way.
+
+    ``r_floor`` [m] is the absorbing radius: a back-trace that falls below it has
+    "returned to Earth" and the direction is forbidden.  It defaults to
+    :data:`RE`; the launch altitude (in ``r0_m``) and the floor are the same
+    surface in a standard cutoff calculation, so pass both together.
+
+    ``r_switch`` [R_E] is forwarded to :func:`_bfield_igrf_cart`: the real IGRF
+    is used below it and the tilted dipole above.  ``r_switch=0`` gives a
+    **pure centred dipole everywhere**, which is the regime where the analytic
+    Stoermer cutoff is exact -- that is how the tracer's conventions are pinned
+    in ``test_geomag_backtrace.py`` without paying for the scalar tracer.
+    """
     r = np.array(r0_m, float)
     u = np.array(u0, float)
     R = np.asarray(rigidity_GV, float) * 1e9
+    r_floor = RE if r_floor is None else float(r_floor)
     k = (-charge * C / R)[:, None]
     n_pts = r.shape[0]
-    done = np.zeros(n_pts, bool)
+    live = np.arange(n_pts)
     allowed = np.zeros(n_pts, bool)
 
     def du(rr, uu):
-        return k * np.cross(uu, _bfield_igrf_cart(rr, date, m_hat))
+        return k * np.cross(uu, _bfield_igrf_cart(rr, date, m_hat, r_switch))
 
     for _ in range(int(max_s / ds)):
         k1u = du(r, u)
@@ -255,12 +485,13 @@ def backtrace_vec(
         u = u + ds / 6 * (k1u + 2 * k2u + 2 * k3u + k4u)
         u /= np.linalg.norm(u, axis=1)[:, None]
         rn = np.linalg.norm(r, axis=1)
-        esc = (~done) & (rn > r_escape * RE)
-        ret = (~done) & (rn < RE)
-        allowed[esc] = True
-        done |= esc | ret
-        if done.all():
-            break
+        esc = rn > r_escape * RE
+        allowed[live[esc]] = True
+        keep = ~(esc | (rn < r_floor))
+        if not keep.all():
+            if not keep.any():
+                break
+            live, r, u, k = live[keep], r[keep], u[keep], k[keep]
     return allowed
 
 
@@ -273,24 +504,24 @@ def cutoff_igrf(
     m_hat=None,
     charge=+1,
     r_lo=0.3,
-    r_hi=30.0,
-    n_scan=30,
+    r_hi=RC_MAX_GV,
+    n_scan=None,
+    coarse_step=COARSE_STEP_GV,
+    tol=BISECT_TOL_GV,
+    **kw,
 ):
-    """Full-IGRF effective cutoff [GV] for one direction (vectorized over R)."""
-    if m_hat is None:
-        m_hat = dipole_axis()
+    """Full-IGRF cutoff [GV] for one direction -- the reference single-direction
+    value (same coarse-ladder + bisection scheme as :func:`cutoff_map`, so a map
+    cell and a direct back-trace of the same direction agree to ``tol``)."""
     up = _local_frame(lat_deg, lon_deg)[0]
-    r0 = np.tile(RE * up, (n_scan, 1))
-    u0 = np.tile(
-        -arrival_direction(lat_deg, lon_deg, zenith_deg, azimuth_deg), (n_scan, 1)
+    if n_scan is not None:
+        coarse_step = min(coarse_step, (r_hi - r_lo) / max(int(n_scan) - 1, 1))
+    d = -arrival_direction(lat_deg, lon_deg, zenith_deg, azimuth_deg)
+    rc, _ = cutoff_from_states(
+        (RE * up)[None, :], d[None, :], date, m_hat, charge, r_lo, r_hi,
+        coarse_step, tol, n_jobs=1, **kw,
     )
-    rs = np.linspace(r_hi, r_lo, n_scan)
-    allowed = backtrace_vec(r0, u0, rs, date, m_hat, charge)
-    forb = np.where(~allowed)[0]
-    if len(forb) == 0:
-        return r_lo
-    i = forb[0]
-    return r_hi if i == 0 else 0.5 * (rs[i - 1] + rs[i])
+    return float(rc[0])
 
 
 def cutoff_source(lat_deg, lon_deg, date, **kw):
@@ -358,9 +589,12 @@ def cached_cutoff_source(
                                  "cutoff_cache")
     os.makedirs(cache_dir, exist_ok=True)
     tag = getattr(date, "strftime", lambda f: str(date))("%Y%m%d")
+    # the scan-scheme tag is part of the file name: a map built with the old
+    # single-ladder scan is not merely coarser, it can be several GV wrong.
     fname = os.path.join(
         cache_dir,
-        f"cutoff_{lat_deg:.2f}_{lon_deg:.2f}_{tag}_{n_zen}x{n_az}_q{charge:+d}.npz",
+        f"cutoff_{lat_deg:.2f}_{lon_deg:.2f}_{tag}_{n_zen}x{n_az}_q{charge:+d}"
+        f"_{CUTOFF_SCHEME}.npz",
     )
     if os.path.exists(fname) and not rebuild:
         d = np.load(fname)

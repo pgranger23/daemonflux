@@ -66,9 +66,30 @@ data-driven (NA61 +-12% pion-angle) uncertainty on the excess is +-8% at the
 0.3 GeV horizon, falling to ~0 by a few GeV. A multi-generator hadronic spread
 needs alternative generators (EPOS/QGSJET; chromo downloads / cluster).
 
+CAVEAT UNDER TEST (2026-09-04): flavour-independence is an assumption, not a
+result. Eq. (8) averages the production over the distribution of the **primary**
+direction *given the neutrino direction*. For the direct ``pi -> mu nu`` channel
+that distribution is the pion production angle folded with the two-body decay --
+the cone used above. For a **muon-decay** neutrino (all nu_e, ~half of the
+sub-GeV nu_mu) the primary direction is displaced by pion production **plus**
+``pi -> mu`` **plus** the Michel decay **plus** the in-flight muon bend, i.e. a
+25-50%% wider cone (`kinematic_kernel.mudecay_shape_mc`). The statement in the
+docstrings below -- "the neutrino's own decay opening angle does not enter" --
+is right for *relocating* neutrinos of a fixed parent, but it is not what Eq. (8)
+conditions on. Because the near-horizon excess is strongly non-linear in the cone
+width, a wider muon-decay cone makes E_off **species-dependent** (nu_e > nu_mu).
+`build_channel` builds that variant (per-species tables, blended at the level of
+the cone-averaged numerators) alongside the delivered flavour-independent one, so
+the two can be compared; the delivered ``offaxis_excess.npz`` is unchanged.
+
 Build the table (writes ``offaxis_excess.npz`` with keys e, cz, E_off)::
 
     python offaxis_mc.py --build
+
+Build the per-species / corrected-moment scan (four new files, delivered table
+untouched)::
+
+    python offaxis_mc.py --build-channel --n-jobs 10
 
 Validate the derived shape against Honda/Bartol (independent -- not used here)::
 
@@ -91,7 +112,8 @@ H_TOP_CM = 112.8e5  # top of the CORSIKA atmosphere [cm]
 TAG = "SIBYLL23D_HillasGaisser2012-H3a"  # hadronic/primary identity of the tables
 
 
-def production_profile(e_lo=0.1, e_hi=100.0, n_x=80, theta_deg=0.0, rc_cut_gv=None):
+def production_profile(e_lo=0.1, e_hi=100.0, n_x=80, theta_deg=0.0,
+                       rc_cut_gv=None, species=None):
     """p(X, E) = dPhi_numu/dX from a depth-resolved MCEq cascade.
 
     Returns (x_grid [g/cm2], e_grid [GeV], p[n_x, nE], density_model).
@@ -137,7 +159,24 @@ def production_profile(e_lo=0.1, e_hi=100.0, n_x=80, theta_deg=0.0, rc_cut_gv=No
     # everything else (direct pi + muon-decay + K0 etc.) carries the pion
     # production geometry (inheritance -- see offaxis_excess).
     p_k = np.minimum(prof("k_numu"), p)
-    return x_grid, e[sel], {"tot": p, "k": p_k}, mc.density_model
+    out = {"tot": p, "k": p_k}
+    # Optional per-species, per-PARENT-CHANNEL depth-resolved production. Needed
+    # by the channel-weighted cone (`offaxis_excess_channel`): the muon-decay
+    # component of each species is produced with a *wider* cone than the direct
+    # pi -> mu nu component, and its share f_mu varies with depth (hence with
+    # zenith, since the horizon ray reaches much larger X) and with species
+    # (~0.4-0.5 for nu_mu, ~0.99 for nu_e).
+    for s in species or ():
+        tot_s = prof(f"total_{s}")
+        k_s = np.minimum(prof(f"k_{s}"), tot_s)
+        mu_s = np.minimum(prof(f"mu_{s}"), tot_s)
+        out[f"{s}_tot"] = tot_s
+        out[f"{s}_k"] = k_s
+        out[f"{s}_mu"] = mu_s
+        # everything that is neither kaon-parent nor muon-decay: the direct
+        # pi -> mu nu (+ K0 etc.) component, which carries the pion cone.
+        out[f"{s}_dir"] = np.clip(tot_s - k_s - mu_s, 0.0, None)
+    return x_grid, e[sel], out, mc.density_model
 
 
 def _rho_of_h(density_model):
@@ -309,6 +348,94 @@ def cone_numden(
     return num, den
 
 
+# --------------------------------------------------------------------------
+# Multi-cone / multi-profile evaluation of the same integral (fast path)
+# --------------------------------------------------------------------------
+def cone_numden_multi(cos_theta, e_grid, x_grid, profiles, cones, geom,
+                      n_alpha=44, n_beta=18, alpha_chunk=6):
+    """Numerator/denominator of Eq. (8) for MANY (cone, production-profile) pairs
+    at one arrival ``cos_theta``, in one pass.
+
+    ``profiles``: list of ``p[n_x, nE]`` production profiles on ``e_grid``.
+    ``cones``:    list of ``(profile_index, sigma_deg[nE] or None,
+                  alpha_w[nE, n_alpha] or None)``.
+    Returns ``[(num, den), ...]`` aligned with ``cones``.
+
+    Mathematically **identical** to calling :func:`cone_numden` once per entry
+    (same alpha/beta grids, same ``sin(alpha) exp(-alpha^2 / 2 s1^2)`` weights with
+    the per-axis width ``s1 = sigma / sqrt(2)``, same bilinear ``X_slant`` lookup and
+    the same linear ``p(X)`` interpolation). The speed-up is purely
+    organisational: ``X_slant(h, psi_p(alpha, beta))`` does not depend on the
+    neutrino energy, so it -- and ``p(X)`` -- are evaluated once for the whole
+    energy grid and all cones instead of once per energy per cone. That is an
+    O(nE) saving (~60x here) and is what makes a per-species 2x2 table scan
+    affordable. `test_offaxis_mc.py::test_multi_matches_cone_numden` pins the
+    equivalence.
+    """
+    h_grid, psi_grid, table = geom
+    theta = np.arccos(np.clip(cos_theta, -1, 1))
+    nE = len(e_grid)
+
+    h_ray = np.linspace(0.0, 80e5, 260)
+    r = R_EARTH_CM + h_ray
+    disc = (R_EARTH_CM * np.cos(theta)) ** 2 + (r**2 - R_EARTH_CM**2)
+    ell = -R_EARTH_CM * np.cos(theta) + np.sqrt(np.clip(disc, 0, None))
+    cos_psi_o = np.clip((ell + R_EARTH_CM * np.cos(theta)) / r, -1, 1)
+    psi_o = np.arccos(cos_psi_o)
+    sin_psi_o = np.sin(psi_o)
+    rho_w = _RHO(h_ray)
+    dl = np.gradient(ell)
+    meas = rho_w * dl                      # (n_ray,)
+    n_ray = len(h_ray)
+
+    # ---- denominators: primary collinear with the arrival direction (1D) ----
+    x_o = np.array(
+        [_interp_xslant(h, ps, h_grid, psi_grid, table) for h, ps in zip(h_ray, psi_o)]
+    )
+    dens = [meas @ _p_at(x_o, x_grid, e_grid, p) for p in profiles]
+
+    # ---- A[ip][alpha, E] = int dl rho <p(X_slant(h, psi_p))>_beta ----
+    beta = np.linspace(0, 2 * np.pi, n_beta, endpoint=False)
+    cos_b = np.cos(beta)
+    alpha = np.deg2rad(np.linspace(0.5, 89.0, n_alpha))
+    A = [np.zeros((n_alpha, nE)) for _ in profiles]
+    for a0 in range(0, n_alpha, alpha_chunk):
+        a1 = min(a0 + alpha_chunk, n_alpha)
+        aa = alpha[a0:a1]
+        cos_pp = (
+            np.cos(aa)[:, None, None] * cos_psi_o[None, :, None]
+            + np.sin(aa)[:, None, None] * sin_psi_o[None, :, None]
+            * cos_b[None, None, :]
+        )                                   # (na, n_ray, n_beta)
+        psi_p = np.arccos(np.clip(cos_pp, -1, 1))
+        xv = _interp_xslant(
+            np.repeat(h_ray, n_beta)[None, :].repeat(a1 - a0, 0).ravel(),
+            psi_p.ravel(), h_grid, psi_grid, table,
+        )
+        for ip, p in enumerate(profiles):
+            pk = _p_at(xv, x_grid, e_grid, p).reshape(a1 - a0, n_ray, n_beta, nE)
+            A[ip][a0:a1] = np.einsum("r,arbe->ae", meas, pk) / n_beta
+
+    # ---- fold each cone's alpha weights ----
+    out = []
+    for ip, sigma_deg, alpha_w in cones:
+        num = np.empty(nE)
+        den = dens[ip]
+        for k in range(nE):
+            if alpha_w is not None and alpha_w[k].sum() > 0:
+                wa = alpha_w[k] / alpha_w[k].sum()
+            else:
+                s1 = np.deg2rad(sigma_deg[k]) / np.sqrt(2.0)
+                if s1 < 1e-4:
+                    num[k] = den[k]
+                    continue
+                wa = np.sin(alpha) * np.exp(-(alpha**2) / (2 * s1**2))
+                wa /= wa.sum()
+            num[k] = wa @ A[ip][:, k]
+        out.append((num, den))
+    return out
+
+
 def e_off_for_zenith(
     cos_theta, e_grid, sigma_deg, x_grid, ep_grid, p, geom, n_alpha=60, n_beta=24,
     alpha_w=None,
@@ -397,6 +524,266 @@ def offaxis_excess(cz, x_grid, ep_grid, p, geom, n_alpha=44, n_beta=18, moments=
     return np.where(den > 0, num / np.maximum(den, 1e-300), 1.0)
 
 
+# --------------------------------------------------------------------------
+# Channel-weighted (per-species) off-axis excess
+# --------------------------------------------------------------------------
+CHANNEL_SPECIES = ("numu", "antinumu", "nue", "antinue")
+
+# Corrected generator moments (production angle arcsin(p_T/p), not arctan(p_T/p);
+# see kernel_regeneration).  Since 2026-09-04 these ARE ``kinematic_kernel``'s
+# defaults, so ``MOMENTS_V2`` is an alias of ``_MOMENTS`` (kept as a name because
+# the A/B scan in :func:`build_channel` and several diagnostics refer to it);
+# ``MOMENTS_LEGACY`` is the pre-arcsin set, i.e. the "old" axis of that scan.
+def _kk_moments():
+    from kinematic_kernel import _MOMENTS, _MOMENTS_LEGACY
+
+    return _MOMENTS, _MOMENTS_LEGACY
+
+
+MOMENTS_V2, MOMENTS_LEGACY = _kk_moments()
+
+# module-level context for the multiprocessing workers (avoids re-pickling the
+# slant-depth table and the production profiles for every zenith)
+_CTX = {}
+
+
+def _channel_init(ctx):
+    """Worker init. ``_RHO`` is inherited through fork (it is a closure over the
+    MCEq density model, which does not pickle), so only the arrays travel here."""
+    global _CTX
+    _CTX = ctx
+
+
+def _channel_worker(cz_value):
+    """One arrival zenith: all (profile, cone) pairs of the 2x2 scan in one pass."""
+    return cone_numden_multi(
+        cz_value, _CTX["e"], _CTX["x"], _CTX["profiles"], _CTX["cones"],
+        _CTX["geom"], _CTX["n_alpha"], _CTX["n_beta"],
+    )
+
+
+def channel_cone_widths(ep_grid, moments=None, bending=False, n_mc=4_000_000):
+    """Space-angle RMS [deg] of the three production cones on ``ep_grid``.
+
+    * ``pi``  -- direct ``pi -> mu nu`` (the delivered cone, `channel_shapes`),
+    * ``k``   -- direct ``K -> mu nu``,
+    * ``mu_numu`` / ``mu_nue`` -- the **muon-decay** channel, i.e. the primary
+      direction given a ``pi -> mu -> e nu nu`` neutrino: pion production angle
+      (+) ``pi -> mu`` decay (+) Michel decay (+) optionally in-flight bending,
+      added in quadrature (`kinematic_kernel.mudecay_shape_mc`).
+
+    The muon-decay cone is 25-50% wider than the direct one. Eq. (8) averages the
+    production over the distribution of the PRIMARY direction *given the neutrino
+    direction*, so the correct cone for the muon-decay component is this wider
+    one -- the neutrino's own decay-opening angle DOES enter for that component
+    (contrary to the flavour-independent argument in `offaxis_excess`, which is
+    right only for the direct channel).
+    """
+    from kinematic_kernel import channel_shapes, mudecay_shape_mc
+
+    kw = {} if moments is None else {"moments": moments}
+    sh = channel_shapes(ep_grid, **kw)
+    out = {"pi": sh["pi"], "k": sh["k"]}
+    for fl in ("numu", "nue"):
+        out[f"mu_{fl}"] = mudecay_shape_mc(
+            ep_grid, species=fl, n=n_mc, bending=bending, **kw
+        )
+    return out
+
+
+def _species_flavour(s):
+    return "nue" if "nue" in s else "numu"
+
+
+def build_channel(cz=None, n_alpha=44, n_beta=18, n_jobs=None, bending=False,
+                  out_dir=".", verbose=True):
+    """Build the **2x2** E_off table scan and write four self-contained files.
+
+    The two axes are
+
+      * generator moments: ``old`` (``m_spliced.npz``, the delivered tables, whose
+        production angle used ``arctan(p_T/p)``) vs ``v2`` (``m_spliced_v2.npz``,
+        the corrected ``arcsin(p_T/p)``);
+      * cone: ``pion-only`` (the delivered assumption -- one pion cone for every
+        production channel, hence flavour-independent) vs ``channel`` (the
+        muon-decay component gets its own, wider cone).
+
+    Files: ``offaxis_excess_rebuild_old.npz``, ``offaxis_excess_v2.npz``,
+    ``offaxis_excess_channel.npz``, ``offaxis_excess_channel_v2.npz``.
+    ``offaxis_excess.npz`` is never touched; ``offaxis_excess_rebuild_old.npz``
+    is a byte-level regression of the delivered build through the new fast path.
+
+    Combination rule (why a linear blend of the *numerators* is the right one).
+    Split the depth-resolved production into its parent channels,
+    ``p_s(X, E) = p_s^dir + p_s^K + p_s^mu`` (MCEq's own ``pi_/k_/mu_`` tracked
+    categories, so the split is depth-resolved and needs no external fractions).
+    Eq. (8) is linear in ``p``, and the denominator does not depend on the cone,
+    so
+
+        E_off_s = [ N_dir(sigma_pi) + N_K(sigma_K) + N_mu(sigma_mu) ]
+                  / [ D_dir + D_K + D_mu ]
+                = (1 - f_K - f_mu) E_off^pi + f_K E_off^K + f_mu,s E_off^mu ,
+
+    with ``f_c = D_c / sum D`` the 1D-production-weighted channel fractions *at
+    that zenith and energy*. This is exactly the requested
+    ``(1-f_mu) E_off[direct] + f_mu E_off[muon]`` blend, with two improvements:
+    the weights come out of the same cascade that supplies ``p`` (no separate
+    `channel_fractions` call, no depth- or zenith-independence approximation --
+    f_mu genuinely rises toward the horizon because the horizon ray samples much
+    larger X), and the kaon channel keeps its own cone. Blending the *numerators*
+    (equivalently, the E_off values with production weights) rather than the
+    final fluxes is required because E_off is a ratio: a flux-weighted average of
+    ratios with mismatched denominators would not be the ratio of the sums.
+
+    The per-axis width convention is unchanged: ``sigma`` is a **space-angle
+    RMS** and the cone uses ``s1 = sigma/sqrt(2)`` per axis (`cone_numden`,
+    `cone_numden_multi`).
+    """
+    import multiprocessing as mp
+    import os
+
+    global _RHO
+    if cz is None:
+        cz = np.round(np.arange(0.05, 1.0, 0.1), 2)
+    cz = np.asarray(cz, float)
+
+    if verbose:
+        print("[1/4] MCEq depth-resolved production p(X,E), per species/channel ...")
+    x_grid, ep_grid, p, dm = production_profile(species=CHANNEL_SPECIES)
+    _RHO = _rho_of_h(dm)
+    if verbose:
+        print("[2/4] curved-atmosphere slant-depth table X_slant(h,psi) ...")
+    geom = slant_depth_table(_RHO)
+
+    if verbose:
+        print("[3/4] cone widths (old + v2 moments) ...")
+    from kinematic_kernel import muon_shape
+
+    # NB both axes are named EXPLICITLY: ``moments=None`` now resolves to the v2
+    # set (kinematic_kernel._MOMENTS), so the "old" axis must pass
+    # ``MOMENTS_LEGACY`` or the 2x2 scan would collapse onto one moment set.
+    MOM = {"old": MOMENTS_LEGACY, "v2": MOMENTS_V2}
+    widths = {
+        m: channel_cone_widths(ep_grid, moments=MOM[m], bending=bending)
+        for m in ("old", "v2")
+    }
+    # bending-on variant of the muon cone (site-dependent -> reported, not shipped)
+    widths_bend = {
+        m: channel_cone_widths(ep_grid, moments=MOM[m], bending=True)
+        for m in ("old", "v2")
+    }
+    sig_mu_kernel = muon_shape(ep_grid)          # muon-calibration closure kernel
+
+    # ---- profile list -----------------------------------------------------
+    profiles = [p["tot"] - p["k"], p["k"], p["tot"]]
+    pidx = {}
+    for s in CHANNEL_SPECIES:
+        pidx[s] = (len(profiles), len(profiles) + 1, len(profiles) + 2)
+        profiles += [p[f"{s}_dir"], p[f"{s}_k"], p[f"{s}_mu"]]
+
+    # ---- cone list --------------------------------------------------------
+    SCALES = {"": 1.0, "_hi": 1.12, "_lo": 0.88}
+    cones, tags = [], []
+
+    def add(tag, ip, sigma):
+        tags.append(tag)
+        cones.append((ip, np.asarray(sigma, float), None))
+
+    for m in ("old", "v2"):
+        for suf, sc in SCALES.items():
+            w = widths[m]
+            add(f"{m}{suf}|flat|pi", 0, w["pi"] * sc)
+            add(f"{m}{suf}|flat|k", 1, w["k"] * sc)
+            for s in CHANNEL_SPECIES:
+                i_dir, i_k, i_mu = pidx[s]
+                fl = _species_flavour(s)
+                add(f"{m}{suf}|{s}|dir", i_dir, w["pi"] * sc)
+                add(f"{m}{suf}|{s}|k", i_k, w["k"] * sc)
+                # delivered assumption: muon-decay component gets the pion cone
+                add(f"{m}{suf}|{s}|mu_pi", i_mu, w["pi"] * sc)
+                add(f"{m}{suf}|{s}|mu_mu", i_mu, w[f"mu_{fl}"] * sc)
+                if suf == "":
+                    add(f"{m}|{s}|mu_bend", i_mu,
+                        widths_bend[m][f"mu_{fl}"] * sc)
+    add("closure|mu", 2, sig_mu_kernel)
+
+    if verbose:
+        print(f"[4/4] {len(cones)} cones x {len(cz)} zeniths "
+              f"({len(profiles)} production profiles) ...")
+    ctx = dict(e=ep_grid, x=x_grid, profiles=profiles, cones=cones, geom=geom,
+               n_alpha=n_alpha, n_beta=n_beta)
+    n_jobs = n_jobs or min(len(cz), max(1, (os.cpu_count() or 8) // 3))
+    if n_jobs > 1:
+        with mp.get_context("fork").Pool(n_jobs, initializer=_channel_init,
+                                         initargs=(ctx,)) as pool:
+            res = pool.map(_channel_worker, list(cz))
+    else:
+        _channel_init(ctx)
+        res = [_channel_worker(c) for c in cz]
+
+    # ---- assemble ---------------------------------------------------------
+    ti = {t: i for i, t in enumerate(tags)}
+    nE = len(ep_grid)
+
+    def ratio(keys, iz):
+        num = np.zeros(nE)
+        den = np.zeros(nE)
+        for k in keys:
+            n_, d_ = res[iz][ti[k]]
+            num += n_
+            den += d_
+        return np.where(den > 0, num / np.maximum(den, 1e-300), 1.0)
+
+    def table(keyfun):
+        return np.array([ratio(keyfun(iz), iz) for iz in range(len(cz))])
+
+    out = {}
+    for m in ("old", "v2"):
+        for mode in ("flat", "channel"):
+            d = {"e": ep_grid, "cz": cz, "tag": TAG, "moments": m,
+                 "cone_mode": mode, "species": np.array(CHANNEL_SPECIES)}
+            for suf in SCALES:
+                key = f"E_off{suf}"
+                d[key] = table(lambda iz, m=m, suf=suf:
+                               [f"{m}{suf}|flat|pi", f"{m}{suf}|flat|k"])
+                mu_tag = "mu_pi" if mode == "flat" else "mu_mu"
+                d[key + "_s"] = np.array([
+                    table(lambda iz, m=m, suf=suf, s=s, mt=mu_tag:
+                          [f"{m}{suf}|{s}|dir", f"{m}{suf}|{s}|k",
+                           f"{m}{suf}|{s}|{mt}"])
+                    for s in CHANNEL_SPECIES
+                ])
+            # bending-on variant of the channel cone (reported, not delivered)
+            if mode == "channel":
+                d["E_off_s_bend"] = np.array([
+                    table(lambda iz, m=m, s=s:
+                          [f"{m}|{s}|dir", f"{m}|{s}|k", f"{m}|{s}|mu_bend"])
+                    for s in CHANNEL_SPECIES
+                ])
+            # muon-calibration closure (horizon, vertical rows)
+            iz_h = int(np.argmin(cz))
+            iz_v = int(np.argmax(cz))
+            d["E_off_mu"] = np.array([ratio(["closure|mu"], iz_h),
+                                      ratio(["closure|mu"], iz_v)])
+            for cn, cv in (("sigma_pi", widths[m]["pi"]), ("sigma_k", widths[m]["k"]),
+                           ("sigma_mu_numu", widths[m]["mu_numu"]),
+                           ("sigma_mu_nue", widths[m]["mu_nue"])):
+                d[cn] = cv
+            name = {("old", "flat"): "offaxis_excess_rebuild_old.npz",
+                    ("v2", "flat"): "offaxis_excess_v2.npz",
+                    ("old", "channel"): "offaxis_excess_channel.npz",
+                    ("v2", "channel"): "offaxis_excess_channel_v2.npz"}[(m, mode)]
+            path = os.path.join(out_dir, name)
+            np.savez(path, **d)
+            out[(m, mode)] = path
+            if verbose:
+                j = int(np.argmin(abs(ep_grid - 0.3)))
+                print(f"  saved {path}  E_off(0.3GeV, horizon) flat="
+                      f"{d['E_off'][0, j]:.3f}  numu={d['E_off_s'][0, 0, j]:.3f}  "
+                      f"nue={d['E_off_s'][2, 0, j]:.3f}")
+    return out
+
+
 def cone_excess(cz, sigma_deg, x_grid, ep_grid, p, geom, n_alpha=44, n_beta=18):
     """E_off(cz, E) for an arbitrary production-angle kernel sigma_deg(E)."""
     return np.array(
@@ -409,8 +796,18 @@ def cone_excess(cz, sigma_deg, x_grid, ep_grid, p, geom, n_alpha=44, n_beta=18):
     )
 
 
-def build(out="offaxis_excess.npz", cone_kernel="moments"):
-    """Build the E_off table. ``cone_kernel``: "moments" (DEFAULT, recommended --
+def build(out="offaxis_excess.npz", cone_kernel="moments", moments=None):
+    """Build the LEGACY flat E_off table (``mceq3d_flux.EOFF_TABLE_FLAT``).
+
+    Since 2026-09-04 the delivered table is the species-resolved
+    ``offaxis_excess_channel_v2.npz`` from :func:`build_channel`; this builder
+    stays as the A/B reference, so ``moments`` defaults to the **pre-arcsin**
+    ``MOMENTS_LEGACY`` set -- otherwise re-running ``--build`` would silently
+    replace the historical A/B file with a v2-moment one under the same name.
+    Pass ``moments=MOMENTS_V2`` for the v2 flat build (which is exactly what
+    ``build_channel`` writes to ``offaxis_excess_v2.npz``).
+
+    ``cone_kernel``: "moments" (DEFAULT, recommended --
     Gaussian of the NA61-validated moment sigma_pi) or "sampled" (legacy -- the full
     (x_L,theta) generator kernel).
 
@@ -439,7 +836,8 @@ def build(out="offaxis_excess.npz", cone_kernel="moments"):
     from kinematic_kernel import muon_shape
 
     cz = np.round(np.arange(0.05, 1.0, 0.1), 2)  # Honda-style bin centres
-    ck = {"cone_kernel": cone_kernel}
+    ck = {"cone_kernel": cone_kernel,
+          "moments": MOMENTS_LEGACY if moments is None else moments}
     E_off = offaxis_excess(cz, x_grid, ep_grid, p, geom, **ck)
     # NA61 +-12% pion-angle variants -> nuisance-parameter Jacobian for the
     # engine's covariance (sigma_pi_NA61 pull, see mceq3d_flux.solve).
@@ -450,7 +848,7 @@ def build(out="offaxis_excess.npz", cone_kernel="moments"):
     # muon angular kernel must be ~1 in daemonflux's calibration region
     # (E_mu >~ 5 GeV), otherwise folding E_off onto the muon-calibrated base
     # would break the muon/neutrino consistency the calibration relies on.
-    sig_mu = muon_shape(ep_grid)
+    sig_mu = muon_shape(ep_grid, moments=ck["moments"])
     E_mu = cone_excess(
         np.array([0.05, 0.95]), sig_mu, x_grid, ep_grid, p["tot"], geom
     )
@@ -555,16 +953,23 @@ def main(argv=None):
     ap.add_argument("--cone-kernel", choices=("sampled", "moments"),
                     default="moments",
                     help="pion cone: 'moments' (default, NA61-validated sigma_pi "
-                         "Gaussian) or 'sampled' (legacy full kernel, ~20-30% too "
+                         "Gaussian) or 'sampled' (legacy full kernel, ~20-30%% too "
                          "wide at 0.5-1 GeV -> horizon overshoot)")
+    ap.add_argument("--build-channel", action="store_true",
+                    help="build the 2x2 {old,v2 moments} x {pion-only, "
+                         "channel-weighted cone} E_off scan (four new files; "
+                         "offaxis_excess.npz is never touched)")
+    ap.add_argument("--n-jobs", type=int, default=None)
     ap.add_argument("--validate", action="store_true")
     ap.add_argument("--plot", action="store_true", help="save offaxis_excess.png")
     args = ap.parse_args(argv)
     if args.build:
         build(cone_kernel=args.cone_kernel)
+    if args.build_channel:
+        build_channel(n_jobs=args.n_jobs)
     if args.validate or args.plot:
         validate(plot=args.plot)
-    if not (args.build or args.validate or args.plot):
+    if not (args.build or args.build_channel or args.validate or args.plot):
         ap.print_help()
 
 
