@@ -1,0 +1,60 @@
+dependent_variables:
+- header: {name: $d^2 \sigma /d p /d \theta$, units: '[mb/rad/(GeV/c)]'}
+  qualifiers:
+  - {name: PLAB, units: GeV c^-1, value: '31.0'}
+  - {name: RE, value: P C --> K+ X}
+  - {name: THETA, units: mrad, value: 140.0-180.0}
+  values:
+  - errors:
+    - {label: stat, symerror: 4.1}
+    - {label: sys, symerror: 0.6}
+    value: 18.1
+  - errors:
+    - {label: stat, symerror: 1.9}
+    - {label: sys, symerror: 0.7}
+    value: 24.2
+  - errors:
+    - {label: stat, symerror: 1.7}
+    - {label: sys, symerror: 0.6}
+    value: 23.7
+  - errors:
+    - {label: stat, symerror: 1.4}
+    - {label: sys, symerror: 0.5}
+    value: 18.2
+  - errors:
+    - {label: stat, symerror: 1.0}
+    - {label: sys, symerror: 0.2}
+    value: 8.8
+  - errors:
+    - {label: stat, symerror: 0.8}
+    - {label: sys, symerror: 0.2}
+    value: 5.6
+  - errors:
+    - {label: stat, symerror: 0.7}
+    - {label: sys, symerror: 0.1}
+    value: 4.0
+  - errors:
+    - {label: stat, symerror: 0.4}
+    - {label: sys, symerror: 0.1}
+    value: 1.6
+  - errors:
+    - {label: stat, symerror: 0.3}
+    - {label: sys, symerror: 0.03}
+    value: 0.6
+  - errors:
+    - {label: stat, symerror: 0.1}
+    - {label: sys, symerror: 0.01}
+    value: 0.2
+independent_variables:
+- header: {name: p, units: GeV/c}
+  values:
+  - {high: 1.6, low: 0.8}
+  - {high: 2.4, low: 1.6}
+  - {high: 3.2, low: 2.4}
+  - {high: 4.0, low: 3.2}
+  - {high: 4.8, low: 4.0}
+  - {high: 5.6, low: 4.8}
+  - {high: 6.4, low: 5.6}
+  - {high: 7.6, low: 6.4}
+  - {high: 8.8, low: 7.6}
+  - {high: 10.0, low: 8.8}

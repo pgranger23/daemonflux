@@ -1,0 +1,541 @@
+"""
+[RESEARCH - active] Production-vertex closure vehicle; NOT imported by the
+delivered mceq3d_flux engine. See ARCHITECTURE.md and the open closure task.
+
+Deterministic 3D cascade with MCEq's REAL matrices (step 1 toward the validated
+3D MCEq): replace the parametrised scaling cascade of ``mceq3d_deterministic`` by
+MCEq's actual interaction/decay matrices, so the flux is absolutely normalised and
+carries the real SIBYLL/H3a physics -- while still marching the cascade ourselves
+so the 3D inter-direction couplings can be injected between depth steps.
+
+MCEq integrates the coupled cascade by forward Euler,
+
+    phi += (int_m . phi + dec_m . (rho_inv . phi)) * dX                      (MCEq)
+
+on the (species x energy) state vector, with int_m/dec_m the full sparse matrices,
+rho_inv = 1/rho(X) the atmosphere and dX the grammage step. We extract int_m,
+dec_m and the integration path and reproduce this **exactly** (validated to machine
+precision against ``MCEqRun.get_solution``), then carry the state vector for a full
+grid of arrival directions at once,
+
+    phi[direction, species*energy]   marched on a common grammage grid,
+
+and between steps apply the **geomagnetic Lorentz-force** operator to the charged
+species (a per-rigidity rotation of the direction distribution) and the directional
+rigidity cutoff on the primary. With the couplings off, every direction reproduces
+MCEq exactly.
+
+Scope of this first version: vertical atmosphere shared by all directions (the
+curved per-direction columns -> sec-theta, and the production-cone inter-direction
+spread, are the next increments). What it delivers now: the **real-physics,
+absolutely-normalised** directional cascade with a self-consistent in-cascade
+geomagnetic force, validated against MCEq.
+
+Run::
+
+    python mceq3d_real.py
+"""
+
+from __future__ import annotations
+
+import argparse
+
+import numpy as np
+
+CHARGED = {  # pdg : charge sign, for the Lorentz force
+    2212: +1, 211: +1, -211: -1, 321: +1, -321: -1, 13: -1, -13: +1,
+}
+
+
+class MCEqCascade3D:
+    """Marches MCEq's real matrices for many arrival directions with the geomagnetic
+    force injected between depth steps."""
+
+    def __init__(self, interaction_model="SIBYLL23D", primary=("HillasGaisser2012",
+                 "H3a"), e_min=0.3):
+        import importlib.util  # noqa: F401
+        import MCEq.config as cfg
+        from MCEq.core import MCEqRun
+        import crflux.models as crf
+
+        cfg.e_min = e_min
+        pm = (getattr(crf, primary[0]), primary[1])
+        self.mceq = MCEqRun(interaction_model=interaction_model, primary_model=pm,
+                            theta_deg=0.0)
+        self.e = self.mceq.e_grid
+        self.dim = self.mceq.dim
+        # solid-angle weights of the current direction grid, set by
+        # march_checkpoints; used by _force_checkpoint to pin the rotated total.
+        self._sa_weights = None
+
+    def _slice(self, pdg):
+        p = self.mceq.pman[(pdg, 0)]
+        return slice(p.lidx, p.uidx)
+
+    def _pool(self):
+        """Lazy shared thread pool. scipy's sparse matvec releases the GIL, so the
+        independent per-direction marches parallelise across cores with no copying
+        and identical results."""
+        import os
+        from concurrent.futures import ThreadPoolExecutor
+
+        ex = getattr(self, "_tpool", None)
+        if ex is None:
+            n = int(os.environ.get("MCEQ3D_THREADS", max(1, (os.cpu_count() or 2) - 1)))
+            ex = self._tpool = ThreadPoolExecutor(n)
+        return ex
+
+    def path(self, zenith_deg=0.0):
+        """The per-zenith integration path (nsteps, dX, rho_inv). Uses MCEq's
+        ``_calculate_integration_path`` -- the cheap atmosphere stepping -- rather
+        than a full ``solve()`` (we march the cascade ourselves), so setting up a
+        direction is milliseconds, not the ~10 s of a solve."""
+        self.mceq.set_theta_deg(float(zenith_deg))
+        self.mceq._calculate_integration_path(None, "X")
+        nsteps, dX, rho_inv, _ = self.mceq.integration_path
+        return nsteps, np.asarray(dX), np.asarray(rho_inv)
+
+    def march(self, phi0, nsteps, dX, rho_inv, force=None):
+        """March the (n_dir, N) state ``phi0`` on the given path. ``force`` is an
+        optional callable (phi, e, dl_km) applied to the whole state after each
+        step to rotate the charged-species direction distributions."""
+        im, dm = self.mceq.int_m, self.mceq.dec_m
+        phi = np.array(phi0, float)  # (n_dir, N)
+        for s in range(nsteps):
+            # vectorised MCEq step over all directions: (N,N)@(N,n_dir) -> (N,n_dir)
+            d = im.dot(phi.T) + dm.dot((rho_inv[s] * phi).T)
+            phi = phi + (d * dX[s]).T
+            if force is not None:
+                phi = force(phi, s)
+        return phi
+
+    def mceq_primary(self):
+        """MCEq's injected primary state vector _phi0 (nucleons), shape (N,)."""
+        return self.mceq._phi0.copy()
+
+    def march_profile(self, zenith_deg=0.0, pdg=14, n_rec=80):
+        """Depth-resolved march of one curved column: returns (X_slant [g/cm2],
+        Phi[n_rec, nE]) -- the accumulated flux of species ``pdg`` at ``n_rec``
+        slant-depth checkpoints. The local production per slant depth
+        ``p(X,E) = dPhi/dX`` is the ingredient the production-vertex cone integrates
+        (mceq3d_prodvertex.py). Marches MCEq's real matrices (validated to reproduce
+        MCEqRun to machine precision), so p(X) carries the absolute SIBYLL/H3a physics
+        for this zenith's real slant density profile."""
+        nsteps, dX, rho_inv = self.path(zenith_deg)
+        im, dm = self.mceq.int_m, self.mceq.dec_m
+        sl = self._slice(pdg)
+        phi = self.mceq_primary().astype(float)
+        xcum = np.cumsum(dX)
+        rec = set(np.linspace(0, nsteps - 1, n_rec).astype(int).tolist())
+        Xrec, Prec = [], []
+        for s in range(nsteps):
+            phi = phi + (im.dot(phi) + dm.dot(rho_inv[s] * phi)) * dX[s]
+            if s in rec:
+                Xrec.append(xcum[s])
+                Prec.append(phi[sl].copy())
+        return np.asarray(Xrec), np.asarray(Prec)
+
+    def rho_h(self, h_km):
+        """Air density [g/cm^3] at altitude ``h_km`` in MCEq's CORSIKA atmosphere
+        (vectorised via the depth<->density splines h2X, X2rho)."""
+        dm = self.mceq.density_model
+        h_cm = np.clip(np.asarray(h_km, float), 0.0, None) * 1e5
+        return np.asarray(dm.X2rho(dm.h2X(h_cm)))
+
+    def march_curved(self, phi0_per_dir, zeniths_deg):
+        """Absolute directional flux with **curved per-direction columns**: each
+        direction develops down its own slant atmosphere, so the sec(theta) horizon
+        enhancement is carried self-consistently. Uses MCEq's own per-zenith
+        integration path (adaptively stepped -> forward-Euler-stable even at the
+        extreme horizon, where a naive common-grid dX blows up), so each column
+        reproduces MCEq for that zenith to machine precision. Returns phi[dir, N].
+
+        (The inter-direction couplings -- force, production cone -- need a
+        *synchronised* grid; because near-horizon stability forces very fine steps,
+        that is done by operator-splitting: march each column with MCEq's fine steps
+        between a set of common altitude checkpoints and couple at the checkpoints.
+        This method delivers the validated curved-column layer; the checkpoint
+        coupling is the next increment.)"""
+        # the paths need the (serial) MCEq set_theta+solve; the marches are then
+        # independent -> run them in parallel across threads (GIL-released matvec).
+        paths = [self.path(z) for z in zeniths_deg]
+
+        def _one(i):
+            nsteps, dX, rho_inv = paths[i]
+            return self.march(phi0_per_dir[i][None, :], nsteps, dX, rho_inv)[0]
+
+        return np.array(list(self._pool().map(_one, range(len(zeniths_deg)))))
+
+    def _h_of_rho(self):
+        """altitude(density) inverse [km], cached, for placing altitude checkpoints
+        along each slant path from its per-step density (=1/rho_inv)."""
+        hr = getattr(self, "_hr_cache", None)
+        if hr is None:
+            h = np.linspace(120.0, 0.0, 4000)
+            r = self.rho_h(h)  # ascending as h descends
+            order = np.argsort(r)
+            hr = self._hr_cache = (r[order], h[order])
+        return hr
+
+    def _cone_matrices(self, dvec, W, sigma_rad, cone_norm="row"):
+        """Per-energy direction-coupling matrices C[je][i, j]: production in
+        direction j spreads to i with a Gaussian-on-the-sphere of RMS sigma_rad[je].
+        W = solid-angle weights.
+
+        ``cone_norm`` selects the physical operator:
+          * "row" (rows sum to 1): each ARRIVAL i receives a normalised average of
+            its neighbours' production -> flux-conserving angular SMEARING with no
+            net directional excess (this is the original behaviour: it nets to the
+            ~0.97 smearing found in `validate_3d_deterministic`).
+          * "col" (columns sum to 1): each production SOURCE j distributes its
+            neutrinos over arrival directions i.
+            TESTED AND REFUTED (diag_prodvertex.py, 2026-07-16): this does NOT
+            reproduce E_off. It gives a horizon *deficit* (emergent ~0.40-0.48,
+            not E_off's ~1.35 excess): the near-horizon column's large sec-theta
+            per-segment production is shipped OUT to mid-zenith. Conclusion: the
+            production-vertex excess is not a cone-normalisation choice; capturing
+            it needs the cone applied inside the production source term (splitting
+            int_m by the cone-primary slant depths), not a reweighting of the
+            already-produced arrival-flux increment. Kept only as the record of
+            this ruled-out shortcut; do not use for physics."""
+        cosang = np.clip(dvec @ dvec.T, -1, 1)
+        ang = np.arccos(cosang)  # (nd, nd)
+        out = []
+        for sg in sigma_rad:
+            K = np.exp(-0.5 * (ang / max(sg, 1e-3)) ** 2)
+            if cone_norm == "col":
+                # weight by the ARRIVAL (row) solid angle, normalise each source
+                # column to 1 so every produced neutrino lands somewhere in-grid.
+                C = K * W[:, None]
+                C = C / np.maximum(C.sum(0, keepdims=True), 1e-300)
+            else:
+                C = K * W[None, :]
+                C = C / np.maximum(C.sum(1, keepdims=True), 1e-300)
+            out.append(C)
+        return out
+
+    def march_checkpoints(self, phi0_per_dir, zeniths_deg, dirs_the_phi, b_enu=None,
+                          n_check=16, cone_sigma_deg=None, weights=None,
+                          cone_norm="row", cone_target="neutrino",
+                          force_species=None):
+        """Coupled curved cascade by **operator-splitting at common altitude
+        checkpoints**: each direction is marched with MCEq's stable fine steps
+        between checkpoints (so the near-horizon stability wall is avoided), and the
+        inter-direction couplings are applied across directions *at* each checkpoint:
+
+        * **geomagnetic force** (``b_enu``): the charged-species blocks are rotated
+          by the per-direction path-length accumulated over the segment;
+        * **production cone** (``cone_sigma_deg``, per-energy [deg]): the neutrinos
+          *produced in the segment* -- exactly the increment ``nu_after - nu_before``,
+          since neutrinos do not propagate further -- are spread over the production
+          cone (width sigma_theta(E), the same generator angle E_off uses), coupling
+          adjacent directions. This is the production-cone inter-direction term
+          (flux-conserving). NB: on a *coarse* direction grid it nets to angular
+          smearing (reducing sharp features); reproducing E_off's off-axis *excess*
+          -- a production-rate-vs-slant-depth effect that emerges when high-altitude
+          checkpoints, where the more-vertical columns are younger showers with
+          higher sub-GeV production, feed the near-horizon arrivals -- requires a
+          fine direction grid and is the pending validation (vs E_off/Honda).
+
+        With both couplings off this reproduces :meth:`march_curved` (hence MCEq
+        per-zenith) exactly -- the correctness anchor. ``dirs_the_phi`` = (theta,
+        phi); ``weights`` = solid-angle weights (for the cone normalisation)."""
+        rr, hh = self._h_of_rho()
+        TH, PH = dirs_the_phi
+        nd = len(zeniths_deg)
+        # per-direction path + altitude per step + segment boundaries by altitude
+        paths, alts = [], []
+        for z in zeniths_deg:
+            ns, dX, ri = self.path(z)
+            paths.append((ns, dX, ri))
+            alts.append(np.interp(1.0 / ri, rr, hh))  # altitude [km] per step
+        h_top = min(a.max() for a in alts)
+        checks = np.linspace(h_top, 0.0, n_check + 1)[1:]  # descending targets
+        # step index in each path where altitude first drops below each checkpoint
+        seg_idx = []
+        for a in alts:
+            idx = [np.searchsorted(-a, -c) for c in checks]  # a descending
+            seg_idx.append([0] + [min(i, len(a)) for i in idx])
+
+        im, dm = self.mceq.int_m, self.mceq.dec_m
+        self._sa_weights = None if weights is None else np.asarray(weights, float)
+        phi = np.array(phi0_per_dir, float)
+        dvec = np.stack([np.sin(TH) * np.cos(PH), np.sin(TH) * np.sin(PH),
+                         np.cos(TH)], -1)
+        cone_C, nu_slices, parent_slices = None, None, None
+        if cone_sigma_deg is not None:
+            W = weights if weights is not None else np.ones(nd)
+            # cone_target="parents" (task-5 production-vertex experiment): spread the
+            # PARENT meson/muon blocks (col-norm) at each checkpoint BEFORE they decay,
+            # so the younger, higher-sub-GeV-production near-vertical columns feed the
+            # horizon's neutrino PRODUCTION -- the production-vertex mechanism the
+            # arrival-flux spread (cone_target="neutrino") cannot inject.
+            # RESULT (diag_prodvertex2.py, 2026-07-16): emergent factor ~= 1.000 at
+            # all zeniths -- this operator is NEUTRAL on the az-averaged cz-marginal
+            # (exact-1.000 warrants a no-op check before ruling it out definitively).
+            # Together with the refuted neutrino-arrival row/col-norm spreads, this
+            # shows E_off is not reproducible by a cone reweighting bolted onto the
+            # march: closing it needs the cone inside the production SOURCE integral
+            # against the isotropic primary flux (a solver rewrite, not an operator).
+            cn = "col" if cone_target == "parents" else cone_norm
+            cone_C = self._cone_matrices(dvec, W, np.deg2rad(cone_sigma_deg),
+                                         cone_norm=cn)
+            nu_slices = [self._slice(pdg) for pdg in (14, -14, 12, -12)]
+            parent_slices = [self._slice(pdg) for pdg in
+                             (211, -211, 321, -321, 13, -13)]
+        for k in range(n_check):
+            if cone_C is not None and cone_target == "parents":
+                # spread parents across arrival directions before the segment march
+                for sl in parent_slices:
+                    blk = phi[:, sl]
+                    new = np.empty_like(blk)
+                    for je in range(self.dim):
+                        new[:, je] = cone_C[je] @ blk[:, je]
+                    phi[:, sl] = new
+            nu_before = ({sl: phi[:, sl].copy() for sl in nu_slices}
+                         if cone_C is not None and cone_target == "neutrino"
+                         else None)
+            # march each direction's segment in PARALLEL across threads: the
+            # directions are independent between checkpoints, and scipy's sparse
+            # matvec releases the GIL, so this is a ~cores-fold speed-up with
+            # *identical* per-direction physics (each column marches its own MCEq
+            # path steps). Coupling below is applied once, serially, at the checkpoint.
+            seg_len = np.zeros(nd)  # path length [cm] of this segment per direction
+
+            def _march_seg(i):
+                a0, a1 = seg_idx[i][k], seg_idx[i][k + 1]
+                if a1 <= a0:
+                    return phi[i]
+                _, dX, ri = paths[i]
+                p = phi[i].copy()
+                for s in range(a0, a1):
+                    p = p + (im.dot(p) + dm.dot(ri[s] * p)) * dX[s]
+                seg_len[i] = np.sum(dX[a0:a1] * ri[a0:a1])  # g/cm2 * cm3/g = cm
+                return p
+
+            phi = np.array(list(self._pool().map(_march_seg, range(nd))))
+            if cone_C is not None and cone_target == "neutrino":
+                for sl in nu_slices:
+                    delta = phi[:, sl] - nu_before[sl]  # (nd, dim) = production
+                    spread = np.empty_like(delta)
+                    for je in range(self.dim):
+                        spread[:, je] = cone_C[je] @ delta[:, je]
+                    phi[:, sl] = nu_before[sl] + spread
+            if b_enu is not None:
+                phi = self._force_checkpoint(phi, dvec, b_enu, seg_len,
+                                             species=force_species)
+        return phi
+
+    def _force_checkpoint(self, phi, dvec, b_enu, seg_len, species=None):
+        """Rotate the charged-species blocks by the Lorentz bending accumulated over
+        a checkpoint segment: angle[dir, E] = seg_len[dir] / r_g(E), r_g = R/(0.3 B),
+        R~E. Pull formulation: every direction reads the field at its own
+        back-rotated position, interpolated from the k nearest grid directions
+        (exact identity in the zero-rotation limit; see the comment below).
+
+        ``species`` (pdg->sign dict) restricts which charged blocks are bent. Default
+        (all CHARGED) is WRONG for a coupled solve: the nucleons' (proton) geomagnetic
+        deflection is already fully encoded in the back-traced cutoff, so bending them
+        again in-cascade double-counts and washes out the E-W (verified: it collapses
+        W/E from ~3 to ~1.3, coupled_ew_diag.py). Pass only the CASCADE-produced
+        charged species -- mesons/muons {211,-211,321,-321,13,-13} -- which the
+        primary cutoff does not account for."""
+        charged = CHARGED if species is None else species
+        Bmag = np.linalg.norm(b_enu)
+        k = np.asarray(b_enu) / Bmag
+        e = self.e
+        # Gyroradius [cm] for rigidity R[GV] ~ E and B in GAUSS.
+        #   r_g[m] = R[GV] / (0.3 * B[T]) and B[T] = B[gauss] * 1e-4
+        #   => r_g[m]  = R/(0.3*B_gauss) * 1e4
+        #   => r_g[cm] = R/(0.3*B_gauss) * 1e6
+        # This previously used 1e5, i.e. it treated the gauss value as if it were
+        # tesla, making the gyroradius 10x too SMALL and every in-cascade rotation
+        # angle 10x too LARGE (E=0.3 GeV, B=0.474 G: 2.11 km instead of 21.1 km).
+        # Every other B use in this codebase converts explicitly
+        # (muon_bending.py:55,129).
+        r_g_cm = (e / (0.3 * Bmag)) * 1e6
+        out = phi.copy()
+        kv0 = np.cross(np.broadcast_to(k, dvec.shape), dvec)
+        kd0 = dvec @ k
+        for pdg, sign in charged.items():
+            sl = self._slice(pdg)
+            block = phi[:, sl]  # (nd, dim)
+            for je in range(self.dim):
+                ang = sign * seg_len / max(r_g_cm[je], 1e-30)  # (nd,) per direction
+                if np.max(np.abs(ang)) < 1e-9:
+                    continue
+                # Back-rotate every direction by its own angle and resample.
+                ca, sa = np.cos(-ang)[:, None], np.sin(-ang)[:, None]
+                dr = (dvec * ca + kv0 * sa
+                      + np.broadcast_to(k, dvec.shape) * (kd0[:, None] * (1 - ca)))
+                # FLUX-CONSERVING INTERPOLATION, not nearest-neighbour.
+                #
+                # This previously did `idx = argmax(dr @ dvec.T); out = block[idx]`
+                # -- a nearest-neighbour PULL. That is not an interpolation and is
+                # not even bijective: argmax can map many outputs to one source,
+                # silently duplicating or dropping flux. Worse, it cannot represent
+                # any rotation smaller than the direction-grid spacing (identity),
+                # while for rotations LARGER than the spacing the index map becomes
+                # an incoherent, charge-blind reshuffle. Feeding an identical smooth
+                # E-W dipole through it with sign +1 vs -1 gave uncorrelated results
+                # -- i.e. the charge-dependent signal it was supposed to carry was
+                # numerical noise.
+                #
+                # Instead interpolate: every output direction reads the field at
+                # its own back-rotated position from the k nearest sources with
+                # inverse-square-distance (Shepard) weights, ROW-normalised.
+                #
+                # Row normalisation is what makes the operator EXACT in the
+                # identity limit: as ang -> 0 the back-rotated direction coincides
+                # with a grid direction, its distance -> 0, its weight -> 1 and all
+                # others -> 0, so the operator -> I. A Gaussian kernel whose width
+                # is the local grid spacing does NOT do this -- on a 2-direction
+                # grid it hands 38% of one column's flux to the other at zero
+                # rotation -- and column-normalising it (the "conserve the total"
+                # variant) makes that worse, because it destroys the reduction
+                # anchor the whole operator-splitting scheme rests on. A rotation
+                # is measure preserving, so the correct operator conserves the
+                # solid-angle-weighted total automatically up to interpolation
+                # error; that residual is removed explicitly below.
+                cosang = np.clip(dr @ dvec.T, -1.0, 1.0)      # (nd, nd)
+                # squared chord distance 2(1-cos) = d_ang^2 + O(d_ang^4): monotone
+                # in the angle, so it orders the neighbours identically and gives
+                # the same inverse-square weights, without a full arccos.
+                chord2 = 2.0 * (1.0 - cosang)
+                nd_ = chord2.shape[1]
+                knn = min(3, nd_)                             # >= 1 for any grid
+                idx = np.argpartition(chord2, knn - 1, axis=1)[:, :knn]
+                dk = np.take_along_axis(chord2, idx, axis=1)
+                wk = 1.0 / np.maximum(dk, 1e-24)
+                wk /= wk.sum(1, keepdims=True)
+                src = block[:, je][idx]                       # (nd, knn)
+                new = (wk * src).sum(1)
+                # pin the solid-angle-weighted total (pure interpolation error)
+                sa = self._sa_weights if self._sa_weights is not None \
+                    else np.ones(nd_)
+                tot0, tot1 = float(sa @ block[:, je]), float(sa @ new)
+                if tot1 > 0 and tot0 > 0:
+                    new = new * (tot0 / tot1)
+                out[:, sl.start + je] = new
+        return out
+
+
+def _force_operator(casc, TH, PH, b_enu_gauss):
+    """Return a per-step force callable that rotates the charged-species blocks of
+    the (n_dir, N) state by the Lorentz rotation (per-rigidity ~ per-energy)."""
+    from geomag3d_spike import sphere_grid  # noqa: F401  (dirs already provided)
+
+    e = casc.e
+    nd = TH.size
+    dvec = np.stack([np.sin(TH) * np.cos(PH), np.sin(TH) * np.sin(PH),
+                     np.cos(TH)], -1)  # (nd,3)
+    Bmag = np.linalg.norm(b_enu_gauss)
+    k = np.asarray(b_enu_gauss) / Bmag
+    slices = {pdg: casc._slice(pdg) for pdg in CHARGED}
+    # precompute nearest-direction index maps for a set of rotation angles lazily
+    kv0 = np.cross(np.broadcast_to(k, dvec.shape), dvec)
+    kd0 = dvec @ k
+
+    def rot_index(angle):
+        dr = (dvec * np.cos(angle) + kv0 * np.sin(angle)
+              + np.broadcast_to(k, dvec.shape) * (kd0 * (1 - np.cos(angle)))[:, None])
+        return np.argmax(dr @ dvec.T, axis=1)
+
+    def force(phi, s):
+        # rotation angle per energy: ang = dl/r_g, r_g = R[GV]/(0.3 B[gauss]) km,
+        # R ~ E. dl for this step folded via a fixed representative (spike-level).
+        # Use a small per-step angle prop to 1/E (charged bending, energy-indep in
+        # magnitude but only low-E rings decay -> here applied to charged transport).
+        r_g = e / (0.3 * Bmag)  # km
+        # representative dl per step ~ scale; keep modest so it is a rider
+        dl = 0.05  # km-equivalent per step (illustrative; full version uses rho,dX)
+        ang = dl / np.maximum(r_g, 1e-6)
+        out = phi.copy()
+        for pdg, sign in CHARGED.items():
+            sl = slices[pdg]
+            block = phi[:, sl]  # (nd, dim)
+            for je in range(casc.dim):
+                a = sign * ang[je]
+                if abs(a) < 1e-9:
+                    continue
+                idx = rot_index(-a)
+                out[:, sl.start + je] = block[idx, je]
+        return out
+
+    return force
+
+
+def solve(zeniths_deg=(0.0,), interaction_model="SIBYLL23D", e_min=0.3):
+    """Absolute vertical/zenith directional numu flux by marching MCEq's real
+    matrices ourselves -- validation vehicle (no coupling): must equal MCEq."""
+    casc = MCEqCascade3D(interaction_model=interaction_model, e_min=e_min)
+    out = {}
+    numu = casc._slice(14)
+    for z in zeniths_deg:
+        nsteps, dX, rho_inv = casc.path(z)
+        phi0 = casc.mceq_primary()[None, :]  # (1, N)
+        phi = casc.march(phi0, nsteps, dX, rho_inv)
+        out[z] = phi[0, numu]
+    return casc.e, out
+
+
+def main(argv=None):
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument("--plot", action="store_true")
+    args = p.parse_args(argv)
+
+    print("Deterministic 3D cascade with MCEq's REAL matrices (step 1).\n")
+    casc = MCEqCascade3D(e_min=0.3)
+    numu = casc._slice(14)
+
+    # --- VALIDATION: our hand-march reproduces MCEq exactly (vertical) ---
+    nsteps, dX, rho_inv = casc.path(0.0)
+    casc.mceq.set_theta_deg(0.0)
+    casc.mceq.solve()  # MCEq's own reference (path() no longer solves)
+    ref = casc.mceq.get_solution("numu", mag=0).copy()
+    phi = casc.march(casc.mceq_primary()[None, :], nsteps, dX, rho_inv)[0]
+    mine = phi[numu]
+    m = ref > ref.max() * 1e-8
+    rel = np.abs(mine[m] / ref[m] - 1)
+    print(f"1. VALIDATION -- hand-marched real MCEq matrices vs MCEqRun.get_solution")
+    print(f"   numu, vertical: max rel diff = {rel.max():.2e}  (0 => exact real"
+          " physics)")
+
+    # --- absolute normalisation carried, directional cutoff demo ---
+    from geomag3d_spike import sphere_grid
+    TH, PH, W = sphere_grid(8, 12)
+    dn = np.cos(TH) > 0
+    TH, PH = TH[dn], PH[dn]
+    nd = TH.size
+    # cutoff-modulated primary: suppress East (sin phi>0) near horizon
+    p_sl, n_sl = casc._slice(2212), casc._slice(2112)
+    phi0 = np.repeat(casc.mceq_primary()[None, :], nd, axis=0)
+    ew = 0.5 * (1 + np.sin(PH))  # 1 East
+    horizon = np.exp(-(np.cos(TH) ** 2) / (2 * 0.25**2))
+    r_c = 8.0 + 27.0 * ew
+    T = 0.5 * (1 + np.tanh((np.log(casc.e[None, :]) - np.log(r_c[:, None])) / 0.5))
+    trans = 1.0 - horizon[:, None] * (1.0 - T)  # (nd, dim)
+    phi0[:, p_sl] *= trans
+    phi0[:, n_sl] *= trans
+    force = _force_operator(casc, TH, PH, np.array([0.0, 0.30, -0.37]))
+    phF = casc.march(phi0, nsteps, dX, rho_inv, force=force)
+    phN = casc.march(phi0, nsteps, dX, rho_inv, force=None)
+    horiz = np.cos(TH) < 0.25
+    east = horiz & (np.sin(PH) > 0.6)
+    west = horiz & (np.sin(PH) < -0.6)
+    print("\n2. ABSOLUTE directional numu flux (real MCEq physics) with the")
+    print("   cutoff-structured primary; force OFF vs ON (E-W near horizon):")
+    print(f"   {'E[GeV]':>7} {'W/E(off)':>9} {'W/E(on)':>9}")
+    for E in (0.5, 1.0, 3.0):
+        je = int(np.argmin(np.abs(casc.e - E)))
+        weN = phN[west][:, numu][:, je].mean() / max(phN[east][:, numu][:, je].mean(), 1e-30)
+        weF = phF[west][:, numu][:, je].mean() / max(phF[east][:, numu][:, je].mean(), 1e-30)
+        print(f"   {E:7.1f} {weN:9.2f} {weF:9.2f}")
+    print("\n   -> real-physics absolute flux; E-W emerges from the cutoff; the")
+    print("   in-cascade force is a small rider (curved columns + production cone")
+    print("   are the next increments toward the Honda-validated model).")
+    print("MCEQ3D_REAL_DONE")
+
+
+if __name__ == "__main__":
+    main()

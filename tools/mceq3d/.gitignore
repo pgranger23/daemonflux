@@ -1,0 +1,15 @@
+# Regenerable artifacts -- not committed.
+# External generator data (downloaded by chromo/MCEq on first use)
+tables.dat
+na61_*.json
+
+# Intermediate / full-shape kernels -- regenerate via KERNEL_GENERATION.md
+k_*.npz
+kw_*.npz
+kernel_*.npz
+m_high_*.npz
+m_low_*.npz
+mom_*.npz
+
+# Kept on purpose (small drop-in moment inputs the solver/tests use):
+#   m_spliced.npz, m_piminus.npz, m_Kplus.npz, m_Kminus.npz
