@@ -9,7 +9,23 @@ The 3D atmospheric-cascade solver in this repo (`tools/mceq3d/`) needs the
 **production angle** of secondary hadrons — the quantity 1D MCEq integrates away.
 You will regenerate it by running the *same* event generators MCEq uses (through
 `chromo`) in single-interaction mode and histogramming the production angle
-`theta = arctan(p_T / p_L)`.
+
+```
+theta = arcsin(p_T / p),     p = sqrt(E_sec^2 - m^2)   (the TOTAL momentum)
+```
+
+> **Angle convention (fixed 2026-09 — read this).** Until 2026-09 this pipeline
+> computed `theta = arctan(p_T / p)`, i.e. it put the *total* momentum where the
+> *longitudinal* one belongs. Since `arctan(u) < arcsin(u)`, that biased
+> `<theta^2>` **low**. Measured on identical event samples
+> (`diag_angle_convention.py`), the corrected pi+ `sqrt(<theta^2>)` is **+46% at
+> `E_sec` = 0.3 GeV**, +32% at 0.5, +13% at 1, +4.6% at 2, +1.1% at 5 and +0.3%
+> at 10 GeV — worst exactly in the sub-GeV region that drives the off-axis
+> excess `E_off`, and far larger there than the +-12% NA61 systematic. The single
+> definition now lives in `kernel_regeneration.production_angle`; every consumer
+> calls it. `validate_na61.py` compares `<p_T>`, which is blind to the
+> convention — use `validate_na61_angle.py` (mean *angle* vs the NA61 polar-angle
+> tables) to test it. Moment files produced after the fix carry a `_v2` suffix.
 
 There are **two deliverables**, in priority order:
 
@@ -158,7 +174,7 @@ file the code loads by default **must** be named `m_spliced.npz`.
 ### Sanity check (prints automatically)
 
 The `--moments` run prints a `<theta>(E_sec)` table. It **must decrease
-monotonically** with energy (θ ~ 1/E), landing around **a few degrees at ~1 GeV**
+monotonically** with energy (θ ~ 1/E), landing around **~16 deg at ~1 GeV**
 and falling below ~0.1° by multi-TeV. If it is flat or rises, something is wrong
 (stop and report).
 
@@ -223,6 +239,49 @@ Repeat for the other three secondaries. The low/high θ-grids
 (`--ntheta`, `--theta-max-deg`) **must match** between the two models you splice.
 
 ---
+
+## 5b. Single-machine driver (many cores, no scheduler)
+
+On a workstation/interactive node with tens of cores, `regen_moments_mp.py`
+reproduces the whole of section 3 in one command. It uses the same generators,
+energy grid (12 points 4-80 GeV UrQMD-3.4, 30 points 80 GeV-1 PeV SIBYLL-2.3d),
+the same `x_L` binning and the same `--nint` per energy, but shards energies
+across a local process pool and histograms **all four secondaries from one event
+sample** (the section 8 optimisation):
+
+```bash
+# what was actually used for the delivered *_v2.npz set (2026-09):
+python regen_moments_mp.py --nint 60000 --nint-high 200000 --nproc 46 \
+    --shard-low 2000 --shard-high 20000 --suffix _v2
+# -> m_spliced_v2.npz, m_piminus_v2.npz, m_Kplus_v2.npz, m_Kminus_v2.npz
+```
+
+Same-energy shards are merged by summing raw `counts` / `sum_theta` /
+`sum_theta_sq` (the count-weighted merge section 6 warns about), so the result is
+statistically identical to one long run. Each per-model file also carries
+`theta_sq_a` / `theta_sq_b` / `counts_a` / `counts_b`: two statistically
+independent halves whose difference measures the Monte-Carlo error directly.
+
+**Cost and how much statistics you actually need.** UrQMD-3.4 dominates: ~100
+evt/s/core at 4 GeV falling to ~18 evt/s/core at 80 GeV, versus ~1600-2500
+evt/s/core for SIBYLL-2.3d at any energy. The 2e5-per-energy figure in section 3
+is generous for the *moments*; the half-split test shows 6e4 UrQMD interactions
+per energy already gives ``<theta^2>`` to **<= 2%** over `E_sec` = 0.3-10 GeV for
+pi+, pi- and K+ (23 of 24 report points <= 1.4%, worst 2.0% for pi+ at 10 GeV).
+The exception is **K- below ~0.5 GeV** (6-9% at 6e4, ~5% even at 2e5): sub-GeV
+K- production from a <= 80 GeV proton is rare in UrQMD and no affordable
+statistics fixes it. That channel is reference-only downstream (the delivered
+cone uses the pion angle), so it was accepted. Wall clock for the command above
+on 46 contended cores: 20 min UrQMD + 3 min SIBYLL.
+
+Merging a top-up run into an existing per-model file (to reach the full 2e5) is
+`regen_moments_mp.merge_model_files(out, fileA, fileB, ...)`, then re-splice.
+
+Cross-check the delivered file with the moments-level normalisation gate:
+
+```bash
+python gate_moments_norm.py m_spliced_v2.npz --sec piplus   # norm ~1.0
+```
 
 ## 6. Parallelization (optional, for many cores)
 

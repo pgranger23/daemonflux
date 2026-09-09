@@ -1,5 +1,19 @@
 # A 3D / low-energy extension of daemonflux — complete implementation report
 
+> **2026-09-04 superseded-numbers banner.** A 2026-09-03 audit and 2026-09-04
+> Phase-1 repair sprint changed the delivered engine; see `PHASE1_RESULTS.md`
+> (measured before/after, every number sourced) and `ARCHITECTURE.md` (current
+> module map / product equation). Specifically superseded in this document:
+> the `r_hi=40 GV` cutoff ceiling and its `n_scan` (now `r_hi=55` with a
+> bisected scan, <=1 GV coarse step); every East-West number quoted against
+> Honda (the observable itself, `max/min` over azimuth, is retired in favour
+> of `diag_ew_charge_fourier.py`'s harmonic decomposition); the "±3°
+> charge-dependent East-West shift" / "~3° E-W split" muon-bending value,
+> which is **5.08°** per lifetime for |B|=0.474 G; the "flavour-independent"
+> `E_off` claim (the muon-decay channel makes it species-dependent); and the
+> "28 modules, 21 test files, 118 passing offline tests" inventory. The body
+> below is left unedited as a historical record.
+
 **For:** the daemonflux author.
 **What this is:** a full, deliberately self-critical account of a research-grade
 3D extension built on top of daemonflux/MCEq — every method, every validation

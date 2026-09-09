@@ -1,5 +1,16 @@
 # HANDOFF — 3D/low-energy daemonflux extension (migration to Lyon CC-IN2P3)
 
+> **2026-09-04 superseded-numbers banner.** A 2026-09-03 audit and 2026-09-04
+> Phase-1 repair sprint changed the delivered engine and its defaults; see
+> `PHASE1_RESULTS.md` (measured before/after) and `ARCHITECTURE.md` (current
+> module map / product equation). In this document specifically: the "E-W gap
+> closed the right way" and "residual overshoot" numbers under "Current state"
+> and "Open / pending items" below (§4, e.g. the ~11-14%/~20-25% E-W figures),
+> `r_hi=40`/`cone_cutoff` defaults, and the "132 passed" test count are all
+> superseded — `joint_cone.py`, channel-resolved `E_off`, `sigma_lnR=0.0` and
+> `r_hi=55` with a bisected rigidity scan are the current defaults. The body
+> below is left unedited as a historical record.
+
 Context snapshot for resuming this work on `lyon:/sps/lbno/pgranger/`. Written
 2026-07-05. Companion to `IMPLEMENTATION_REPORT.md` (full module inventory),
 `PAPER_DRAFT.md` (the paper), `TECHNICAL_NOTE.md`, `README.md`, `REVIEW.md`.

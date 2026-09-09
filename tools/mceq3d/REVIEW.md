@@ -6,14 +6,115 @@ before trusting any number downstream.
 
 ---
 
-## ⚠️ CURRENT STATUS (2026-07-23) — read this first
+## ⚠️ CURRENT STATUS (2026-09-04) — read this first
+
+**This block supersedes everything below it, including the 2026-07-23 block
+that used to open this file (now kept under "Superseded 2026-07-31 status").**
+A 2026-09-03 critical audit (`scratchpad/audit_report.md`) and a 2026-09-04
+Phase-1 repair sprint found that the two headline conclusions of the old
+"CURRENT STATUS" block were wrong. Full detail, every number sourced, is in
+`PHASE1_RESULTS.md`; the module map is `ARCHITECTURE.md`.
+
+* **Retracted: "The one systematic that remains ... the factorised cone-average
+  under-softens the sharp back-traced cutoff relative to Honda's full 3D
+  treatment."** This was dominated by numerical defects — a coarse rigidity
+  scan, bilinear interpolation across the convex near-limb rise, a 9.5 GV seam
+  at 89 deg stitching the down-going cutoff to the antipodal far-side cutoff,
+  and an under-measured production-point displacement — not an intrinsic
+  under-softening. Repairing them (`geomag_backtrace.scan_upper_cutoff`, dense
+  limb nodes, `sublimb="prod_point"`) plus replacing the product
+  `E_off x <G>_cone` by the single joint cone integral (`joint_cone.py`) and
+  correcting the generator-moment `arctan` -> `arcsin` bug closes most of the
+  sub-GeV zenith-shape deficit and the 0.5 GeV E-W overshoot (nu_mu H/V 0.841 ->
+  1.040 x Honda; nu_mu 87 deg/0.5 GeV E-W +15% -> +2%). See
+  `PHASE1_RESULTS.md` §3.1-3.2 for the full S0->S4 table.
+* **Retracted: "Confirmed structural gap: charge-dependent East-West."** The
+  diagnostic used (`max/min` over azimuth) is exactly even under a sign flip of
+  a coherent shift, and Honda's azimuth convention (counterclockwise from
+  South) was never mapped to ours — both bugs, not physics. With the corrected
+  observable (`diag_ew_charge_fourier.py`) and convention, the model produces a
+  charge-dependent E-W split with the right sign and 60-90% of Honda's *phase*
+  magnitude at 0.3-0.5 GeV; what remains genuinely missing is the *amplitude*
+  half (13-30% of Honda's) and the species-ordering pattern. See
+  `PHASE1_RESULTS.md` §3.3 and §5.
+* Negative results from the same sprint: energy-loss-enhanced muon bending is
+  refuted (wrong sign); the fully-coupled charged-transport march is a
+  structural dead end for the E-W observable (`mceq3d_real.march_checkpoints`,
+  `coupled_ew_charge_diag.py` — kept for the record only, see
+  `ARCHITECTURE.md`); the cone-too-narrow hypothesis is refuted; sharpening the
+  geomagnetic penumbra (`SIGMA_LNR` 0.5 -> 0.0) fixes the East-side level but
+  neither the Bartol H/V overshoot nor the charge-splitting amplitude.
+* Open items carried forward (not fixed by Phase 1): the nu_e/antinu_e/antinu_mu
+  E-W species pattern, the nu_mu 1 GeV E-W overshoot, a 6-13% H/V overshoot vs
+  Bartol with a genuine ~5% sub-GeV solid-angle excess, `with_eoff_jacobian`
+  being first-order only, and the v2 (arcsin-corrected) moments not being wired
+  as the engine default.
+* **2026-09-05 addendum.** A follow-up investigation closed the North/South
+  and dipole-phase item that this block did not yet list: the apparent ~20 deg
+  rotation of the back-traced cutoff's azimuthal pattern is the Earth-shadow
+  cone biasing the first-harmonic phase estimator, not a frame or convention
+  bug (a real but small dipole-axis longitude bug was found and fixed en
+  route, with no measurable effect on the map); the genuine remaining physics
+  was that the cutoff map is anchored at the detector while the primary of a
+  near-horizon neutrino enters the atmosphere up to 617 km away, at a
+  different geomagnetic latitude. Anchoring the cone samples' cutoff at the
+  neutrino's own production point instead (`mceq3d_flux.CUTOFF_ANCHOR =
+  "prod_point"`, a cached per-site displaced-site map family, one-time cost
+  4.1 h) removes essentially the whole effect with no free parameter — the
+  North/South model-over-Honda pair moves from 0.86-0.92 / 1.07-1.23 to
+  0.93-1.02 / 0.91-1.05 and the dipole-phase offset from 12-14 deg to
+  <=1.3 deg (0.5 GeV, all four species), confirmed by a grid-wide improvement
+  in the 90th-percentile |log10(ours/Honda)| for every species — and it was
+  made the **default** on 2026-09-05, since the family build is a one-time,
+  cached precompute like the cutoff map itself (`"detector"` remains the fast
+  A/B path). It leaves the East-West species pattern and its amplitude
+  splitting untouched: that item remains open. Full detail in
+  `PHASE1_RESULTS.md` §6; the module map is in `ARCHITECTURE.md`.
+* **2026-09-09 addendum: residual classification.** Three further
+  investigations classified every remaining residual as our approximation, a
+  different input, or unknown, and checked one of them against real data. The
+  East-West species-compression pattern (nu_e > antinu_mu > nu_mu > antinu_e
+  in Honda, compressed to ~2.7-3.3 here) is confirmed as **ours**: it stays
+  flat across nine hadronic-model/primary combinations, and it is now
+  **corroborated by Super-Kamiokande data** — the measured East-West
+  asymmetry wants more nu_e and less nu_mu splitting than Honda's own Monte
+  Carlo, the same direction our compression predicts, at ~2.0-2.2 sigma with
+  no free parameters (no later SK azimuthal analysis exists beyond
+  arXiv:1510.08127). The nu_mu East-West overshoot is **mostly a different
+  input** (the primary spectrum) at 0.5 GeV (+12% -> +1% under Honda's own
+  primary proxy) and **partly unknown** at 1-2 GeV, where a genuine +10-16%
+  residual survives every primary and hadronic model tried. The H/V overshoot
+  against Bartol and the "~5% conservation excess" are **reclassified: not a
+  defect**. A first-principles re-derivation shows Eq. (8) is the exact
+  straight-line 3D transport of an isotropic primary flux (gated to its own
+  flat-atmosphere closed form to 0.02-0.12%); the "~5% excess" was the plain
+  solid-angle average, which is measure-dependent (the same exact kernel gives
+  15%, not 5%, for that average in a flat atmosphere), while the physically
+  conserved ground-crossing average shows a 5.5% *deficit* — nothing is
+  manufactured. The real, quantified culprit is the NA61 +-12% uncertainty on
+  the production-cone width, which alone moves H/V by ~+-20% at 0.3 GeV and
+  spans the Honda-Bartol gap; every other ingredient moves it <=2%. Absolute
+  sub-1.7-GeV normalisation remains attributed to input choice (primary
+  spectrum/base), as before; Honda's charge-splitting phase reversal above
+  ~1 GeV remains genuinely unexplained. Full detail, every number sourced, in
+  `PHASE1_RESULTS.md` §8; restated in `PAPER_DRAFT.md` §3.6/§4.7/§5/§6.
+
+---
+
+## Superseded 2026-07-31 status
+
+Everything from here down to "## Resolution status" is the block that used to
+open this file. It predates the 2026-09-03 audit and is superseded where it
+conflicts with the block above; kept verbatim for history.
+
+### ⚠️ CURRENT STATUS (2026-07-23) — read this first
 
 **Everything below the "Resolution status" heading predates commit `71dd9d9` and is
 superseded where it conflicts with this block.** Authoritative sources, in order:
 `ARCHITECTURE.md` (module map), `PAPER_DRAFT.md` §4-6 (physics + validation), then
 this file (history and the older approximation inventory).
 
-### What changed since the old review
+#### What changed since the old review
 
 * **`E_off` cone kernel (delivered physics change).** The sampled `(x_L,θ)` kernel
   (`k_spliced.npz`) was root-caused as **16-37% too wide** in per-secondary
@@ -35,7 +136,7 @@ this file (history and the older approximation inventory).
   ~17-23%. Flavour ratio within a few %, charge ratios within ~5%. Bartol
   (Honda-independent) confirms 0.94-1.04× over most of the range.
 
-### The one systematic that remains (and it is ONE, not several)
+#### The one systematic that remains (and it is ONE, not several)
 
 The extreme-horizon **East-West overshoot** (+15-24% at 87°) and the **sub-GeV
 zenith-shape deficit** (11-15% at 0.3-1 GeV) are the **same underlying systematic**:
@@ -61,7 +162,7 @@ already *helps* (lifts HV_G 0.598→0.855) — the residual is the cutoff values
 treatment. Any future fix should target the softening of high-cutoff directions
 (energy-flat) and would improve both observables at once.
 
-### Confirmed structural gap: charge-dependent East-West
+#### Confirmed structural gap: charge-dependent East-West
 
 The model predicts ≈zero ν-vs-ν̄ E-W amplitude splitting; Honda shows a factor 2-3
 (νμ diff -0.91 to -1.53; νe +1.7 to +3.3). Verified via **two independent
@@ -75,7 +176,7 @@ a real, currently-missing piece, too small alone to close the gap. The one untes
 lever is a spatially-varying **B(r)** along the ~1000 km near-horizon path (both
 implementations use a single detector-point field vector).
 
-### Known-and-accepted approximations (still true)
+#### Known-and-accepted approximations (still true)
 
 * `channel_fractions`/`mudecay_shape` were vertical-only; now zenith-dependent, but
   this is worth only ~0.3% (the two cone widths it blends are nearly identical).

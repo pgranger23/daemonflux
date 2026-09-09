@@ -46,14 +46,17 @@ Real SIBYLL-2.3d (via chromo) vs MCEq's stored `SIBYLL23D` `dN/dx_L`:
 
 * the regenerated p_T-marginal **reproduces the MCEq dN/dx_L shape across 3+
   decades in x_L** (see `kernel_real_piplus.png`, right panel);
-* they differ by a **near-constant factor ~4.4**, which is a *normalization
-  convention*, not a shape error. We initially suspected resonance feed-down,
-  but **tested and ruled it out**: setting all MCEq-tracked species stable in
-  chromo changes the π⁺ count by only ~3% (6.03 → 5.83 /event at 1 TeV), and
-  chromo's ~6 π⁺/event is the physically correct multiplicity. The factor is
-  therefore in how MCEq *stores/normalizes* `hadr_yields`; reconciling it means
-  reading MCEq's matrix-assembly code. It **cancels in every angular quantity**,
-  so it does not block the next step.
+* the **normalization is resolved and the gate now passes in absolute terms.**
+  An apparent near-constant factor ~4.4 was a *reading* bug on our side, not an
+  MCEq convention to be reconciled later: MCEq stores
+  `hadr_yields = (dN/dx_L) · Δ(lnE_grid)`, and `Δ(lnE) = 0.2303`, i.e.
+  `1/Δ(lnE) = 4.34`. `load_mceq_reference` divides it out (see `REVIEW.md`,
+  "Resolution status" item (A)). Resonance feed-down was tested and ruled out
+  independently: setting all MCEq-tracked species stable in chromo changes the
+  π⁺ count by only ~3% (6.03 → 5.83 /event at 1 TeV).
+* With the fix the gate gives **norm factor ≈ 1.0** — e.g. `gate_moments_norm.py
+  m_spliced.npz --sec piplus` returns norm 0.97 with 86% of bulk-yield bins
+  (`x_L ≥ 5e-3`) agreeing within 5%.
 
 We also confirmed empirically that MCEq stores `hadr_yields` as `dN/dx_L` in
 scaling form (the value at fixed log-offset `i-j` is energy independent), and
@@ -63,9 +66,11 @@ that integrating it gives physical π⁺ multiplicities (0.8 → 2.2 over 90 GeV
 ## Angular kernel: `angular_kernel.py`
 
 Converts the regenerated `d2N/(dx_L dp_T)` into the transport objects a 3D
-solver needs (this stage is **independent of the ~4.4 normalization**):
+solver needs (this stage is **independent of the yield normalization**):
 
-* production angle `theta = arctan(p_T/p_L)` per `(E_proj, x_L, p_T)`;
+* production angle `theta = arcsin(p_T/p)` per `(E_proj, x_L, p_T)`, with `p` the
+  **total** momentum `sqrt(E_sec^2 - m^2)` (see the note on the pre-2026-09
+  `arctan` bug below);
 * moments `<theta>`, `<theta^2>` (the Fokker–Planck diffusion coefficient);
 * the discrete-ordinates scattering row `P(mu)` for an S_N solver;
 * the crossover energy where `<theta>` drops below a detector scale.
@@ -404,9 +409,24 @@ pytest test_geomag_backtrace.py test_muon_bending.py -q
 
 ## Findings that shape the production effort
 
-* **The ~4.4 factor is an MCEq storage-normalization convention, not feed-down**
-  (tested: tracked-stable changes the count ~3%). To be reconciled against
-  MCEq's matrix-assembly code; irrelevant to the angular kernels.
+* **The ~4.4 factor is RESOLVED** — it was a missing division by MCEq's
+  log-energy bin width (`hadr_yields = dN/dx_L · Δ(lnE)`, `1/Δ(lnE) = 4.34`),
+  fixed in `load_mceq_reference`; the gate now returns norm ≈ 1.0. Feed-down was
+  separately tested and ruled out (tracked-stable changes the count ~3%).
+* **Production-angle convention (fixed 2026-09).** The moments and the angular
+  kernel used `theta = arctan(p_T/p)` with `p` the *total* momentum, i.e. the
+  total momentum in the place of the longitudinal one. The correct relation is
+  `sin(theta) = p_T/p`. The bug biased `<theta^2>` **low**. Measured on identical
+  event samples (`diag_angle_convention.py`), the corrected π⁺ `sqrt(<theta^2>)`
+  is **+46% at `E_sec` = 0.3 GeV**, +32% at 0.5, +13% at 1, +4.6% at 2, +1.1% at
+  5 and +0.3% at 10 GeV — i.e. the bias sits exactly in the sub-GeV region that
+  drives the off-axis excess `E_off`, where it dwarfs the ±12% NA61 systematic.
+  Downstream, `kinematic_kernel.channel_shapes` gives `sigma_pi(E_nu)` 13% wider
+  at 0.2 GeV, 11% at 0.3, 9% at 0.5, 6% at 1 and 2% at 3 GeV. It was invisible to
+  `validate_na61.py`, which compares `<p_T>` (angle-convention-independent);
+  `validate_na61_angle.py` closes that hole by comparing `<theta>(p_lab)` against
+  the NA61 polar-angle tables. The corrected moment files are the `*_v2.npz` set
+  (`regen_moments_mp.py`); the pre-fix `m_*.npz` are retained for comparison.
 * **SIBYLL-2.3d has a hard floor at √s = 10 GeV (E_lab ≈ 53 GeV).** Below that —
   exactly where geomagnetic effects matter most (1–10 GeV) — a **low-energy
   model** is required (DPMJET / data-driven), as MCEq already does. The NA61
@@ -417,8 +437,8 @@ pytest test_geomag_backtrace.py test_muon_bending.py -q
 
 ## Next steps
 
-1. Reconcile the storage-normalization factor against MCEq's matrix assembly
-   (cosmetic; angular work does not need it).
+1. ~~Reconcile the storage-normalization factor~~ **done** — it was a missing
+   `1/Δ(lnE)`; the gate returns norm ≈ 1.0 (`gate_moments_norm.py`).
 2. ~~Low-energy backend~~ **done** — UrQMD-3.4 reaches E_lab = 3 GeV; splice via
    `splice_kernels.py`. ~~Cross-check against NA61 data~~ **done** —
    `validate_na61.py` matches NA61 p+C 31 GeV/c `<p_T>` to ~10%.

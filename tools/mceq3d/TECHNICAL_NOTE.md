@@ -4,6 +4,20 @@
 **Prepared by:** P. Granger
 **Status:** complete deterministic-3D directional engine, validated absolutely against Honda HKKM2014 and Bartol 2004 and at the kinematic level against NA61/SHINE.
 
+> **2026-09-04 superseded-numbers banner.** A 2026-09-03 audit and 2026-09-04
+> Phase-1 repair sprint changed the delivered engine; see `PHASE1_RESULTS.md`
+> (measured before/after, every number sourced) and `ARCHITECTURE.md` (current
+> module map / product equation). Specifically superseded here: the East-West
+> agreement percentages quoted throughout (the abstract's "≈6-14%", §4.1's
+> figures) and the underlying `max/min`-over-azimuth observable, now retired in
+> favour of `diag_ew_charge_fourier.py`'s harmonic decomposition; the "~3°"
+> muon-bending charge-separated split (it is **5.08°** per lifetime for
+> |B|=0.474 G); the "E_off is flavour-independent" claim (§ muon bending / off-axis
+> production — the muon-decay channel makes E_off species-dependent); and the
+> `r_hi`/rigidity-scan defaults implicit in the quoted cutoff numbers (now
+> `r_hi=55 GV` with a bisected <=1 GV scan, not the earlier cap). The body below
+> is left unedited as a historical record.
+
 ---
 
 ## Abstract
