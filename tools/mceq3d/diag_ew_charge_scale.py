@@ -6,6 +6,14 @@ numu) while Honda shows a large one (diff -0.91 to -1.53 for numu, +1.7 to +3.3
 for nue). The pion-production-angle charge asymmetry hypothesis was refuted
 directly from data (pi+ vs pi- widths agree to 1-3%).
 
+UPDATE 2026-09-03: the earlier version of this script measured the splitting as
+``max/min`` over a symmetric 24-point azimuth grid, which is EXACTLY invariant
+under a rotation by +delta vs -delta -- i.e. blind to the very mechanism being
+scaled, which is why the answer "saturated" instead of growing. It now reports
+the shift-sensitive first-harmonic observables of ``diag_ew_charge_fourier``
+(amplitude a1/a0, phase dphi about the geomagnetic E-W axis, transverse
+component s1/a0) alongside the legacy max/min.
+
 The ONLY charge-dependent mechanism in the delivered model is the coherent
 muon-bending axis shift (`muon_bending.bending_deflection`, applied in
 `mceq3d_flux.cone_geff` lines ~800-836: the mu-decay cone is centred on
@@ -29,6 +37,9 @@ import numpy as np
 
 import muon_bending as mb
 from mceq3d_flux import MCEq3DFlux
+from diag_ew_charge_fourier import (
+    ew_observables, geomagnetic_ew_axis, honda_ew, honda_table, _wrap180,
+)
 
 LAT, LON = 36.43, 137.31
 DATE = datetime(2020, 1, 1)
@@ -59,38 +70,47 @@ def main():
         finally:
             mb.bending_deflection = _orig_bending_deflection
         e = r["e"]
+        ew_axis = geomagnetic_ew_axis()
         out = {}
         for fl, nu, nub in (("numu", "total_numu", "total_antinumu"),
                             ("nue", "total_nue", "total_antinue")):
-            f_nu = r["flux"][nu][0]   # (naz, nE)
-            f_nb = r["flux"][nub][0]
-            we_nu = float(np.interp(E, e, f_nu.max(0))) / \
-                max(float(np.interp(E, e, f_nu.min(0))), 1e-300)
-            we_nb = float(np.interp(E, e, f_nb.max(0))) / \
-                max(float(np.interp(E, e, f_nb.min(0))), 1e-300)
-            out[fl] = (we_nu, we_nb, we_nu - we_nb)
+            o = []
+            for sp in (nu, nub):
+                f = r["flux"][sp][0]          # (naz, nE)
+                v = np.array([np.interp(E, e, f[j]) for j in range(f.shape[0])])
+                o.append(ew_observables(v, az, ew_axis))
+            out[fl] = o
         return out
 
-    honda = {
-        0.5: {"numu": -1.30, "nue": +2.62},
-        1.0: {"numu": -1.53, "nue": +3.26},
-    }
-    scales = (1.0, 3.0, 10.0, 30.0)
+    h = honda_table()
+    ew_axis = geomagnetic_ew_axis()
+    scales = (0.0, 1.0, 3.0, 10.0, 30.0)
     for E in (0.5, 1.0):
-        print(f"\n{'='*70}\nE = {E} GeV, cosZ=0.05 (87 deg): nu-nubar W/E diff vs bending scale")
-        print(f"{'='*70}")
-        print(f"{'scale':>7} | {'numu diff':>10} {'(nu,nubar)':>16} | "
-              f"{'nue diff':>9} {'(nu,nubar)':>16}")
-        for s in scales:
-            d = we_diff(s, E)
-            mn = d["numu"]; ne = d["nue"]
-            print(f"{s:7.1f} | {mn[2]:10.2f} ({mn[0]:5.2f},{mn[1]:5.2f}) | "
-                  f"{ne[2]:9.2f} ({ne[0]:5.2f},{ne[1]:5.2f})")
-        h = honda[E]
-        print(f"{'Honda':>7} | {h['numu']:10.2f} {'':>16} | {h['nue']:9.2f}")
-    print("\nIf diff grows toward Honda's sign/magnitude with scale -> right")
-    print("mechanism, under-tuned. If it saturates far short, or wrong sign ->")
-    print("coherent muon-bending shift is NOT the (whole) explanation.")
+        print(f"\n{'='*96}")
+        print(f"E = {E} GeV, cosZ=0.05 (87 deg): nu MINUS nubar, vs bending scale")
+        print(f"{'='*96}")
+        print(f"{'flavour':>7} {'scale':>6} | {'d(a1/a0)':>9} {'d(dphi)deg':>11} "
+              f"{'d(s1/a0)':>9} {'d(max/min)':>11} | {'(nu,nubar) dphi':>22}")
+        for fl in ("numu", "nue"):
+            for sc in scales:
+                a, b = we_diff(sc, E)[fl]
+                print(f"{fl:>7} {sc:6.1f} | {a['a1_rel']-b['a1_rel']:+9.4f} "
+                      f"{_wrap180(a['dphi']-b['dphi']):+11.2f} "
+                      f"{a['s1_rel']-b['s1_rel']:+9.4f} "
+                      f"{a['maxmin']-b['maxmin']:+11.3f} | "
+                      f"({a['dphi']:+7.2f},{b['dphi']:+7.2f})")
+            hk = {"numu": ("numu", "numubar"), "nue": ("nue", "nuebar")}[fl]
+            ha = honda_ew(h, hk[0], 0.05, E, ew_axis)
+            hb = honda_ew(h, hk[1], 0.05, E, ew_axis)
+            print(f"{fl:>7} {'Honda':>6} | {ha['a1_rel']-hb['a1_rel']:+9.4f} "
+                  f"{_wrap180(ha['dphi']-hb['dphi']):+11.2f} "
+                  f"{ha['s1_rel']-hb['s1_rel']:+9.4f} "
+                  f"{ha['maxmin']-hb['maxmin']:+11.3f} | "
+                  f"({ha['dphi']:+7.2f},{hb['dphi']:+7.2f})")
+    print("\nscale=0 switches the coherent shift off entirely: the residual there is")
+    print("the charge-blind floor (different f_mu for nu and nubar). Growth of")
+    print("d(dphi)/d(s1/a0) with scale is the mechanism responding; comparison with")
+    print("the Honda row says how much of the real splitting it can carry.")
     print("DIAG_EW_CHARGE_SCALE_DONE")
 
 

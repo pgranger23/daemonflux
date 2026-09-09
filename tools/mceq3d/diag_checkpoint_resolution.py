@@ -13,6 +13,16 @@ Test: rerun with MANY more checkpoints (n_check=140, 10x finer -> per-step angle
 charge-dependent split now survives. If yes -> the earlier null is a resolution
 artefact (fixable); if still ~zero -> the coarse-checkpoint hypothesis is wrong too.
 
+UPDATE 2026-09-03: the premise of the original scan was itself wrong twice over.
+The "~100-2000 deg per checkpoint" quoted above was a 10x UNIT ERROR in
+``_force_checkpoint`` (gauss treated as tesla); the true per-checkpoint rotation
+is 10x smaller. And the resample was a nearest-neighbour ``argmax`` pull, so a
+lossy map applied 140 times is as destructive as applied 14 times -- the scan
+could not have detected the problem it was designed to detect. Both are now
+fixed (interpolating k-NN resample, exact in the zero-rotation limit), and the
+splitting is measured with the shift-sensitive first-harmonic observables of
+``diag_ew_charge_fourier`` instead of the shift-blind ``max/min``.
+
 Run from tools/mceq3d (PYTHONPATH=$PWD).
 """
 import time
@@ -24,6 +34,9 @@ from mceq3d_real import MCEqCascade3D
 from fokker_planck_3d import load_theta2, sigma_theta_vs_energy
 import geomag_backtrace as gb
 from muon_bending import local_field_enu
+from diag_ew_charge_fourier import (
+    ew_observables, geomagnetic_ew_axis, _wrap180,
+)
 
 LAT, LON = 36.43, 137.31
 DATE = datetime(2020, 1, 1)
@@ -70,9 +83,12 @@ def main():
     dirs = (th, azr)
     MESON_MU = {211: +1, -211: -1, 321: +1, -321: -1, 13: -1, -13: +1}
 
-    def we(F, species):
+    ew_axis = geomagnetic_ew_axis()
+
+    def obs(F, species, E):
         f = F[:, sl[species]].reshape(len(zen_deg), naz, len(e))[0]
-        return f.max(0) / np.maximum(f.min(0), 1e-300)
+        v = np.array([np.interp(E, e, f[j]) for j in range(naz)])
+        return ew_observables(v, az_deg, ew_axis)
 
     for n_check in (14, 42, 140):
         print(f"\nmarching n_check={n_check} (cone ON + force ON) ...")
@@ -82,11 +98,12 @@ def main():
                                    b_enu=b_enu, force_species=MESON_MU)
         print(f"  ... {time.time()-t0:.0f}s")
         for E in (0.5, 1.0):
-            je = int(np.argmin(np.abs(e - E)))
-            wn = we(F, "numu")[je]
-            wnb = we(F, "antinumu")[je]
-            print(f"  E={E:.1f} GeV: numu={wn:.3f} antinumu={wnb:.3f} "
-                 f"diff={wn-wnb:+.3f}")
+            a, b = obs(F, "numu", E), obs(F, "antinumu", E)
+            print(f"  E={E:.1f} GeV  numu-antinumu: d(a1/a0)="
+                  f"{a['a1_rel']-b['a1_rel']:+.4f}  d(dphi)="
+                  f"{_wrap180(a['dphi']-b['dphi']):+.2f} deg  d(s1/a0)="
+                  f"{a['s1_rel']-b['s1_rel']:+.4f}  d(max/min)="
+                  f"{a['maxmin']-b['maxmin']:+.4f}")
 
     print("\nIf diff grows (in magnitude, away from 0) as n_check increases,")
     print("the coarse-checkpoint hypothesis is CONFIRMED (fixable resolution issue).")
