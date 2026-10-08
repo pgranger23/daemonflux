@@ -14,7 +14,12 @@ A1  MC(MCEq yields + MCEq decay tables)   vs MCEq  -> geometry / transport /
                                                      interaction-decay
                                                      competition / dE/dx
 A2  MC(MCEq yields + full decay kinematics) vs MCEq -> the decay module
-B   MC(chromo SIBYLL-2.3d + kinematics)     vs MCEq -> generator difference
+B   MC(chromo SIBYLL-2.3d/DPMJET-III + kinematics) vs MCEq -> the generator
+                                                     difference.  Compare B
+                                                     against A2, not against
+                                                     A1: A2 shares B's decay
+                                                     module, so B/A2 is the
+                                                     generator alone.
 
 Usage::
 
@@ -65,8 +70,14 @@ def mceq_initial_condition(e_kin, e_grid, e_bins, e_widths):
             for k in range(3)]
 
 
-def _init(tables, mode, e_nu_min, pol):
-    _CTX["backend"] = MCEqYieldBackend(tables, decays=(mode == "mceq"))
+def _init(tables, mode, e_nu_min, pol, cache=None, n_pool=2000, xs="chromo"):
+    if mode == "chromo":
+        from interactions import ChromoBackend
+        _CTX["backend"] = ChromoBackend(cache_dir=cache, n_pool=n_pool,
+                                        tables=tables, xs=xs,
+                                        seed=1, readonly=bool(cache))
+    else:
+        _CTX["backend"] = MCEqYieldBackend(tables, decays=(mode == "mceq"))
     _CTX["cfg"] = Config(collinear=True, bfield=None, energy_loss=True,
                          e_nu_min=e_nu_min, decay_mode=mode, polarisation=pol)
     _CTX["mode"] = mode
@@ -80,8 +91,9 @@ def _shard(task):
     r0 = np.array([0.0, 0.0, R_EARTH_CM + atm.H_TOP_CM])
     u0 = np.array([0.0, 0.0, -1.0])
     from constants import M_P
-    ic = mceq_initial_condition(float(e_p), backend.e_grid, backend.e_bins,
-                                backend.e_widths)
+    tab = backend if hasattr(backend, "e_grid") else backend._cs
+    ic = mceq_initial_condition(float(e_p), tab.e_grid, tab.e_bins,
+                                tab.e_widths)
     wsum = sum(abs(w) for _, w in ic)
     for e_kin, w in ic:
         nk = max(1, int(round(n * abs(w) / wsum)))
@@ -128,7 +140,8 @@ def _run_mceq_decays(rng, e_p, n, backend, cfg, sc, r0, u0, weight=1.0):
 
 
 def run(energies, nshower, nproc, mode="kinematic", tables=DEFAULT_TABLES,
-        e_nu_min=0.1, pol=True, shard=250):
+        e_nu_min=0.1, pol=True, shard=250, cache=None, n_pool=2000,
+        xs="chromo"):
     import multiprocessing as mp
     out = {}
     ctx = mp.get_context("fork")
@@ -143,7 +156,8 @@ def run(energies, nshower, nproc, mode="kinematic", tables=DEFAULT_TABLES,
             k += 1
         t0 = time.time()
         with ctx.Pool(nproc, initializer=_init,
-                      initargs=(tables, mode, e_nu_min, pol)) as pool:
+                      initargs=(tables, mode, e_nu_min, pol, cache,
+                                n_pool, xs)) as pool:
             acc = None
             nsh = 0
             for d in pool.imap_unordered(_shard, tasks, chunksize=1):
@@ -208,7 +222,14 @@ def main(argv=None):
     ap.add_argument("--energies", type=float, nargs="+", default=[20.0, 100.0])
     ap.add_argument("--nshower", type=int, default=5000)
     ap.add_argument("--nproc", type=int, default=os.cpu_count() // 2)
-    ap.add_argument("--mode", default="kinematic", choices=["kinematic", "mceq"])
+    ap.add_argument("--mode", default="kinematic",
+                    choices=["kinematic", "mceq", "chromo"])
+    ap.add_argument("--cache", default=None,
+                    help="chromo event-pool cache directory (pool.EventPool)")
+    ap.add_argument("--n-pool", type=int, default=2000)
+    ap.add_argument("--xs", default="mceq",
+                    choices=["chromo", "mceq", "hybrid"])
+    ap.add_argument("--shard", type=int, default=250)
     ap.add_argument("--tables", default=DEFAULT_TABLES)
     ap.add_argument("--e-nu-min", type=float, default=0.1)
     ap.add_argument("--no-pol", action="store_true")
@@ -216,7 +237,8 @@ def main(argv=None):
     a = ap.parse_args(argv)
 
     res = run(a.energies, a.nshower, a.nproc, a.mode, a.tables,
-              a.e_nu_min, not a.no_pol)
+              a.e_nu_min, not a.no_pol, shard=a.shard, cache=a.cache,
+              n_pool=a.n_pool, xs=a.xs)
     store = {}
     for e_p, sc in res.items():
         eg, ref = mceq_reference(e_p, helicity=(a.mode != "mceq"))

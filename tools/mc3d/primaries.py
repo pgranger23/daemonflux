@@ -29,10 +29,46 @@ SPECIES = (
 )
 
 
+class GSFNucleons:
+    """GSF at the **nucleon** level -- the only thing ``crflux`` exposes for it.
+
+    ``crflux.models.GlobalSplineFitBeta`` is a *spline interface* version: it
+    carries the total nucleon flux and the proton/neutron split
+    (``p_and_n_flux``) but no per-nucleus splines at all
+    (``nucleus_ids == []``, ``_nucleus_flux`` returns zeros).  So the plan's
+    "GSF, p and He, superposition" cannot be built from it species by species.
+
+    That costs nothing for milestone 2b.  Superposition means the cascade only
+    ever sees free nucleons at ``E/A``, so with **no geomagnetic cutoff** the
+    neutrino flux is a functional of the all-nucleon intensity and its p/n
+    split alone -- exactly what GSF provides -- and a species decomposition is
+    redundant.  It stops being redundant in milestone 3, where the cutoff test
+    needs each nucleus's rigidity ``(A/Z) p_nucleon``; there the per-species
+    model (``H3A``) or a GSF species table from outside ``crflux`` is required.
+
+    Units are converted to cm^-2 s^-1 sr^-1 GeV^-1 here.
+    """
+
+    name = "GSF"
+    nucleon_level = True
+
+    def __init__(self):
+        import crflux.models as crf
+        self._m = crf.GlobalSplineFitBeta()
+
+    def nucleon_flux(self, e_nucleon):
+        """``(total nucleon intensity, proton fraction)`` at ``e_nucleon``."""
+        frac, pf, nf = self._m.p_and_n_flux(np.atleast_1d(
+            np.asarray(e_nucleon, float)))
+        return (pf + nf) * M2_TO_CM2, frac
+
+
 def primary_model(name="GSF"):
-    """A ``crflux`` primary model instance."""
+    """A ``crflux`` primary model instance (or the GSF nucleon wrapper)."""
     import crflux.models as crf
     if name.upper() in ("GSF", "GLOBALSPLINEFITBETA"):
+        return GSFNucleons()
+    if name.upper() == "GSF_RAW":
         return crf.GlobalSplineFitBeta()
     if name.upper() == "H3A":
         return crf.HillasGaisser2012("H3a")
@@ -41,16 +77,22 @@ def primary_model(name="GSF"):
     raise ValueError(name)
 
 
+# crflux returns fluxes per (m^2 s sr GeV); everything downstream works in cm^2
+M2_TO_CM2 = 1.0e-4
+
+
 def nucleon_intensity(model, pdg, e_nucleon, a_mass):
     """dJ/dE_nucleon [cm^-2 s^-1 sr^-1 GeV^-1] of *nucleons* carried by the
     group ``pdg``, at energy-per-nucleon ``e_nucleon``.
 
-    ``crflux`` returns ``dJ/dE_total`` per *nucleus*; converting to
+    ``crflux`` returns ``dJ/dE_total`` per *nucleus* **per m^2**; converting to
     per-nucleon-energy multiplies by ``A`` twice (once for ``dE_tot = A dE_n``,
-    once because each nucleus carries ``A`` nucleons).
+    once because each nucleus carries ``A`` nucleons), and the ``1e-4`` puts it
+    on cm^2.  (Check: GSF's all-nucleon flux at 10 GeV is 34.4 per m^2 s sr
+    GeV = 3.44e-3 per cm^2, against the textbook 1.8 E^-2.7 = 3.6e-3.)
     """
     e_tot = np.atleast_1d(e_nucleon) * a_mass
-    return model.nucleus_flux(pdg, e_tot) * a_mass * a_mass
+    return model.nucleus_flux(pdg, e_tot) * a_mass * a_mass * M2_TO_CM2
 
 
 def sample_energy(rng, n, e1=1.0, e2=1.0e4):

@@ -177,54 +177,62 @@ class MCEqYieldBackend:
 
 
 class ChromoBackend:
-    """Real event generator via ``chromo`` (SIBYLL-2.3d / DPMJET-III / ...).
+    """Real event generator via ``chromo``, driven from a batched event pool.
 
-    ``model_lo`` is used below ``e_switch`` (SIBYLL-2.3d is not valid below
-    ~10 GeV lab; DPMJET-III-19.3 is the same code family MCEq's shipped database
-    splices in below 80 GeV, so it is the natural low-energy partner).
+    SIBYLL-2.3d above ``pool.E_SWITCH = 80 GeV`` (its ``ecm_min = 10 GeV``
+    corresponds to ``E_lab ~ 53 GeV`` for a proton, so it cannot be used
+    below that anyway), DPMJET-III-19.3 below -- the same splice MCEq's shipped
+    ``lext_dpm193`` database uses, and Honda's own generator family.
+
+    The air target is the N/O atomic mix of ``pool.AIR_COMPONENTS`` with the
+    struck nucleus drawn from ``f_i sigma_prod,i``; see ``pool.py``'s docstring
+    for the composition, the argon treatment and the ``p_T``-preserving
+    rescaling inside an energy bin.
+
+    Projectiles that are **re-interacted**: p, pbar, n, nbar, pi+-, K+-, K_L,
+    K_S, Lambda, Lambdabar (``pool.POOL_PROJECTILES``) -- i.e. every hadron the
+    cascade tracks.  Everything else (muons, neutrinos) only decays.  Note
+    that K_S with c*tau = 2.68 cm effectively always decays and Lambda almost
+    always does, but both are offered to the generator so the competition is
+    resolved by the transport rather than by an assumption.
+
+    ``xs``
+        ``"mceq"`` (default) takes the interaction length from the MCEq
+        tables; it is the only source valid over the whole energy range (see
+        ``pool.py``: chromo's DPMJET wrapper returns a constant cross section)
+        and it makes the rung-B closure a pure *yield* comparison.
+        ``"hybrid"`` uses chromo's own SIBYLL cross sections above the 80 GeV
+        splice and MCEq's below; ``"chromo"`` uses chromo wherever it answers.
     """
 
-    TARGET = (14, 7)      # nitrogen; air-average handled by the N/O mix below
-    AIR_MIX = ((14, 7, 0.781 + 0.0093 * 0.0), (16, 8, 0.209))
-
-    def __init__(self, model="Sibyll23d", model_lo="DpmjetIII193",
-                 e_switch=80.0, seed=1, tables=None):
-        self.model_name = model
-        self.model_lo_name = model_lo
-        self.e_switch = float(e_switch)
-        self.seed = int(seed)
-        self._models = {}
-        # cross sections and lambda come from the MCEq tables for consistency
+    def __init__(self, cache_dir=None, n_pool=2000, seed=1, tables=None,
+                 xs="mceq", model="Sibyll23d", model_lo="DpmjetIII193",
+                 readonly=False):
+        from pool import EventPool, POOL_PROJECTILES
+        self.pool = EventPool(cache_dir, n_pool=n_pool, seed=seed,
+                              model_hi=model, model_lo=model_lo,
+                              readonly=readonly)
+        self._proj = frozenset(POOL_PROJECTILES)
+        self.xs = str(xs)
         self._cs = MCEqYieldBackend(tables or DEFAULT_TABLES)
 
     def has_interaction(self, pdg):
-        return self._cs.has_interaction(pdg)
+        return int(pdg) in self._proj
 
     def lambda_int(self, pdg, e_tot):
-        return self._cs.lambda_int(pdg, e_tot)
-
-    def _model(self, name, pdg, e_tot):
-        import chromo
-        from chromo.kinematics import FixedTarget, GeV
-        key = name
-        kin = FixedTarget(e_tot * GeV, int(pdg), self.TARGET)
-        if key not in self._models:
-            cls = getattr(chromo.models, name)
-            self._models[key] = cls(kin, seed=self.seed)
-        else:
-            self._models[key].kinematics = kin
-        return self._models[key]
+        if int(pdg) not in self._proj:
+            return np.inf
+        if self.xs == "mceq":
+            return self._cs.lambda_int(pdg, e_tot)
+        lam = self.pool.lambda_int(pdg, e_tot)
+        if lam is None:
+            # SIBYLL has no Lambda-air cross section (returns NaN); fall back
+            # to the MCEq table.  Lambda's decay length is ~10^-3 of its
+            # interaction length in air, so this never matters.
+            return self._cs.lambda_int(pdg, e_tot)
+        return lam
 
     def interact(self, rng, pdg, e_tot, e_cut=None):
-        """Exclusive final state: ``[(pdg, E, (px,py,pz)/|p|), ...]`` in the lab
-        frame of the projectile (z along the projectile direction)."""
-        name = self.model_name if e_tot >= self.e_switch else self.model_lo_name
-        m = self._model(name, pdg, e_tot)
-        for ev in m(1):
-            fs = ev.final_state()
-            out = []
-            for pid, en, px, py, pz in zip(fs.pid, fs.en, fs.px, fs.py, fs.pz):
-                out.append((int(pid), float(en),
-                            np.array([float(px), float(py), float(pz)])))
-            return out
-        return []
+        """Exclusive final state ``[(pdg, E, p_vec), ...]`` in the projectile
+        frame (z along the projectile direction)."""
+        return self.pool.draw(rng, pdg, e_tot)

@@ -184,3 +184,68 @@ def great_circle_deg(lat1, lon1, lat2, lon2):
 
 def km_of_deg(deg):
     return np.deg2rad(deg) * R_EARTH_KM
+
+
+def sample_injection_patch(rng, r_inj_cm, axis, theta_inj_deg, n=1):
+    """Sample ``n`` inward-going states on a **cap** of the injection sphere.
+
+    Sampling the whole ``4 pi R_inj^2`` sphere spends ~99% of the CPU on
+    showers that cannot reach the detector cap, so the injection is restricted
+    to a cap of angular radius ``theta_inj`` about ``axis`` (the site's
+    direction from the Earth centre).  ``theta_inj`` has to cover the
+    horizontal displacement between where the primary enters and where its
+    neutrinos land -- 100-300 km for down-going, up to ~1500 km at the exact
+    horizon -- so ``theta_inj = theta_D + 30 deg`` is the design value and the
+    saturation must be *measured* by re-running with a wider patch
+    (``PHASE2_PLAN.md`` sec. 3.3, gate G8).
+
+    Position uniform per unit **area** on the cap: ``cos alpha`` uniform on
+    ``[cos theta_inj, 1]`` (Archimedes), azimuth uniform.  Direction from the
+    inward cosine (Lambert) law ``p(mu) = 2 mu`` with ``mu = -u . n_hat``,
+    which is the correct sampling for an isotropic external intensity crossing
+    a surface; the matching rate normalisation is ``N_dot = Phi * pi *
+    A_patch`` with ``A_patch = 2 pi R_inj^2 (1 - cos theta_inj)``.
+
+    Returns ``(r, u)`` of shapes ``(n, 3)``.
+    """
+    axis = np.asarray(axis, float)
+    axis = axis / np.linalg.norm(axis)
+    cmin = float(np.cos(np.deg2rad(theta_inj_deg)))
+    ca = cmin + (1.0 - cmin) * rng.random(n)
+    sa = np.sqrt(np.maximum(1.0 - ca ** 2, 0.0))
+    ph = 2.0 * np.pi * rng.random(n)
+    t1, t2 = _tangent_basis(axis)
+    r_hat = (ca[:, None] * axis
+             + sa[:, None] * (np.cos(ph)[:, None] * t1
+                              + np.sin(ph)[:, None] * t2))
+    mu = np.sqrt(rng.random(n))                 # p(mu) = 2 mu
+    st = np.sqrt(np.maximum(1.0 - mu ** 2, 0.0))
+    psi = 2.0 * np.pi * rng.random(n)
+    e1 = np.cross(r_hat, axis[None, :])
+    nrm = np.linalg.norm(e1, axis=1)
+    bad = nrm < 1e-12
+    if np.any(bad):
+        e1[bad] = np.cross(r_hat[bad], t1[None, :])
+        nrm = np.linalg.norm(e1, axis=1)
+    e1 /= nrm[:, None]
+    e2 = np.cross(r_hat, e1)
+    u = (-mu[:, None] * r_hat
+         + st[:, None] * (np.cos(psi)[:, None] * e1
+                          + np.sin(psi)[:, None] * e2))
+    return r_inj_cm * r_hat, u
+
+
+def patch_area_cm2(r_inj_cm, theta_inj_deg):
+    """Area of the injection cap [cm^2]."""
+    return (2.0 * np.pi * r_inj_cm ** 2
+            * (1.0 - np.cos(np.deg2rad(theta_inj_deg))))
+
+
+def _tangent_basis(axis):
+    a = np.array([0.0, 0.0, 1.0])
+    if abs(float(axis[2])) > 0.9:
+        a = np.array([1.0, 0.0, 0.0])
+    t1 = np.cross(axis, a)
+    t1 /= np.linalg.norm(t1)
+    t2 = np.cross(axis, t1)
+    return t1, t2
