@@ -23,6 +23,12 @@ files; the small array extracts under `figures_phase1/data/` were pulled out of
 the (temporary) session scratchpad once by
 `figures_phase1/data/extract_scratchpad.py`, so the set is self-contained.
 
+> **Provenance note (2026-10-08).** That scratchpad was wiped by a machine reboot
+> after 2026-09-10, so the `scratchpad/...` paths in the source lines below are
+> attributions only; `extract_scratchpad.py` can no longer be re-run. The figures
+> do not depend on them: a full `make_phase1_figures.py` run on 2026-10-08
+> reproduced all thirteen PNGs byte-for-byte from the committed data.
+
 ## Reading conventions used everywhere
 
 The whole set shares one palette and one set of roles, so a colour means the
