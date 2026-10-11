@@ -1,0 +1,437 @@
+==============================================================================
+(a) COST [p3d]: throughput, scored-shower fraction, entries, extrapolation
+==============================================================================
+p3d: 1499999 showers, CPU 11077 s = 3.08 core-h (7.38 ms/shower, 135 showers/s/core); wall 385 s on 30 workers = 3.21 core-h
+
+per stratum: E/nucleon [GeV], showers, tasks, ms/shower, fraction of showers with >=1 hit: 3D / 1D / either / 3D in E-W region (cosZ<0.3, 0.3-2 GeV)
+  N s0      1.0-    3.2     906448   152     1.62   0.0140 / 0.0181 / 0.0188 / 0.00027
+  N s1      3.2-   10.0     360863   191     6.02   0.0545 / 0.0552 / 0.0580 / 0.00470
+  N s2     10.0-   31.6     143662   240    16.19   0.0677 / 0.0628 / 0.0680 / 0.01439
+  N s3     31.6-  100.0      57193   303    36.09   0.0694 / 0.0630 / 0.0694 / 0.02095
+  N s4    100.0-  316.2      22769   228    72.98   0.0650 / 0.0583 / 0.0650 / 0.02328
+  N s5    316.2- 1000.0       9064    91   152.44   0.0714 / 0.0618 / 0.0714 / 0.03133
+  all              1499999            7.38   0.0321 / 0.0339 / 0.0359 / 0.00402
+
+near-horizon bins, Honda's grid (20 E-bins/decade, dcosZ 0.1, 30-deg azimuth), 10-deg cap.  N3/N1 = neutrino-level effective entries (sum w)^2/sum w^2 per azimuth bin, 3D / correlated 1D; sPhi, sR = jackknife rel. error per azimuth bin of Phi_3D and of R = 3D/1D; clus = N3 * sPhi^2 (1 = independent neutrinos); rho = 3D/1D correlation; core-h to reach 3% per azimuth bin on Phi_3D / on R, without azimuthal reuse and with N_az = 12
+species       E     cosZ     N3     N1 /1e6pr   sPhi  clus   rho     sR      R   chPhi chPhi12     chR   chR12
+numu       0.30 0.0-0.1    0.9    0.9   0.59  1.147  1.15 -0.11  2.059  1.443    4495     375   14497    1208
+numu       0.30 0.1-0.2   10.5    8.2   7.01  0.179  0.34 -0.30  0.391  1.368     109       9     521      43
+numu       0.30 0.2-0.3   14.1   12.9   9.38  0.293  1.21  0.03  0.424  1.182     293      24     614      51
+numu       0.50 0.0-0.1    2.2    1.9   1.47  0.669  0.99 -0.18  1.010  0.922    1530     128    3487     291
+numu       0.50 0.1-0.2    6.9    5.4   4.62  0.378  0.99  0.52  0.356  1.301     490      41     433      36
+numu       0.50 0.2-0.3    9.6   10.2   6.39  0.275  0.73  0.05  0.394  0.804     259      22     530      44
+numu       1.00 0.0-0.1    1.4    1.1   0.91  0.971  1.28  0.32  1.238  1.101    3222     269    5242     437
+numu       1.00 0.1-0.2    3.0    2.7   2.00  0.596  1.07  0.05  0.863  1.295    1214     101    2545     212
+numu       1.00 0.2-0.3    4.8    5.8   3.18  0.332  0.52  0.12  0.454  0.767     376      31     703      59
+antinumu   0.30 0.0-0.1    3.7    2.5   2.44  0.532  1.04 -0.06  0.947  0.836     969      81    3067     256
+antinumu   0.30 0.1-0.2    9.6    8.5   6.41  0.305  0.90 -0.27  0.520  1.233     318      27     925      77
+antinumu   0.30 0.2-0.3   13.7   13.3   9.15  0.324  1.44  0.07  0.476  1.059     360      30     774      64
+antinumu   0.50 0.0-0.1    2.5    2.0   1.65  0.584  0.84 -0.16  0.968  1.064    1164      97    3206     267
+antinumu   0.50 0.1-0.2    5.4    5.8   3.57  0.425  0.97  0.01  0.604  1.168     617      51    1248     104
+antinumu   0.50 0.2-0.3   10.0    8.8   6.67  0.279  0.78 -0.02  0.408  1.117     266      22     569      47
+antinumu   1.00 0.0-0.1    1.3    0.9   0.85  1.032  1.36  0.62  0.935  0.957    3638     303    2990     249
+antinumu   1.00 0.1-0.2    3.1    3.3   2.09  0.639  1.28 -0.02  0.776  1.197    1396     116    2061     172
+antinumu   1.00 0.2-0.3    5.5    4.2   3.68  0.569  1.79  0.76  0.390  1.081    1109      92     520      43
+nue        0.30 0.0-0.1    0.9    1.1   0.57  1.050  0.95 -0.09  1.412  2.703    3767     314    6813     568
+nue        0.30 0.1-0.2    5.5    4.5   3.69  0.527  1.54  0.17  0.679  1.334     948      79    1575     131
+nue        0.30 0.2-0.3    7.8    8.8   5.22  0.325  0.83  0.11  0.470  0.800     362      30     755      63
+nue        0.50 0.0-0.1    1.2    0.9   0.78  0.901  0.95  0.13  1.530  1.966    2775     231    8008     667
+nue        0.50 0.1-0.2    3.7    3.0   2.45  0.590  1.28  0.43  0.662  1.355    1192      99    1498     125
+nue        0.50 0.2-0.3    4.9    5.4   3.27  0.390  0.75  0.10  0.507  0.893     520      43     877      73
+nue        1.00 0.0-0.1    0.4    0.7   0.27  1.476  0.87  0.06  1.863  0.531    7451     621   11864     989
+nue        1.00 0.1-0.2    1.7    1.6   1.12  0.814  1.11  0.52  1.027  0.770    2265     189    3609     301
+nue        1.00 0.2-0.3    2.0    2.0   1.32  0.731  1.06  0.46  0.773  0.753    1829     152    2045     170
+antinue    0.30 0.0-0.1    1.4    0.5   0.91  0.762  0.79 -0.19  2.103  0.718    1986     165   15124    1260
+antinue    0.30 0.1-0.2    4.7    4.3   3.14  0.318  0.48  0.38  0.545  1.233     347      29    1014      84
+antinue    0.30 0.2-0.3    5.2    5.8   3.46  0.568  1.67  0.37  0.578  0.902    1103      92    1140      95
+antinue    0.50 0.0-0.1    0.8    0.9   0.50  0.929  0.65  0.30  1.234  1.368    2951     246    5209     434
+antinue    0.50 0.1-0.2    2.5    2.9   1.66  0.581  0.84 -0.27  0.874  1.080    1154      96    2610     217
+antinue    0.50 0.2-0.3    4.9    5.0   3.28  0.394  0.77  0.31  0.516  0.909     532      44     910      76
+antinue    1.00 0.0-0.1    0.3    0.6   0.21  2.187  1.49 -0.20  2.990  0.812   16355    1363   30562    2547
+antinue    1.00 0.1-0.2    1.6    1.8   1.05  0.889  1.24  0.31  0.966  2.565    2702     225    3191     266
+antinue    1.00 0.2-0.3    1.9    2.3   1.29  0.620  0.74 -0.41  1.007  0.824    1314     110    3469     289
+BINDING E-W bin for 3% on Phi_3D per azimuth bin (cosZ < 0.2, 0.3-1 GeV, 20/decade): antinue 1.0 GeV cosZ 0.0-0.1: 16355 core-h without azimuthal reuse (7.97e+09 showers), 1363 core-h with N_az = 12; median over the E-W bins 1463 / 122
+BINDING E-W bin for 3% on R per azimuth bin (cosZ < 0.2, 0.3-1 GeV, 20/decade): antinue 1.0 GeV cosZ 0.0-0.1: 30562 core-h without azimuthal reuse (1.49e+10 showers), 2547 core-h with N_az = 12; median over the E-W bins 3129 / 261
+5% SURVEY (0.1-3.0 GeV, 10 E-bins/decade, dcosZ 0.1, 12 azimuth bins, 4 species, down-going; 581 of 600 bins populated enough (N_eff >= 10) to measure): binding bin numu E=1.41 GeV cosZ 0.0-0.1: 3013 core-h without reuse / 251 with N_az = 12; 90th-percentile bin 524 / 44
+5% SURVEY (0.1-10.0 GeV, 10 E-bins/decade, dcosZ 0.1, 12 azimuth bins, 4 species, down-going; 700 of 800 bins populated enough (N_eff >= 10) to measure): binding bin numu E=4.47 GeV cosZ 0.1-0.2: 3622 core-h without reuse / 302 with N_az = 12; 90th-percentile bin 713 / 59
+per-stratum share of var(R) in that bin: [0.0, 0.251, 0.461, 0.279, 0.009, 0.0]; Neyman allocation n_k/N = [0.0, 0.586, 0.306, 0.1, 0.008, 0.0] (now [0.604, 0.241, 0.096, 0.038, 0.015, 0.006]) would cut its cost by x1.56
+
+==============================================================================
+(b) azimuth-averaged 3D/1D (specific intensity) vs cos Z, 10-deg cap; 10 E-bins/decade
+==============================================================================
+
+numu: R = in-run 3D/1D | ext = nested-cap Omega_D->0 | true = p3d/p1d (both complete runs) | 1Dres = in-run 1D / true 1D | engine E_off_s(G=1)
+  E = 0.3 GeV  (10/decade bin centre 0.282)
+      cosZ             R           ext          true         1Dres  engine
+  0.0-0.1  1.656+-0.506  1.288+-0.711  1.447+-0.410  0.874+-0.119   1.743
+  0.1-0.2  1.307+-0.141  1.481+-0.351  1.247+-0.135  0.954+-0.102   1.246
+  0.2-0.3  1.078+-0.065  1.134+-0.167  0.992+-0.106  0.920+-0.066   1.047
+  0.3-0.4  1.011+-0.058  1.168+-0.126  1.011+-0.068  1.000+-0.048   0.968
+  0.4-0.5  0.949+-0.046  0.896+-0.124  0.964+-0.048  1.017+-0.064   0.933
+  0.5-0.6  0.863+-0.036  0.893+-0.093  0.928+-0.055  1.075+-0.054   0.918
+  0.6-0.7  0.863+-0.041  0.895+-0.076  0.926+-0.044  1.073+-0.048   0.912
+  0.7-0.8  0.884+-0.045  0.847+-0.098  0.855+-0.052  0.966+-0.053   0.908
+  0.8-0.9  0.892+-0.031  0.944+-0.094  0.923+-0.044  1.034+-0.042   0.907
+  0.9-1.0  0.890+-0.023  0.818+-0.065  0.897+-0.034  1.009+-0.041   0.907
+  E = 0.5 GeV  (10/decade bin centre 0.447)
+      cosZ             R           ext          true         1Dres  engine
+  0.0-0.1  1.399+-0.198  1.546+-0.490  1.109+-0.196  0.792+-0.162   1.443
+  0.1-0.2  1.174+-0.133  1.033+-0.219  1.243+-0.183  1.059+-0.143   1.128
+  0.2-0.3  0.838+-0.070  0.956+-0.180  0.912+-0.082  1.088+-0.064   1.012
+  0.3-0.4  0.962+-0.073  1.002+-0.140  0.858+-0.058  0.892+-0.061   0.974
+  0.4-0.5  1.027+-0.045  0.987+-0.149  0.984+-0.057  0.959+-0.064   0.960
+  0.5-0.6  0.938+-0.056  0.896+-0.117  0.977+-0.076  1.042+-0.063   0.955
+  0.6-0.7  0.955+-0.055  0.893+-0.129  0.996+-0.060  1.043+-0.071   0.953
+  0.7-0.8  0.954+-0.051  0.823+-0.078  0.902+-0.064  0.945+-0.042   0.952
+  0.8-0.9  0.904+-0.037  0.889+-0.119  0.961+-0.047  1.063+-0.052   0.952
+  0.9-1.0  0.921+-0.032  0.991+-0.072  0.918+-0.050  0.996+-0.054   0.951
+  E = 1.0 GeV  (10/decade bin centre 1.122)
+      cosZ             R           ext          true         1Dres  engine
+  0.0-0.1  1.052+-0.294  0.043+-0.209  1.208+-0.314  1.149+-0.320   1.128
+  0.1-0.2  1.295+-0.230  1.800+-0.611  1.146+-0.216  0.885+-0.157   1.026
+  0.2-0.3  0.803+-0.109  0.637+-0.196  0.965+-0.126  1.202+-0.240   0.997
+  0.3-0.4  0.910+-0.050  0.640+-0.157  1.026+-0.117  1.127+-0.108   0.990
+  0.4-0.5  1.092+-0.102  1.547+-0.331  1.123+-0.137  1.029+-0.124   0.989
+  0.5-0.6  0.911+-0.052  0.528+-0.112  0.844+-0.075  0.927+-0.076   0.988
+  0.6-0.7  1.014+-0.065  1.393+-0.223  1.061+-0.102  1.046+-0.135   0.988
+  0.7-0.8  0.975+-0.060  0.922+-0.112  1.045+-0.065  1.071+-0.075   0.987
+  0.8-0.9  0.956+-0.050  1.017+-0.085  0.976+-0.084  1.021+-0.093   0.987
+  0.9-1.0  1.027+-0.036  0.893+-0.069  1.112+-0.101  1.083+-0.097   0.987
+
+nue: R = in-run 3D/1D | ext = nested-cap Omega_D->0 | true = p3d/p1d (both complete runs) | 1Dres = in-run 1D / true 1D | engine E_off_s(G=1)
+  E = 0.3 GeV  (10/decade bin centre 0.282)
+      cosZ             R           ext          true         1Dres  engine
+  0.0-0.1  2.155+-0.527  4.587+-2.158  1.878+-0.671  0.871+-0.207   1.811
+  0.1-0.2  1.304+-0.125  1.596+-0.564  1.370+-0.160  1.051+-0.115   1.268
+  0.2-0.3  0.873+-0.083  0.694+-0.131  1.080+-0.118  1.237+-0.095   1.054
+  0.3-0.4  1.023+-0.062  1.234+-0.121  0.905+-0.076  0.885+-0.074   0.967
+  0.4-0.5  0.878+-0.063  0.800+-0.194  0.770+-0.073  0.877+-0.076   0.930
+  0.5-0.6  0.790+-0.065  0.696+-0.130  0.905+-0.082  1.145+-0.067   0.912
+  0.6-0.7  0.953+-0.066  1.023+-0.183  0.940+-0.066  0.986+-0.065   0.905
+  0.7-0.8  0.891+-0.048  0.842+-0.092  0.956+-0.061  1.073+-0.073   0.902
+  0.8-0.9  0.897+-0.049  0.890+-0.099  0.882+-0.052  0.984+-0.070   0.901
+  0.9-1.0  0.834+-0.026  0.812+-0.076  0.790+-0.044  0.947+-0.055   0.901
+  E = 0.5 GeV  (10/decade bin centre 0.447)
+      cosZ             R           ext          true         1Dres  engine
+  0.0-0.1  1.400+-0.432 -0.090+-0.038  0.730+-0.223  0.521+-0.212   1.499
+  0.1-0.2  1.266+-0.158  1.462+-0.340  1.166+-0.182  0.921+-0.134   1.145
+  0.2-0.3  0.984+-0.077  0.695+-0.183  1.012+-0.099  1.029+-0.094   1.015
+  0.3-0.4  0.937+-0.098  1.191+-0.259  0.995+-0.097  1.062+-0.134   0.970
+  0.4-0.5  0.817+-0.075  0.732+-0.165  0.969+-0.099  1.187+-0.112   0.957
+  0.5-0.6  0.955+-0.077  0.964+-0.188  1.128+-0.093  1.181+-0.078   0.951
+  0.6-0.7  0.950+-0.061  0.914+-0.159  0.921+-0.097  0.970+-0.079   0.950
+  0.7-0.8  0.960+-0.070  0.695+-0.100  0.931+-0.070  0.970+-0.067   0.948
+  0.8-0.9  0.876+-0.069  0.994+-0.151  0.938+-0.059  1.070+-0.082   0.949
+  0.9-1.0  0.996+-0.041  1.110+-0.089  0.930+-0.066  0.933+-0.051   0.949
+  E = 1.0 GeV  (10/decade bin centre 1.122)
+      cosZ             R           ext          true         1Dres  engine
+  0.0-0.1  1.283+-0.734  0.247+-0.240  1.253+-0.718  0.977+-0.358   1.129
+  0.1-0.2  0.872+-0.250  0.205+-0.341  0.658+-0.131  0.755+-0.170   1.021
+  0.2-0.3  0.690+-0.096  0.558+-0.234  0.866+-0.181  1.256+-0.287   0.995
+  0.3-0.4  1.167+-0.173  1.460+-0.327  1.118+-0.174  0.958+-0.162   0.990
+  0.4-0.5  0.902+-0.137  0.960+-0.279  0.875+-0.152  0.969+-0.120   0.990
+  0.5-0.6  1.171+-0.122  0.881+-0.295  1.276+-0.159  1.090+-0.130   0.990
+  0.6-0.7  0.936+-0.077  0.955+-0.185  0.880+-0.133  0.941+-0.113   0.990
+  0.7-0.8  0.898+-0.083  0.809+-0.145  0.970+-0.115  1.080+-0.154   0.988
+  0.8-0.9  1.098+-0.084  1.290+-0.187  1.126+-0.125  1.025+-0.132   0.989
+  0.9-1.0  0.958+-0.067  0.836+-0.117  0.804+-0.067  0.839+-0.086   0.989
+
+horizon/vertical contrast R(cosZ 0-0.1) / R(cosZ 0.9-1.0): MC true (p3d/p1d) | MC in-run | engine E_off_s
+  numu       0.3 GeV:  1.613+-0.462 |  1.861+-0.570 |  1.922
+  numu       0.5 GeV:  1.209+-0.236 |  1.519+-0.217 |  1.517
+  numu       1.0 GeV:  1.087+-0.273 |  1.025+-0.308 |  1.143
+  nue        0.3 GeV:  2.377+-0.861 |  2.583+-0.661 |  2.011
+  nue        0.5 GeV:  0.785+-0.240 |  1.405+-0.436 |  1.581
+  nue        1.0 GeV:  1.558+-0.909 |  1.338+-0.754 |  1.142
+  antinumu   0.3 GeV:  0.923+-0.189 |  0.995+-0.268 |  1.953
+  antinumu   0.5 GeV:  1.140+-0.319 |  0.938+-0.215 |  1.527
+  antinumu   1.0 GeV:  0.846+-0.542 |  0.944+-0.252 |  1.128
+  antinue    0.3 GeV:  1.516+-0.409 |  0.987+-0.371 |  2.012
+  antinue    0.5 GeV:  0.905+-0.214 |  2.250+-0.663 |  1.579
+  antinue    1.0 GeV:  0.679+-0.329 |  1.987+-1.131 |  1.139
+
+Honda bands: horizontal 3D/1D integrated over E_nu (in-run | true)
+  0.10-0.32 GeV numu+antinumu  cosZ 0.0-0.1:  1.992+-0.153 |  2.012+-0.152
+  0.10-0.32 GeV numu+antinumu  cosZ 0.1-0.2:  1.433+-0.045 |  1.400+-0.040
+  0.10-0.32 GeV nue+antinue    cosZ 0.0-0.1:  1.965+-0.153 |  1.857+-0.147
+  0.10-0.32 GeV nue+antinue    cosZ 0.1-0.2:  1.302+-0.052 |  1.305+-0.050
+  0.10-0.32 GeV all four       cosZ 0.0-0.1:  1.983+-0.127 |  1.959+-0.122
+  0.10-0.32 GeV all four       cosZ 0.1-0.2:  1.389+-0.039 |  1.368+-0.032
+  0.32-1.00 GeV numu+antinumu  cosZ 0.0-0.1:  1.241+-0.145 |  1.254+-0.128
+  0.32-1.00 GeV numu+antinumu  cosZ 0.1-0.2:  1.128+-0.063 |  1.169+-0.069
+  0.32-1.00 GeV nue+antinue    cosZ 0.0-0.1:  1.564+-0.304 |  1.398+-0.310
+  0.32-1.00 GeV nue+antinue    cosZ 0.1-0.2:  1.197+-0.055 |  1.198+-0.060
+  0.32-1.00 GeV all four       cosZ 0.0-0.1:  1.344+-0.165 |  1.304+-0.160
+  0.32-1.00 GeV all four       cosZ 0.1-0.2:  1.151+-0.050 |  1.179+-0.058
+  1.00-3.16 GeV numu+antinumu  cosZ 0.0-0.1:  1.127+-0.221 |  1.275+-0.290
+  1.00-3.16 GeV numu+antinumu  cosZ 0.1-0.2:  1.132+-0.074 |  1.050+-0.082
+  1.00-3.16 GeV nue+antinue    cosZ 0.0-0.1:  1.464+-0.250 |  1.398+-0.321
+  1.00-3.16 GeV nue+antinue    cosZ 0.1-0.2:  1.035+-0.077 |  0.910+-0.086
+  1.00-3.16 GeV all four       cosZ 0.0-0.1:  1.229+-0.194 |  1.316+-0.229
+  1.00-3.16 GeV all four       cosZ 0.1-0.2:  1.098+-0.052 |  0.998+-0.072
+
+G7 nested caps: hemisphere-summed in-run R(cap) / R(10 deg) at 0.3 / 0.5 / 1 GeV (B = 0: must be 1)
+  numu   0.3 GeV:  2.5deg 1.015+-0.166   5.0deg 0.967+-0.064   7.5deg 1.042+-0.037  10.0deg 1.000+-0.000
+  numu   0.5 GeV:  2.5deg 1.126+-0.108   5.0deg 1.020+-0.041   7.5deg 0.985+-0.023  10.0deg 1.000+-0.000
+  numu   1.0 GeV:  2.5deg 0.909+-0.084   5.0deg 0.940+-0.038   7.5deg 0.938+-0.029  10.0deg 1.000+-0.000
+  nue    0.3 GeV:  2.5deg 1.014+-0.111   5.0deg 1.102+-0.102   7.5deg 1.081+-0.058  10.0deg 1.000+-0.000
+  nue    0.5 GeV:  2.5deg 0.942+-0.067   5.0deg 0.934+-0.050   7.5deg 0.982+-0.027  10.0deg 1.000+-0.000
+  nue    1.0 GeV:  2.5deg 0.835+-0.205   5.0deg 0.942+-0.069   7.5deg 0.867+-0.058  10.0deg 1.000+-0.000
+
+==============================================================================
+(c) solid-angle averages of 3D/1D vs energy (down-going, 10-deg cap)
+==============================================================================
+
+numu   (true = p3d/p1d; in-run = vs correlated 1D; engine = offaxis_excess_channel_v2 E_off_s at G == 1)
+  E [GeV]                                            0.20           0.30           0.50           1.00           2.00           3.00
+  <F>_Omega (plain, unweighted over cosZ) 
+     true                                     0.934+-0.020    1.019+-0.035    0.986+-0.020    1.051+-0.064    0.992+-0.078    1.207+-0.144
+     in-run                                   0.967+-0.024    1.039+-0.046    1.007+-0.022    1.003+-0.030    0.975+-0.029    1.144+-0.167
+     engine                                         1.060          1.049          1.028          1.007          1.002          1.001
+  <F>_cos (cosZ-weighted)                 
+     true                                     0.871+-0.014    0.937+-0.020    0.953+-0.017    1.032+-0.040    0.963+-0.047    1.077+-0.055
+     in-run                                   0.881+-0.006    0.926+-0.005    0.950+-0.004    0.987+-0.007    0.987+-0.005    1.017+-0.021
+     engine                                         0.923          0.941          0.968          0.991          0.996          0.997
+  sum s1/sum t1 (Phi_1D-weighted intensity)
+     true                                     0.944+-0.019    1.036+-0.037    0.988+-0.021    1.051+-0.064    0.987+-0.070    1.222+-0.143
+     in-run                                   0.973+-0.023    1.050+-0.039    1.006+-0.019    0.998+-0.030    0.959+-0.053    1.164+-0.161
+  sum s0/sum t0 (neutrinos through the ground)
+     true                                     0.876+-0.015    0.936+-0.021    0.952+-0.016    1.029+-0.039    0.958+-0.047    1.061+-0.055
+     in-run                                   0.884+-0.005    0.924+-0.004    0.951+-0.004    0.980+-0.005    0.987+-0.004    0.997+-0.008
+  F(vertical, cosZ 0.9-1)                 
+     true                                     0.829+-0.029    0.897+-0.034    0.918+-0.050    1.112+-0.101    0.902+-0.130    1.158+-0.130
+     in-run                                   0.808+-0.023    0.890+-0.023    0.921+-0.032    1.027+-0.036    0.979+-0.035    1.036+-0.036
+     engine                                         0.876          0.907          0.951          0.987          0.995          0.997
+  <cos alpha> MC, near-vertical primaries     0.813+-0.001    0.875+-0.001    0.940+-0.001    0.982+-0.000    0.993+-0.000    0.995+-0.000
+  <cos alpha> MC, all primaries               0.810+-0.000    0.873+-0.001    0.940+-0.000    0.982+-0.000    0.993+-0.000    0.995+-0.000
+
+nue   (true = p3d/p1d; in-run = vs correlated 1D; engine = offaxis_excess_channel_v2 E_off_s at G == 1)
+  E [GeV]                                            0.20           0.30           0.50           1.00           2.00           3.00
+  <F>_Omega (plain, unweighted over cosZ) 
+     true                                     0.993+-0.040    1.048+-0.067    0.972+-0.049    0.983+-0.088    0.968+-0.118    1.330+-0.213
+     in-run                                   1.033+-0.045    1.060+-0.057    1.014+-0.050    0.997+-0.080    1.151+-0.191    1.133+-0.150
+     engine                                         1.065          1.055          1.033          1.007          1.002          1.001
+  <F>_cos (cosZ-weighted)                 
+     true                                     0.859+-0.016    0.912+-0.023    0.969+-0.034    0.977+-0.048    0.933+-0.085    1.139+-0.128
+     in-run                                   0.866+-0.008    0.910+-0.008    0.951+-0.009    0.990+-0.012    1.018+-0.022    1.025+-0.017
+     engine                                         0.921          0.938          0.966          0.992          0.998          0.999
+  sum s1/sum t1 (Phi_1D-weighted intensity)
+     true                                     0.989+-0.028    1.067+-0.065    0.967+-0.059    0.952+-0.088    0.969+-0.140    1.356+-0.182
+     in-run                                   1.013+-0.030    1.067+-0.051    1.005+-0.031    0.979+-0.072    1.104+-0.075    1.120+-0.079
+  sum s0/sum t0 (neutrinos through the ground)
+     true                                     0.857+-0.016    0.907+-0.023    0.969+-0.034    0.955+-0.047    0.939+-0.081    1.121+-0.106
+     in-run                                   0.861+-0.006    0.902+-0.006    0.949+-0.007    0.969+-0.007    1.008+-0.009    1.004+-0.010
+  F(vertical, cosZ 0.9-1)                 
+     true                                     0.842+-0.040    0.790+-0.044    0.930+-0.066    0.804+-0.067    0.928+-0.248    0.880+-0.167
+     in-run                                   0.816+-0.032    0.834+-0.026    0.996+-0.041    0.958+-0.067    0.987+-0.048    1.045+-0.067
+     engine                                         0.870          0.901          0.949          0.989          0.997          0.998
+  <cos alpha> MC, near-vertical primaries     0.782+-0.002    0.849+-0.001    0.933+-0.001    0.982+-0.000    0.994+-0.000    0.995+-0.000
+  <cos alpha> MC, all primaries               0.776+-0.001    0.845+-0.001    0.932+-0.001    0.982+-0.000    0.994+-0.000    0.996+-0.000
+
+==============================================================================
+(d) production cone: RMS space angle primary->neutrino [deg]
+==============================================================================
+
+numu:  MC all generations / MC first-interaction only / engine nominal sigma / engine kernel realised RMS; f = channel weight fraction
+  channel pi (engine sigma_pi)
+    E=0.141  MC  51.23+-0.08  gen1  49.91+-0.09  engine  41.66 (realised  39.22)  ratio MC/realised 1.306  f=0.561
+    E=0.224  MC  32.17+-0.06  gen1  31.25+-0.08  engine  27.29 (realised  26.77)  ratio MC/realised 1.202  f=0.531
+    E=0.282  MC  24.92+-0.08  gen1  24.57+-0.08  engine  22.08 (realised  21.81)  ratio MC/realised 1.143  f=0.522
+    E=0.355  MC  19.92+-0.05  gen1  19.67+-0.05  engine  17.87 (realised  17.72)  ratio MC/realised 1.124  f=0.518
+    E=0.447  MC  16.51+-0.06  gen1  16.29+-0.06  engine  14.46 (realised  14.38)  ratio MC/realised 1.148  f=0.518
+    E=0.708  MC  11.87+-0.06  gen1  11.75+-0.07  engine   9.47 (realised   9.45)  ratio MC/realised 1.257  f=0.513
+    E=1.120  MC   8.27+-0.05  gen1   8.19+-0.06  engine   6.20 (realised   6.19)  ratio MC/realised 1.336  f=0.500
+    E=1.780  MC   5.58+-0.05  gen1   5.52+-0.06  engine   4.06 (realised   4.05)  ratio MC/realised 1.376  f=0.476
+    E=2.820  MC   3.64+-0.04  gen1   3.62+-0.04  engine   2.66 (realised   2.65)  ratio MC/realised 1.374  f=0.489
+  channel K (engine sigma_k)
+    E=0.141  MC  89.10+-1.38  gen1  89.03+-1.54  engine 105.47 (realised  57.23)  ratio MC/realised 1.557  f=0.006
+    E=0.224  MC  79.33+-0.60  gen1  79.30+-0.75  engine  71.85 (realised  52.68)  ratio MC/realised 1.506  f=0.021
+    E=0.282  MC  56.56+-0.52  gen1  56.57+-0.69  engine  59.30 (realised  48.94)  ratio MC/realised 1.156  f=0.025
+    E=0.355  MC  47.10+-0.53  gen1  47.07+-0.62  engine  48.95 (realised  44.03)  ratio MC/realised 1.070  f=0.032
+    E=0.447  MC  39.29+-0.51  gen1  39.05+-0.55  engine  40.40 (realised  38.26)  ratio MC/realised 1.027  f=0.043
+    E=0.708  MC  26.06+-0.28  gen1  25.98+-0.36  engine  27.52 (realised  26.99)  ratio MC/realised 0.965  f=0.067
+    E=1.120  MC  18.58+-0.23  gen1  18.54+-0.26  engine  18.75 (realised  18.58)  ratio MC/realised 1.000  f=0.106
+    E=1.780  MC  12.50+-0.15  gen1  12.51+-0.17  engine  12.77 (realised  12.72)  ratio MC/realised 0.983  f=0.165
+    E=2.820  MC   8.86+-0.15  gen1   8.93+-0.17  engine   8.70 (realised   8.68)  ratio MC/realised 1.020  f=0.200
+  channel mu (engine sigma_mu_numu)
+    E=0.141  MC  55.29+-0.16  gen1  53.47+-0.19  engine  37.26 (realised  35.74)  ratio MC/realised 1.547  f=0.433
+    E=0.224  MC  40.39+-0.09  gen1  39.30+-0.12  engine  32.90 (realised  31.94)  ratio MC/realised 1.264  f=0.448
+    E=0.282  MC  33.28+-0.14  gen1  32.41+-0.16  engine  28.77 (realised  28.15)  ratio MC/realised 1.182  f=0.453
+    E=0.355  MC  26.59+-0.11  gen1  26.12+-0.15  engine  24.50 (realised  24.12)  ratio MC/realised 1.102  f=0.450
+    E=0.447  MC  21.63+-0.09  gen1  21.44+-0.09  engine  20.54 (realised  20.32)  ratio MC/realised 1.065  f=0.439
+    E=0.708  MC  15.25+-0.10  gen1  15.27+-0.12  engine  14.15 (realised  14.08)  ratio MC/realised 1.084  f=0.420
+    E=1.120  MC  10.97+-0.09  gen1  10.96+-0.10  engine   9.60 (realised   9.58)  ratio MC/realised 1.146  f=0.394
+    E=1.780  MC   7.70+-0.07  gen1   7.69+-0.09  engine   6.29 (realised   6.27)  ratio MC/realised 1.227  f=0.360
+    E=2.820  MC   5.18+-0.11  gen1   5.17+-0.12  engine   4.00 (realised   3.99)  ratio MC/realised 1.300  f=0.311
+  all channels: E=0.141: 53.33  E=0.224: 37.60  E=0.282: 30.08  E=0.355: 24.40  E=0.447: 20.32  E=0.708: 14.68  E=1.120: 10.88  E=1.780:  7.86  E=2.820:  5.52
+  first-interaction fraction of the neutrinos: 0.71  0.74  0.76  0.78  0.80  0.81  0.82  0.82  0.82
+
+antinumu:  MC all generations / MC first-interaction only / engine nominal sigma / engine kernel realised RMS; f = channel weight fraction
+  channel pi (engine sigma_pi)
+    E=0.141  MC  49.59+-0.13  gen1  47.13+-0.17  engine  41.66 (realised  39.22)  ratio MC/realised 1.265  f=0.466
+    E=0.224  MC  32.08+-0.10  gen1  30.95+-0.11  engine  27.29 (realised  26.77)  ratio MC/realised 1.198  f=0.436
+    E=0.282  MC  25.23+-0.08  gen1  24.77+-0.10  engine  22.08 (realised  21.81)  ratio MC/realised 1.157  f=0.419
+    E=0.355  MC  20.37+-0.07  gen1  20.19+-0.10  engine  17.87 (realised  17.72)  ratio MC/realised 1.150  f=0.417
+    E=0.447  MC  17.34+-0.07  gen1  17.28+-0.09  engine  14.46 (realised  14.38)  ratio MC/realised 1.205  f=0.419
+    E=0.708  MC  12.19+-0.05  gen1  12.07+-0.05  engine   9.47 (realised   9.45)  ratio MC/realised 1.290  f=0.421
+    E=1.120  MC   8.49+-0.05  gen1   8.37+-0.05  engine   6.20 (realised   6.19)  ratio MC/realised 1.371  f=0.419
+    E=1.780  MC   5.70+-0.06  gen1   5.67+-0.08  engine   4.06 (realised   4.05)  ratio MC/realised 1.407  f=0.412
+    E=2.820  MC   3.72+-0.05  gen1   3.71+-0.06  engine   2.66 (realised   2.65)  ratio MC/realised 1.406  f=0.422
+  channel K (engine sigma_k)
+    E=0.141  MC  68.34+-2.00  gen1  66.15+-2.05  engine 105.47 (realised  57.23)  ratio MC/realised 1.194  f=0.002
+    E=0.224  MC  55.60+-1.31  gen1  55.67+-1.61  engine  71.85 (realised  52.68)  ratio MC/realised 1.055  f=0.004
+    E=0.282  MC  48.20+-0.70  gen1  48.63+-0.75  engine  59.30 (realised  48.94)  ratio MC/realised 0.985  f=0.005
+    E=0.355  MC  41.77+-1.07  gen1  42.23+-1.12  engine  48.95 (realised  44.03)  ratio MC/realised 0.949  f=0.008
+    E=0.447  MC  33.75+-0.49  gen1  33.83+-0.64  engine  40.40 (realised  38.26)  ratio MC/realised 0.882  f=0.010
+    E=0.708  MC  23.58+-0.45  gen1  23.64+-0.50  engine  27.52 (realised  26.99)  ratio MC/realised 0.874  f=0.018
+    E=1.120  MC  17.42+-0.34  gen1  17.76+-0.41  engine  18.75 (realised  18.58)  ratio MC/realised 0.937  f=0.032
+    E=1.780  MC  11.75+-0.36  gen1  11.87+-0.44  engine  12.77 (realised  12.72)  ratio MC/realised 0.924  f=0.053
+    E=2.820  MC   7.67+-0.15  gen1   7.58+-0.18  engine   8.70 (realised   8.68)  ratio MC/realised 0.883  f=0.082
+  channel mu (engine sigma_mu_numu)
+    E=0.141  MC  57.48+-0.15  gen1  56.63+-0.11  engine  37.26 (realised  35.74)  ratio MC/realised 1.608  f=0.532
+    E=0.224  MC  41.65+-0.12  gen1  40.84+-0.15  engine  32.90 (realised  31.94)  ratio MC/realised 1.304  f=0.560
+    E=0.282  MC  33.58+-0.12  gen1  32.98+-0.13  engine  28.77 (realised  28.15)  ratio MC/realised 1.193  f=0.576
+    E=0.355  MC  26.59+-0.09  gen1  26.23+-0.09  engine  24.50 (realised  24.12)  ratio MC/realised 1.102  f=0.575
+    E=0.447  MC  21.28+-0.10  gen1  21.09+-0.11  engine  20.54 (realised  20.32)  ratio MC/realised 1.048  f=0.571
+    E=0.708  MC  14.58+-0.10  gen1  14.48+-0.11  engine  14.15 (realised  14.08)  ratio MC/realised 1.036  f=0.561
+    E=1.120  MC  10.62+-0.08  gen1  10.57+-0.08  engine   9.60 (realised   9.58)  ratio MC/realised 1.109  f=0.549
+    E=1.780  MC   7.43+-0.08  gen1   7.35+-0.09  engine   6.29 (realised   6.27)  ratio MC/realised 1.184  f=0.536
+    E=2.820  MC   5.10+-0.08  gen1   5.10+-0.09  engine   4.00 (realised   3.99)  ratio MC/realised 1.279  f=0.496
+  all channels: E=0.141: 53.97  E=0.224: 37.85  E=0.282: 30.47  E=0.355: 24.37  E=0.447: 19.91  E=0.708: 13.84  E=1.120: 10.09  E=1.780:  7.09  E=2.820:  4.85
+  first-interaction fraction of the neutrinos: 0.71  0.75  0.76  0.79  0.80  0.81  0.82  0.82  0.82
+
+nue:  MC all generations / MC first-interaction only / engine nominal sigma / engine kernel realised RMS; f = channel weight fraction
+  channel pi (engine sigma_pi)
+    E=0.141  MC    nan+-0.00  gen1    nan+-0.00  engine  41.66 (realised  39.22)  ratio MC/realised   nan  f=0.000
+    E=0.224  MC    nan+-0.00  gen1    nan+-0.00  engine  27.29 (realised  26.77)  ratio MC/realised   nan  f=0.000
+    E=0.282  MC    nan+-0.00  gen1    nan+-0.00  engine  22.08 (realised  21.81)  ratio MC/realised   nan  f=0.000
+    E=0.355  MC    nan+-0.00  gen1    nan+-0.00  engine  17.87 (realised  17.72)  ratio MC/realised   nan  f=0.000
+    E=0.447  MC    nan+-0.00  gen1    nan+-0.00  engine  14.46 (realised  14.38)  ratio MC/realised   nan  f=0.000
+    E=0.708  MC    nan+-0.00  gen1    nan+-0.00  engine   9.47 (realised   9.45)  ratio MC/realised   nan  f=0.000
+    E=1.120  MC    nan+-0.00  gen1    nan+-0.00  engine   6.20 (realised   6.19)  ratio MC/realised   nan  f=0.000
+    E=1.780  MC    nan+-0.00  gen1    nan+-0.00  engine   4.06 (realised   4.05)  ratio MC/realised   nan  f=0.000
+    E=2.820  MC    nan+-0.00  gen1    nan+-0.00  engine   2.66 (realised   2.65)  ratio MC/realised   nan  f=0.000
+  channel K (engine sigma_k)
+    E=0.141  MC  64.84+-1.66  gen1  64.01+-1.96  engine 105.47 (realised  57.23)  ratio MC/realised 1.133  f=0.005
+    E=0.224  MC  46.64+-0.93  gen1  45.04+-0.74  engine  71.85 (realised  52.68)  ratio MC/realised 0.885  f=0.007
+    E=0.282  MC  38.23+-1.02  gen1  38.46+-1.31  engine  59.30 (realised  48.94)  ratio MC/realised 0.781  f=0.009
+    E=0.355  MC  34.14+-0.84  gen1  33.98+-1.14  engine  48.95 (realised  44.03)  ratio MC/realised 0.775  f=0.012
+    E=0.447  MC  26.59+-0.63  gen1  26.41+-0.58  engine  40.40 (realised  38.26)  ratio MC/realised 0.695  f=0.014
+    E=0.708  MC  17.73+-0.41  gen1  17.74+-0.52  engine  27.52 (realised  26.99)  ratio MC/realised 0.657  f=0.020
+    E=1.120  MC  12.55+-0.36  gen1  12.49+-0.46  engine  18.75 (realised  18.58)  ratio MC/realised 0.675  f=0.030
+    E=1.780  MC   9.36+-0.42  gen1   9.44+-0.56  engine  12.77 (realised  12.72)  ratio MC/realised 0.736  f=0.035
+    E=2.820  MC   6.46+-0.28  gen1   6.24+-0.26  engine   8.70 (realised   8.68)  ratio MC/realised 0.744  f=0.052
+  channel mu (engine sigma_mu_nue)
+    E=0.141  MC  56.73+-0.12  gen1  55.97+-0.15  engine  35.40 (realised  34.15)  ratio MC/realised 1.661  f=0.995
+    E=0.224  MC  41.23+-0.15  gen1  40.32+-0.18  engine  30.63 (realised  29.89)  ratio MC/realised 1.380  f=0.993
+    E=0.282  MC  33.43+-0.09  gen1  32.72+-0.14  engine  26.46 (realised  25.98)  ratio MC/realised 1.287  f=0.991
+    E=0.355  MC  26.97+-0.12  gen1  26.56+-0.13  engine  22.42 (realised  22.13)  ratio MC/realised 1.219  f=0.988
+    E=0.447  MC  21.55+-0.09  gen1  21.32+-0.10  engine  18.67 (realised  18.50)  ratio MC/realised 1.165  f=0.986
+    E=0.708  MC  14.60+-0.08  gen1  14.54+-0.09  engine  12.80 (realised  12.75)  ratio MC/realised 1.146  f=0.980
+    E=1.120  MC  10.71+-0.10  gen1  10.67+-0.12  engine   8.65 (realised   8.63)  ratio MC/realised 1.242  f=0.970
+    E=1.780  MC   7.63+-0.08  gen1   7.65+-0.09  engine   5.59 (realised   5.58)  ratio MC/realised 1.367  f=0.965
+    E=2.820  MC   5.37+-0.08  gen1   5.36+-0.10  engine   3.58 (realised   3.57)  ratio MC/realised 1.505  f=0.948
+  all channels: E=0.141: 56.77  E=0.224: 41.28  E=0.282: 33.48  E=0.355: 27.06  E=0.447: 21.63  E=0.708: 14.67  E=1.120: 10.77  E=1.780:  7.69  E=2.820:  5.43
+  first-interaction fraction of the neutrinos: 0.74  0.77  0.79  0.80  0.82  0.84  0.84  0.85  0.85
+
+antinue:  MC all generations / MC first-interaction only / engine nominal sigma / engine kernel realised RMS; f = channel weight fraction
+  channel pi (engine sigma_pi)
+    E=0.141  MC    nan+-0.00  gen1    nan+-0.00  engine  41.66 (realised  39.22)  ratio MC/realised   nan  f=0.000
+    E=0.224  MC    nan+-0.00  gen1    nan+-0.00  engine  27.29 (realised  26.77)  ratio MC/realised   nan  f=0.000
+    E=0.282  MC    nan+-0.00  gen1    nan+-0.00  engine  22.08 (realised  21.81)  ratio MC/realised   nan  f=0.000
+    E=0.355  MC    nan+-0.00  gen1    nan+-0.00  engine  17.87 (realised  17.72)  ratio MC/realised   nan  f=0.000
+    E=0.447  MC    nan+-0.00  gen1    nan+-0.00  engine  14.46 (realised  14.38)  ratio MC/realised   nan  f=0.000
+    E=0.708  MC    nan+-0.00  gen1    nan+-0.00  engine   9.47 (realised   9.45)  ratio MC/realised   nan  f=0.000
+    E=1.120  MC    nan+-0.00  gen1    nan+-0.00  engine   6.20 (realised   6.19)  ratio MC/realised   nan  f=0.000
+    E=1.780  MC    nan+-0.00  gen1    nan+-0.00  engine   4.06 (realised   4.05)  ratio MC/realised   nan  f=0.000
+    E=2.820  MC    nan+-0.00  gen1    nan+-0.00  engine   2.66 (realised   2.65)  ratio MC/realised   nan  f=0.000
+  channel K (engine sigma_k)
+    E=0.141  MC  66.09+-1.46  gen1  65.12+-1.97  engine 105.47 (realised  57.23)  ratio MC/realised 1.155  f=0.005
+    E=0.224  MC  49.01+-1.64  gen1  48.58+-1.63  engine  71.85 (realised  52.68)  ratio MC/realised 0.930  f=0.007
+    E=0.282  MC  39.78+-0.81  gen1  39.59+-1.07  engine  59.30 (realised  48.94)  ratio MC/realised 0.813  f=0.009
+    E=0.355  MC  31.13+-0.74  gen1  31.70+-0.79  engine  48.95 (realised  44.03)  ratio MC/realised 0.707  f=0.011
+    E=0.447  MC  26.83+-0.59  gen1  27.17+-0.61  engine  40.40 (realised  38.26)  ratio MC/realised 0.701  f=0.015
+    E=0.708  MC  19.40+-0.40  gen1  19.41+-0.50  engine  27.52 (realised  26.99)  ratio MC/realised 0.719  f=0.021
+    E=1.120  MC  13.63+-0.38  gen1  13.45+-0.47  engine  18.75 (realised  18.58)  ratio MC/realised 0.733  f=0.027
+    E=1.780  MC   9.23+-0.26  gen1   8.95+-0.22  engine  12.77 (realised  12.72)  ratio MC/realised 0.726  f=0.040
+    E=2.820  MC   6.86+-0.38  gen1   7.13+-0.47  engine   8.70 (realised   8.68)  ratio MC/realised 0.791  f=0.046
+  channel mu (engine sigma_mu_nue)
+    E=0.141  MC  54.63+-0.14  gen1  52.80+-0.20  engine  35.40 (realised  34.15)  ratio MC/realised 1.600  f=0.995
+    E=0.224  MC  40.35+-0.17  gen1  39.09+-0.17  engine  30.63 (realised  29.89)  ratio MC/realised 1.350  f=0.993
+    E=0.282  MC  33.31+-0.10  gen1  32.48+-0.13  engine  26.46 (realised  25.98)  ratio MC/realised 1.282  f=0.991
+    E=0.355  MC  26.96+-0.14  gen1  26.45+-0.18  engine  22.42 (realised  22.13)  ratio MC/realised 1.218  f=0.989
+    E=0.447  MC  21.64+-0.12  gen1  21.33+-0.13  engine  18.67 (realised  18.50)  ratio MC/realised 1.170  f=0.985
+    E=0.708  MC  15.19+-0.09  gen1  15.17+-0.11  engine  12.80 (realised  12.75)  ratio MC/realised 1.192  f=0.979
+    E=1.120  MC  10.84+-0.08  gen1  10.80+-0.08  engine   8.65 (realised   8.63)  ratio MC/realised 1.257  f=0.973
+    E=1.780  MC   7.81+-0.11  gen1   7.88+-0.14  engine   5.59 (realised   5.58)  ratio MC/realised 1.399  f=0.960
+    E=2.820  MC   5.49+-0.12  gen1   5.50+-0.14  engine   3.58 (realised   3.57)  ratio MC/realised 1.539  f=0.954
+  all channels: E=0.141: 54.69  E=0.224: 40.41  E=0.282: 33.37  E=0.355: 27.01  E=0.447: 21.72  E=0.708: 15.29  E=1.120: 10.93  E=1.780:  7.87  E=2.820:  5.56
+  first-interaction fraction of the neutrinos: 0.69  0.73  0.75  0.77  0.79  0.80  0.82  0.83  0.83
+
+==============================================================================
+(e) injection-patch saturation (G8): theta_inj 40 vs 55 deg, 2.5e5 showers each, same seeds
+==============================================================================
+  numu+antinumu  0.3-0.5 GeV cosZ 0.0-0.1: Phi3D(55)/Phi3D(40) = 1.074 +- 0.250
+  numu+antinumu  0.3-0.5 GeV cosZ 0.1-0.2: Phi3D(55)/Phi3D(40) = 0.809 +- 0.093
+  numu+antinumu  0.3-0.5 GeV cosZ 0.2-0.3: Phi3D(55)/Phi3D(40) = 0.684 +- 0.103
+  numu+antinumu  0.5-1.0 GeV cosZ 0.0-0.1: Phi3D(55)/Phi3D(40) = 1.308 +- 0.377
+  numu+antinumu  0.5-1.0 GeV cosZ 0.1-0.2: Phi3D(55)/Phi3D(40) = 1.000 +- 0.153
+  numu+antinumu  0.5-1.0 GeV cosZ 0.2-0.3: Phi3D(55)/Phi3D(40) = 1.022 +- 0.128
+  numu+antinumu  1.0-3.0 GeV cosZ 0.0-0.1: Phi3D(55)/Phi3D(40) = 0.917 +- 0.327
+  numu+antinumu  1.0-3.0 GeV cosZ 0.1-0.2: Phi3D(55)/Phi3D(40) = 1.565 +- 0.271
+  numu+antinumu  1.0-3.0 GeV cosZ 0.2-0.3: Phi3D(55)/Phi3D(40) = 1.189 +- 0.214
+  nue+antinue    0.3-0.5 GeV cosZ 0.0-0.1: Phi3D(55)/Phi3D(40) = 0.538 +- 0.385
+  nue+antinue    0.3-0.5 GeV cosZ 0.1-0.2: Phi3D(55)/Phi3D(40) = 0.686 +- 0.121
+  nue+antinue    0.3-0.5 GeV cosZ 0.2-0.3: Phi3D(55)/Phi3D(40) = 1.097 +- 0.175
+  nue+antinue    0.5-1.0 GeV cosZ 0.0-0.1: Phi3D(55)/Phi3D(40) = 0.388 +- 0.723
+  nue+antinue    0.5-1.0 GeV cosZ 0.1-0.2: Phi3D(55)/Phi3D(40) = 0.895 +- 0.114
+  nue+antinue    0.5-1.0 GeV cosZ 0.2-0.3: Phi3D(55)/Phi3D(40) = 0.934 +- 0.156
+  nue+antinue    1.0-3.0 GeV cosZ 0.0-0.1: Phi3D(55)/Phi3D(40) = 1.232 +- 0.527
+  nue+antinue    1.0-3.0 GeV cosZ 0.1-0.2: Phi3D(55)/Phi3D(40) = 0.780 +- 0.254
+  nue+antinue    1.0-3.0 GeV cosZ 0.2-0.3: Phi3D(55)/Phi3D(40) = 1.924 +- 0.365
+
+  injection-point distance from the site for 3D cap hits (weight fraction beyond theta, all species):
+  g55 0.1-0.3 GeV cosZ 0.0-0.1: >20:2.4e-04 >25:0.0e+00 >30:0.0e+00 >35:0.0e+00 >40:0.0e+00 >45:0.0e+00 >50:0.0e+00  99%<16 deg, 99.9%<17 deg
+  g55 0.1-0.3 GeV cosZ 0.1-0.2: >20:0.0e+00 >25:0.0e+00 >30:0.0e+00 >35:0.0e+00 >40:0.0e+00 >45:0.0e+00 >50:0.0e+00  99%<14 deg, 99.9%<16 deg
+  g55 0.1-0.3 GeV cosZ 0.2-0.5: >20:0.0e+00 >25:0.0e+00 >30:0.0e+00 >35:0.0e+00 >40:0.0e+00 >45:0.0e+00 >50:0.0e+00  99%<13 deg, 99.9%<15 deg
+  g55 0.1-0.3 GeV cosZ 0.5-1.0: >20:0.0e+00 >25:0.0e+00 >30:0.0e+00 >35:0.0e+00 >40:0.0e+00 >45:0.0e+00 >50:0.0e+00  99%<11 deg, 99.9%<13 deg
+  g55 0.3-0.5 GeV cosZ 0.0-0.1: >20:1.2e-03 >25:0.0e+00 >30:0.0e+00 >35:0.0e+00 >40:0.0e+00 >45:0.0e+00 >50:0.0e+00  99%<17 deg, 99.9%<22 deg
+  g55 0.3-0.5 GeV cosZ 0.1-0.2: >20:0.0e+00 >25:0.0e+00 >30:0.0e+00 >35:0.0e+00 >40:0.0e+00 >45:0.0e+00 >50:0.0e+00  99%<15 deg, 99.9%<17 deg
+  g55 0.3-0.5 GeV cosZ 0.2-0.5: >20:0.0e+00 >25:0.0e+00 >30:0.0e+00 >35:0.0e+00 >40:0.0e+00 >45:0.0e+00 >50:0.0e+00  99%<13 deg, 99.9%<15 deg
+  g55 0.3-0.5 GeV cosZ 0.5-1.0: >20:0.0e+00 >25:0.0e+00 >30:0.0e+00 >35:0.0e+00 >40:0.0e+00 >45:0.0e+00 >50:0.0e+00  99%<11 deg, 99.9%<12 deg
+  g55 0.5-1.0 GeV cosZ 0.0-0.1: >20:0.0e+00 >25:0.0e+00 >30:0.0e+00 >35:0.0e+00 >40:0.0e+00 >45:0.0e+00 >50:0.0e+00  99%<17 deg, 99.9%<17 deg
+  g55 0.5-1.0 GeV cosZ 0.1-0.2: >20:0.0e+00 >25:0.0e+00 >30:0.0e+00 >35:0.0e+00 >40:0.0e+00 >45:0.0e+00 >50:0.0e+00  99%<15 deg, 99.9%<17 deg
+  g55 0.5-1.0 GeV cosZ 0.2-0.5: >20:0.0e+00 >25:0.0e+00 >30:0.0e+00 >35:0.0e+00 >40:0.0e+00 >45:0.0e+00 >50:0.0e+00  99%<13 deg, 99.9%<16 deg
+  g55 0.5-1.0 GeV cosZ 0.5-1.0: >20:0.0e+00 >25:0.0e+00 >30:0.0e+00 >35:0.0e+00 >40:0.0e+00 >45:0.0e+00 >50:0.0e+00  99%<11 deg, 99.9%<12 deg
+  g55 1.0-3.0 GeV cosZ 0.0-0.1: >20:6.7e-03 >25:0.0e+00 >30:0.0e+00 >35:0.0e+00 >40:0.0e+00 >45:0.0e+00 >50:0.0e+00  99%<17 deg, 99.9%<22 deg
+  g55 1.0-3.0 GeV cosZ 0.1-0.2: >20:0.0e+00 >25:0.0e+00 >30:0.0e+00 >35:0.0e+00 >40:0.0e+00 >45:0.0e+00 >50:0.0e+00  99%<15 deg, 99.9%<15 deg
+  g55 1.0-3.0 GeV cosZ 0.2-0.5: >20:0.0e+00 >25:0.0e+00 >30:0.0e+00 >35:0.0e+00 >40:0.0e+00 >45:0.0e+00 >50:0.0e+00  99%<16 deg, 99.9%<16 deg
+  g55 1.0-3.0 GeV cosZ 0.5-1.0: >20:0.0e+00 >25:0.0e+00 >30:0.0e+00 >35:0.0e+00 >40:0.0e+00 >45:0.0e+00 >50:0.0e+00  99%<11 deg, 99.9%<11 deg
+  p3d 0.1-0.3 GeV cosZ 0.0-0.1: >20:2.3e-04 >25:0.0e+00 >30:0.0e+00 >35:0.0e+00 >40:0.0e+00 >45:0.0e+00 >50:0.0e+00  99%<15 deg, 99.9%<18 deg
+  p3d 0.1-0.3 GeV cosZ 0.1-0.2: >20:3.4e-04 >25:0.0e+00 >30:0.0e+00 >35:0.0e+00 >40:0.0e+00 >45:0.0e+00 >50:0.0e+00  99%<14 deg, 99.9%<18 deg
+  p3d 0.3-0.5 GeV cosZ 0.0-0.1: >20:1.2e-03 >25:0.0e+00 >30:0.0e+00 >35:0.0e+00 >40:0.0e+00 >45:0.0e+00 >50:0.0e+00  99%<16 deg, 99.9%<22 deg
+  p3d 0.3-0.5 GeV cosZ 0.1-0.2: >20:0.0e+00 >25:0.0e+00 >30:0.0e+00 >35:0.0e+00 >40:0.0e+00 >45:0.0e+00 >50:0.0e+00  99%<15 deg, 99.9%<19 deg
+  p3d 0.5-1.0 GeV cosZ 0.0-0.1: >20:0.0e+00 >25:0.0e+00 >30:0.0e+00 >35:0.0e+00 >40:0.0e+00 >45:0.0e+00 >50:0.0e+00  99%<18 deg, 99.9%<19 deg
+  p3d 0.5-1.0 GeV cosZ 0.1-0.2: >20:0.0e+00 >25:0.0e+00 >30:0.0e+00 >35:0.0e+00 >40:0.0e+00 >45:0.0e+00 >50:0.0e+00  99%<15 deg, 99.9%<16 deg
+  p3d 1.0-3.0 GeV cosZ 0.0-0.1: >20:0.0e+00 >25:0.0e+00 >30:0.0e+00 >35:0.0e+00 >40:0.0e+00 >45:0.0e+00 >50:0.0e+00  99%<18 deg, 99.9%<19 deg
+  p3d 1.0-3.0 GeV cosZ 0.1-0.2: >20:4.3e-04 >25:0.0e+00 >30:0.0e+00 >35:0.0e+00 >40:0.0e+00 >45:0.0e+00 >50:0.0e+00  99%<16 deg, 99.9%<18 deg
+  g40 0.1-0.3 GeV cosZ 0.0-0.1: >20:0.0e+00 >25:0.0e+00 >30:0.0e+00 >35:0.0e+00 >40:0.0e+00 >45:0.0e+00 >50:0.0e+00  99%<15 deg, 99.9%<19 deg
+  g40 0.1-0.3 GeV cosZ 0.1-0.2: >20:0.0e+00 >25:0.0e+00 >30:0.0e+00 >35:0.0e+00 >40:0.0e+00 >45:0.0e+00 >50:0.0e+00  99%<15 deg, 99.9%<17 deg
+  g40 0.3-0.5 GeV cosZ 0.0-0.1: >20:0.0e+00 >25:0.0e+00 >30:0.0e+00 >35:0.0e+00 >40:0.0e+00 >45:0.0e+00 >50:0.0e+00  99%<20 deg, 99.9%<20 deg
+  g40 0.3-0.5 GeV cosZ 0.1-0.2: >20:0.0e+00 >25:0.0e+00 >30:0.0e+00 >35:0.0e+00 >40:0.0e+00 >45:0.0e+00 >50:0.0e+00  99%<15 deg, 99.9%<15 deg
+  g40 0.5-1.0 GeV cosZ 0.0-0.1: >20:0.0e+00 >25:0.0e+00 >30:0.0e+00 >35:0.0e+00 >40:0.0e+00 >45:0.0e+00 >50:0.0e+00  99%<20 deg, 99.9%<20 deg
+  g40 0.5-1.0 GeV cosZ 0.1-0.2: >20:0.0e+00 >25:0.0e+00 >30:0.0e+00 >35:0.0e+00 >40:0.0e+00 >45:0.0e+00 >50:0.0e+00  99%<14 deg, 99.9%<15 deg
+  g40 1.0-3.0 GeV cosZ 0.0-0.1: >20:0.0e+00 >25:0.0e+00 >30:0.0e+00 >35:0.0e+00 >40:0.0e+00 >45:0.0e+00 >50:0.0e+00  99%<19 deg, 99.9%<19 deg
+  g40 1.0-3.0 GeV cosZ 0.1-0.2: >20:0.0e+00 >25:0.0e+00 >30:0.0e+00 >35:0.0e+00 >40:0.0e+00 >45:0.0e+00 >50:0.0e+00  99%<15 deg, 99.9%<15 deg
+
+==============================================================================
+(f) absolute normalisation: MC Phi_3D (no cutoff, GSF, E_N <= top stratum) / HKKM2014 Kamioka (with cutoff), azimuth-averaged
+==============================================================================
+  numu      cosZ 0-0.1 / 0.4-0.5 / 0.9-1 at E = 0.3, 0.5, 1, 2, 3, 5 GeV:
+     2.51+-0.46 2.29+-0.09 2.10+-0.06 | 1.75+-0.17 1.90+-0.09 1.73+-0.07 | 1.56+-0.33 1.50+-0.10 1.46+-0.09 | 0.86+-0.33 1.00+-0.11 0.97+-0.08 | 2.59+-1.30 0.99+-0.15 1.09+-0.12 | 0.32+-0.16 0.74+-0.16 0.95+-0.16
+  nue       cosZ 0-0.1 / 0.4-0.5 / 0.9-1 at E = 0.3, 0.5, 1, 2, 3, 5 GeV:
+     3.24+-0.66 2.43+-0.15 2.40+-0.09 | 1.34+-0.19 2.00+-0.18 2.00+-0.10 | 1.29+-0.63 1.39+-0.16 1.35+-0.13 | 1.25+-0.62 1.01+-0.14 1.09+-0.23 | 1.71+-0.65 1.00+-0.18 0.98+-0.15 | 1.08+-0.92 0.51+-0.14 0.65+-0.21
+  antinumu  cosZ 0-0.1 / 0.4-0.5 / 0.9-1 at E = 0.3, 0.5, 1, 2, 3, 5 GeV:
+     1.47+-0.17 2.05+-0.10 2.18+-0.07 | 1.75+-0.26 1.75+-0.11 1.74+-0.07 | 1.46+-0.31 1.14+-0.07 1.39+-0.08 | 0.97+-0.54 1.01+-0.12 1.01+-0.11 | 1.20+-0.36 0.93+-0.09 0.98+-0.10 | 0.89+-0.62 0.81+-0.17 0.85+-0.13
+  antinue   cosZ 0-0.1 / 0.4-0.5 / 0.9-1 at E = 0.3, 0.5, 1, 2, 3, 5 GeV:
+     2.12+-0.37 1.93+-0.14 2.07+-0.10 | 1.84+-0.22 1.63+-0.15 1.88+-0.07 | 1.05+-0.35 1.43+-0.15 1.30+-0.14 | 2.51+-0.98 1.15+-0.21 1.04+-0.16 | 3.00+-1.04 0.90+-0.21 1.13+-0.13 | 1.82+-1.39 0.87+-0.32 1.21+-0.27

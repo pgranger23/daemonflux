@@ -181,8 +181,12 @@ class ChromoBackend:
 
     SIBYLL-2.3d above ``pool.E_SWITCH = 80 GeV`` (its ``ecm_min = 10 GeV``
     corresponds to ``E_lab ~ 53 GeV`` for a proton, so it cannot be used
-    below that anyway), DPMJET-III-19.3 below -- the same splice MCEq's shipped
-    ``lext_dpm193`` database uses, and Honda's own generator family.
+    below that anyway), DPMJET-III-19.3 below -- the generator MCEq's shipped
+    ``lext_dpm193`` database uses at low energy, and Honda's own generator
+    family.  (That database splices lower: its SIBYLL23D columns *are*
+    DPMJET-III-19.3 up to E_kin = 44.7 GeV, are 0.800 x DPMJET at 56.2 GeV
+    and SIBYLL above ~89 GeV -- ``diag_m2b.py splice``, MILESTONE2_RESULTS.md
+    sec. 2.4.)
 
     The air target is the N/O atomic mix of ``pool.AIR_COMPONENTS`` with the
     struck nucleus drawn from ``f_i sigma_prod,i``; see ``pool.py``'s docstring

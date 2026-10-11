@@ -199,3 +199,224 @@ def test_chromo_collinear_yield_matches_the_mceq_yield_backend():
         out[nm] = sc.dnde(14)[0]
     r = out["chromo"] / np.maximum(out["mceq"], 1e-30)
     assert np.all(r[:2] > 0.7) and np.all(r[:2] < 1.3), r
+
+
+# ---------------------------------------------------------------------------
+# milestone 2b: the production cone, the shower counters, the normalisation
+# ---------------------------------------------------------------------------
+def _rotated(u, axis_perp, alpha_deg):
+    a = np.deg2rad(alpha_deg)
+    return np.cos(a) * u + np.sin(a) * axis_perp
+
+
+def test_cone_scorer_bins_the_primary_neutrino_angle():
+    """Synthetic: neutrinos at known angles to a known primary land in the
+    right (species, band, channel, alpha) cell with exact moments, and the
+    shower-level counters / injection-angle histogram see the cap hits."""
+    caps = NestedCaps(LAT, LON, (5.0, 10.0))
+    sc = DualCapScorer(caps, np.logspace(-1, 2, 61), np.linspace(-1, 1, 21),
+                       np.linspace(0, 360, 13))
+    up, north, _east = geo.local_frame(LAT, LON)
+    r0 = R_INJ * np.asarray(up)
+    u0 = -np.asarray(up)
+    sc.begin_shower(r0, u0)
+    r_prod = (R_EARTH_CM + 20.0e5) * np.asarray(up)
+    cases = [  # (pdg, E, parent, gen, alpha_deg, band, channel)
+        (14, 0.2, 211, 1, 5.5, 0, 0),
+        (14, 0.7, 321, 2, 30.5, 2, 1),
+        (12, 2.0, -13, 3, 100.5, 3, 2),
+        (-14, 0.4, 2212, 1, 0.2, 1, 3),
+    ]
+    for pdg, e, par, gen, al, _b, _c in cases:
+        sc.add(pdg, e, r_prod, _rotated(u0, np.asarray(north), al), 1.0,
+               parent=par, gen=gen)
+    sc.end_shower()
+    h, m = sc.cone.h, sc.cone.m
+    assert h.sum() == pytest.approx(4.0)
+    for pdg, e, par, gen, al, b, c in cases:
+        k = scoring.SPECIES.index(pdg)
+        g = 0 if gen <= 1 else 1
+        # vertical primary -> top cos(zenith) class
+        assert h[k, b, c, 2, g, int(al)] == pytest.approx(1.0)
+        ie = int(np.log10(e / 0.1) * 10)
+        assert m[k, ie, c, 2, g, 0] == pytest.approx(1.0)
+        assert m[k, ie, c, 2, g, 3] == pytest.approx(al * al, rel=1e-9)
+        assert m[k, ie, c, 2, g, 4] == pytest.approx(np.cos(np.deg2rad(al)),
+                                                     rel=1e-9)
+    # produced 20 km above the site, the three down-going neutrinos land
+    # within 12 km of it (inside the cap) and the 100.5-deg one goes up; in
+    # the 1D view all four ride the vertical primary onto the site.  None is
+    # in the East-West target region (cos Z < 0.3).
+    assert sc.shcounts.tolist() == [1.0, 1.0, 1.0, 1.0, 0.0]
+    assert sc.hinj[0].sum() == pytest.approx(3.0)
+    assert sc.hinj[0, scoring.SPECIES.index(-14), 1, 3, 0] == pytest.approx(1.0)
+    assert sc.hinj[0, scoring.SPECIES.index(12)].sum() == 0.0
+    assert sc.hinj[1].sum() == pytest.approx(4.0)
+    # round trip and additive merge
+    d = sc.to_dict()
+    sc2 = DualCapScorer.from_dict(d).merge(DualCapScorer.from_dict(d))
+    assert np.allclose(sc2.cone.m, 2.0 * m)
+    assert np.allclose(sc2.shcounts, 2.0 * sc.shcounts)
+
+
+class _NoInteraction:
+    """Backend stub: nothing interacts, so a hadron primary just decays."""
+
+    def has_interaction(self, pdg):
+        return False
+
+    def lambda_int(self, pdg, e_tot):
+        return np.inf
+
+    def interact(self, rng, pdg, e_tot):
+        return []
+
+
+def test_cone_of_a_decaying_pion_matches_two_body_kinematics():
+    """Physics gate of the cone tally and of the parent tagging: a 2 GeV pi+
+    that cannot interact decays isotropically in its rest frame, so the
+    direct nu_mu's lab angle to the primary is fixed by two-body kinematics,
+    ``cos a = (c + b) / (1 + b c)`` at ``E_nu = g E* (1 + b c)`` with ``c``
+    uniform.  Per E_nu band the measured <cos a> and RMS(a) must match the
+    exact integral; the nu_mu must be tagged 'pi' and the muon-decay
+    neutrinos 'mu'."""
+    from constants import M_MU, M_PI
+    from shower import Config, run_shower
+    e_pi = 2.0
+    g = e_pi / M_PI
+    b = np.sqrt(1.0 - 1.0 / g ** 2)
+    estar = (M_PI ** 2 - M_MU ** 2) / (2.0 * M_PI)
+    caps = NestedCaps(LAT, LON, (10.0,))
+    sc = DualCapScorer(caps, np.logspace(-1, 2, 61))
+    up = np.asarray(geo.local_frame(LAT, LON)[0])
+    r0 = (R_EARTH_CM + 20.0e5) * up
+    u0 = -up
+    cfg = Config(collinear=False, bfield=None, e_nu_min=0.1)
+    rng = np.random.default_rng(12)
+    n = 12000
+    for _ in range(n):
+        sc.begin_shower(r0, u0)
+        run_shower(rng, 211, e_pi, r0, u0, _NoInteraction(), cfg, sc, 1.0)
+        sc.end_shower()
+    k = scoring.SPECIES.index(14)
+    h = sc.cone.h
+    # parent tagging: the nu_mu only from the pion, the rest only from muons
+    assert h[k, :, 0].sum() > 0.9 * n * 0.6
+    assert h[k, :, 1:].sum() == 0.0
+    for s in (12, -14):
+        ks = scoring.SPECIES.index(s)
+        assert h[ks, :, 0].sum() == 0.0 and h[ks, :, 2].sum() > 0.0
+    assert h[:, :, :, :2].sum() == 0.0 and h[:, :, :, :, 1].sum() == 0.0
+    # exact two-body expectation (c uniform on [-1, 1])
+    c = np.linspace(-1.0, 1.0, 400001)
+    e_nu = g * estar * (1.0 + b * c)
+    cos_a = (c + b) / (1.0 + b * c)
+    alpha = np.degrees(np.arccos(np.clip(cos_a, -1.0, 1.0)))
+    # (i) counts per E_nu band of the alpha histogram
+    bands = scoring.CONE_BANDS
+    for ib in range(len(bands) - 1):
+        p = np.mean((e_nu >= bands[ib]) & (e_nu < bands[ib + 1]))
+        nrow = h[k, ib, 0, 2, 0].sum()
+        assert abs(nrow - n * p) < 5.0 * np.sqrt(n * p * (1 - p)) + 1e-9, ib
+    # (ii) exact (unbinned) moments on the 10/decade grid: <cos a>, RMS(a)
+    m = sc.cone.m[k, :, 0, 2, 0]
+    eb = sc.cone.e_mom
+    tested = 0
+    for ie in range(len(eb) - 1):
+        sel = (e_nu >= eb[ie]) & (e_nu < eb[ie + 1])
+        nn = m[ie, 0]
+        if sel.sum() < 2000 or nn < 300:
+            continue
+        tested += 1
+        a2 = alpha[sel] ** 2
+        mc_cos, mc_a2 = m[ie, 4] / nn, m[ie, 3] / nn
+        assert abs(mc_cos - cos_a[sel].mean()) < \
+            5.0 * cos_a[sel].std() / np.sqrt(nn) + 1e-6, (ie, mc_cos)
+        assert abs(mc_a2 - a2.mean()) < 5.0 * a2.std() / np.sqrt(nn), \
+            (ie, np.sqrt(mc_a2), np.sqrt(a2.mean()))
+    assert tested >= 6
+
+
+def test_stratum_weights_do_not_depend_on_the_chunking():
+    """Regression for the chunk-normalisation bug: the summed primary weight
+    of a stratum must be ``pi A_patch * int J dE`` however the stratum is cut
+    into tasks (before the fix it scaled with the number of chunks)."""
+    import primaries as prim
+    import sky
+    model = prim.primary_model("GSF")
+    axis = np.array(geo.local_frame(LAT, LON)[0])
+    ns = 2
+    e = np.logspace(0.0, 1.0, 4001)
+    j, _ = model.nucleon_flux(e)
+    exact = np.pi * geo.patch_area_cm2(sky.R_INJ_CM, 40.0) * np.trapezoid(j, e)
+    totals = []
+    for chunk in (40000, 3000):
+        tasks = sky.build_tasks(30000, ["N"], 40.0, chunk, 5, nstrata=ns)
+        tot = 0.0
+        for g, k, m, th, seed, n_tot in tasks:
+            rng = np.random.default_rng(seed)
+            w = sky.primary_sample(rng, model, g, k, m, n_tot, th, axis)[2]
+            tot += w.sum()
+        totals.append(tot)
+    assert len(sky.build_tasks(30000, ["N"], 40.0, 3000, 5, nstrata=ns)) > 5
+    for tot in totals:
+        assert tot == pytest.approx(exact, rel=0.02)
+
+
+def test_sky_run_resumes_from_task_files(tmp_path):
+    """A job interrupted after some tasks resumes by re-running only the
+    missing task files, and the merged total is identical (per-task seeds)."""
+    import os
+    import sky
+    cache = os.environ.get("MC3D_POOL_CACHE")
+    if not cache or not os.path.isdir(cache):
+        pytest.skip("set MC3D_POOL_CACHE to a prebuilt pool directory")
+    kw = dict(nshower=300, nproc=2, groups=["N"], theta_inj=40.0,
+              caps=(5.0, 10.0), cache=cache, chunk=100, seed0=3,
+              outdir=str(tmp_path), tag="rs", nstrata=2)
+    os.chdir(tmp_path)
+    fp = sky.run(**kw)
+    ref = dict(np.load(fp))
+    ntask = int(np.load(os.path.join(sky.task_dir(str(tmp_path), "rs"),
+                                     "manifest.npz"))["ntask"][0])
+    assert ntask >= 3
+    os.remove(sky.task_path(str(tmp_path), "rs", 1))
+    fp = sky.run(**kw)
+    new = dict(np.load(fp))
+    for key in ("s1", "t1", "cone_m", "hinj", "shcounts", "counts"):
+        assert np.array_equal(ref[key], new[key]), key
+    assert ref["shcounts"][0] == 300.0
+
+
+def test_stratified_jackknife_matches_the_true_variance():
+    """``analyse_sky.JackRun`` / ``jack``: for task sums drawn from two strata
+    of unequal size, weight and spread, the delete-a-group jackknife variance
+    of the total must reproduce the analytic stratified variance
+    ``sum_k W_k^2 sigma_k^2 / N_k`` (averaged over realisations), and the
+    per-stratum pieces must add up to it (in expectation: the cross-stratum
+    term of one realisation vanishes only on average)."""
+    import analyse_sky as A
+    rng = np.random.default_rng(5)
+    G, ntask, n_t = 20, (40, 70), 30
+    mu, sd, wk = (1.0, 3.0), (2.0, 5.0), (1.0, 0.25)
+    n_tot = [nt * n_t for nt in ntask]
+    true_var = sum(wk[k] ** 2 * sd[k] ** 2 / n_tot[k] for k in range(2))
+    v_all, v_parts = [], []
+    for _ in range(300):
+        J = object.__new__(A.JackRun)
+        J.G, J.K = G, 2
+        J.M = np.zeros((G, 2))
+        S = np.zeros((G, 2))
+        for k in range(2):
+            for j in range(ntask[k]):
+                x = rng.normal(mu[k], sd[k], n_t)
+                S[j % G, k] += x.sum() * wk[k] / n_tot[k]
+                J.M[j % G, k] += n_t
+        J.S = {"x": S}
+        est, sig, _ = A.jack(lambda x: x, [(J, "x")])
+        v_all.append(float(sig) ** 2)
+        v_parts.append(sum(float(A.jack(lambda x: x, [(J, "x")],
+                                        stratum=k)[1]) ** 2 for k in range(2)))
+        assert est == pytest.approx(S.sum())
+    assert np.mean(v_all) == pytest.approx(true_var, rel=0.08)
+    assert np.mean(v_parts) == pytest.approx(np.mean(v_all), rel=0.03)

@@ -7,9 +7,13 @@ What this driver does
    site (``geometry.sample_injection_patch``), positions uniform per unit area
    and directions from the inward Lambert law.
 2. Samples the energy per nucleon **stratified in ln E** (``STRATA``), one
-   multiprocessing task per (species, stratum) so the per-stratum yield and
-   cost come out of the run for free and the allocation can be re-tuned
-   afterwards without re-deriving anything.
+   multiprocessing task per (species, stratum, chunk) so the per-stratum yield
+   and cost come out of the run for free and the allocation can be re-tuned
+   afterwards without re-deriving anything.  The importance weight is
+   normalised by the stratum total, not the chunk (``primary_sample``).  Every
+   task writes its own shard file (``<outdir>/<tag>_tasks/t<i>.npz``), so a
+   job resumes after an interruption and the analysis can form honest
+   (task-level jackknife) errors.
 3. Applies **superposition**: a nucleus of mass ``A``, charge ``Z`` at energy
    per nucleon ``E`` is represented by one nucleon drawn ``p`` with
    probability ``Z/A`` and ``n`` otherwise, carrying the full nucleon-intensity
@@ -100,17 +104,24 @@ def _init(cache, n_pool, collinear, e_nu_min, lat, lon, caps, seed0, model):
     _CTX["model"] = prim.primary_model(model)
 
 
-def _shard(task):
-    """One (species, stratum, chunk) block of primaries."""
-    gname, k, n, theta_inj, seed = task
+def primary_sample(rng, model, gname, k, n, n_tot, theta_inj, axis):
+    """``(e_nuc, is_p, w, r0, u0)`` for ``n`` primaries of one chunk.
+
+    **Normalisation.**  A (group, stratum) is split into chunks (one
+    multiprocessing task each, ``build_tasks``) whose sizes add up to
+    ``n_tot``; the log-uniform importance weight must be divided by that
+    stratum total, **not** by the chunk size ``n``.  Dividing by ``n`` makes
+    every chunk a full estimate of the stratum, so the merged sum counts the
+    stratum once per chunk -- 91-303 times per stratum for the milestone-2b
+    pilot settings, with a different multiplier in every stratum.  (This is
+    the state the code was left in when the chunking of sec. 3.2 of
+    ``MILESTONE2_RESULTS.md`` was introduced; regression:
+    ``test_sky.py::test_stratum_weights_do_not_depend_on_the_chunking``.)
+    """
     _name, a_mass, z, gid = GROUPS[gname]
-    rng = np.random.default_rng(seed)
-    caps, cfg, backend = _CTX["caps"], _CTX["cfg"], _CTX["backend"]
-    sc = DualCapScorer(caps, E_BINS, CZ_BINS, AZ_BINS)
     e1, e2 = float(STRATA[k]), float(STRATA[k + 1])
     ln_range = np.log(e2 / e1)
     e_nuc = np.exp(rng.uniform(np.log(e1), np.log(e2), n))
-    model = _CTX["model"]
     if getattr(model, "nucleon_level", False):
         j_nuc, p_frac = model.nucleon_flux(e_nuc)
         is_p = rng.random(n) < p_frac
@@ -118,26 +129,58 @@ def _shard(task):
         j_nuc = prim.nucleon_intensity(model, gid, e_nuc, a_mass)
         is_p = rng.random(n) < (z / a_mass)
     a_patch = geo.patch_area_cm2(R_INJ_CM, theta_inj)
-    w = j_nuc * e_nuc * ln_range / n * np.pi * a_patch
-    axis = np.array(caps.axis, float)
+    w = j_nuc * e_nuc * ln_range / float(n_tot) * np.pi * a_patch
     r0, u0 = geo.sample_injection_patch(rng, R_INJ_CM, axis, theta_inj, n)
+    return e_nuc, is_p, w, r0, u0
+
+
+def _shard(task):
+    """One (species, stratum, chunk) block of primaries.
+
+    ``task = (group, stratum, n, theta_inj, seed[, n_tot[, path]])``.  With
+    ``path`` the result is written there (atomically, compressed) and only a
+    small summary is returned -- that is what makes a run resumable shard by
+    shard; without it the full dict is returned (the old interface).  A
+    5-tuple (no ``n_tot``) means a single-chunk stratum, ``n_tot = n``.
+    """
+    gname, k, n, theta_inj, seed = task[:5]
+    n_tot = task[5] if len(task) > 5 else n
+    path = task[6] if len(task) > 6 else None
+    rng = np.random.default_rng(seed)
+    caps, cfg, backend = _CTX["caps"], _CTX["cfg"], _CTX["backend"]
+    sc = DualCapScorer(caps, E_BINS, CZ_BINS, AZ_BINS)
+    axis = np.array(caps.axis, float)
+    e_nuc, is_p, w, r0, u0 = primary_sample(rng, _CTX["model"], gname, k, n,
+                                            n_tot, theta_inj, axis)
+    a_patch = geo.patch_area_cm2(R_INJ_CM, theta_inj)
     t0 = time.time()
+    c0 = time.process_time()
     for i in range(n):
         pdg = 2212 if is_p[i] else 2112
         e_tot = float(e_nuc[i]) + (M_P if is_p[i] else M_N)
         sc.begin_shower(r0[i], u0[i])
         run_shower(rng, pdg, e_tot, r0[i], u0[i], backend, cfg, sc, float(w[i]))
+        sc.end_shower()
     sc.n_prim = float(n)
     sc.n_nucleon = float(n)
     d = sc.to_dict()
     d["meta"] = np.array([n, k, GROUP_FRAC.get(gname, 0.0), time.time() - t0,
-                          a_patch, theta_inj])
+                          a_patch, theta_inj, n_tot, time.process_time() - c0,
+                          seed])
     d["group"] = np.array([gname])
-    return d
+    d["probe"] = np.array(_probe(d), float)
+    if path is None:
+        return d
+    _atomic_savez(path, d, compressed=True)
+    return {"path": path, "group": gname, "k": k, "n": n,
+            "wall": float(d["meta"][3]), "cpu": float(d["meta"][7])}
 
 
 def build_tasks(nshower, groups, theta_inj, chunk, seed0, nstrata=None):
-    """One task per (species, stratum, chunk).
+    """One task per (species, stratum, chunk):
+    ``(group, stratum, n_chunk, theta_inj, seed, n_tot)`` with ``n_tot`` the
+    total number of primaries of that (group, stratum) -- the weight
+    normaliser (see :func:`primary_sample`).
 
     The chunk size is scaled **down** with the stratum energy as
     ``chunk * E_0 / E_k`` (floor 100), so every task costs roughly the same
@@ -159,42 +202,63 @@ def build_tasks(nshower, groups, theta_inj, chunk, seed0, nstrata=None):
             while left > 0:
                 m = min(ck, left)
                 tasks.append((g, k, int(m), float(theta_inj),
-                              seed0 + 1000003 * gi + 10007 * k + 13 * c))
+                              seed0 + 1000003 * gi + 10007 * k + 13 * c,
+                              int(n_tot)))
                 left -= m
                 c += 1
     return tasks
 
 
-def run(nshower, nproc, groups, theta_inj, caps, cache, n_pool=2000,
-        collinear=False, e_nu_min=0.1, site="kamioka", chunk=2000,
-        seed0=20260910, model="GSF", outdir=".", tag="pilot", nstrata=None):
-    import multiprocessing as mp
-    lat, lon = SITES[site]
-    os.makedirs(outdir, exist_ok=True)
-    tasks = build_tasks(nshower, groups, theta_inj, chunk, seed0, nstrata)
-    print(f"{len(tasks)} tasks, {nshower} primaries, theta_inj={theta_inj} deg, "
-          f"caps={caps}, collinear={collinear}", flush=True)
-    acc, probes, meta = {}, [], []
-    t0 = time.time()
-    ctx = mp.get_context("fork")
-    with ctx.Pool(nproc, initializer=_init,
-                  initargs=(cache, n_pool, collinear, e_nu_min, lat, lon,
-                            caps, seed0, model)) as pool:
-        done = 0
-        for d in pool.imap_unordered(_shard, tasks, chunksize=1):
-            g = str(d["group"][0])
-            k = int(d["meta"][1])
-            probes.append(_probe(d))
-            meta.append([k, d["meta"][0], d["meta"][3], _gidx(groups, g)])
-            key = (g, k)
-            s = DualCapScorer.from_dict(d)
-            acc[key] = s if key not in acc else acc[key].merge(s)
-            done += 1
-            if done % 10 == 0 or done == len(tasks):
-                dt = time.time() - t0
-                nsh = sum(x[1] for x in meta)
-                print(f"  {done}/{len(tasks)} tasks, {nsh:.0f} showers, "
-                      f"{dt:.0f} s, {nsh/dt:.1f} showers/s", flush=True)
+def _atomic_savez(path, d, compressed=False):
+    import tempfile
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(os.path.abspath(path)),
+                               suffix=".npz.part")
+    os.close(fd)
+    try:
+        with open(tmp, "wb") as fh:
+            (np.savez_compressed if compressed else np.savez)(fh, **d)
+        os.replace(tmp, path)
+    except BaseException:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+        raise
+
+
+def task_dir(outdir, tag):
+    return os.path.join(outdir, f"{tag}_tasks")
+
+
+def task_path(outdir, tag, i):
+    return os.path.join(task_dir(outdir, tag), f"t{i:05d}.npz")
+
+
+def merge_tasks(outdir, tag, groups=None, wall=None, nproc=None):
+    """Merge the per-task files of a run into the per-stratum files
+    ``<tag>_<group>_s<k>.npz`` and ``<tag>_total.npz`` (same layout as
+    before: the summed tallies plus ``probes``, ``shard_meta``, ``strata``,
+    ``wall_s``, ``nproc``, ``cpu_s``)."""
+    man = dict(np.load(os.path.join(task_dir(outdir, tag), "manifest.npz"),
+                       allow_pickle=False))
+    ntask = int(man["ntask"][0])
+    groups = list(groups) if groups is not None else \
+        [str(g) for g in man["groups"]]
+    acc, probes, meta, missing = {}, [], [], []
+    for i in range(ntask):
+        fp = task_path(outdir, tag, i)
+        if not os.path.exists(fp):
+            missing.append(i)
+            continue
+        d = dict(np.load(fp, allow_pickle=False))
+        g, k = str(d["group"][0]), int(d["meta"][1])
+        probes.append(list(d["probe"]))
+        meta.append([k, d["meta"][0], d["meta"][3], _gidx(groups, g),
+                     d["meta"][7], i])
+        s = DualCapScorer.from_dict(d)
+        acc[(g, k)] = s if (g, k) not in acc else acc[(g, k)].merge(s)
+    if missing:
+        raise RuntimeError(f"{len(missing)} task files missing, e.g. "
+                           f"{missing[:5]} -- re-run with the same arguments")
     tot = None
     for key, s in sorted(acc.items()):
         fp = os.path.join(outdir, f"{tag}_{key[0]}_s{key[1]}.npz")
@@ -204,10 +268,80 @@ def run(nshower, nproc, groups, theta_inj, caps, cache, n_pool=2000,
     out["probes"] = np.array(probes)
     out["shard_meta"] = np.array(meta, float)
     out["strata"] = STRATA
-    out["wall_s"] = np.array([time.time() - t0])
-    out["nproc"] = np.array([nproc])
+    out["wall_s"] = np.array([wall if wall is not None
+                              else float(man.get("wall_s", [np.nan])[0])])
+    out["nproc"] = np.array([nproc if nproc is not None
+                             else float(man["nproc"][0])])
+    out["cpu_s"] = np.array([sum(m[4] for m in meta)])
     fp = os.path.join(outdir, f"{tag}_total.npz")
     np.savez(fp, **out)
+    return fp
+
+
+def run(nshower, nproc, groups, theta_inj, caps, cache, n_pool=2000,
+        collinear=False, e_nu_min=0.1, site="kamioka", chunk=2000,
+        seed0=20260910, model="GSF", outdir=".", tag="pilot", nstrata=None,
+        resume=True):
+    """Run (or resume) a sky job.
+
+    Every task writes ``<outdir>/<tag>_tasks/t<i>.npz`` itself as soon as it
+    finishes, so an interrupted job loses at most the tasks in flight:
+    re-launching with the same arguments skips every task whose file exists
+    (the manifest guards against resuming with different arguments).  The
+    per-stratum and total files are then merged from disk.
+    """
+    import multiprocessing as mp
+    lat, lon = SITES[site]
+    os.makedirs(outdir, exist_ok=True)
+    tasks = build_tasks(nshower, groups, theta_inj, chunk, seed0, nstrata)
+    tdir = task_dir(outdir, tag)
+    os.makedirs(tdir, exist_ok=True)
+    mpath = os.path.join(tdir, "manifest.npz")
+    sig = np.array([[t[1], t[2], t[4], t[5]] for t in tasks], np.int64)
+    if os.path.exists(mpath):
+        old = np.load(mpath, allow_pickle=False)
+        if not (old["sig"].shape == sig.shape and np.all(old["sig"] == sig)
+                and bool(old["collinear"][0]) == bool(collinear)
+                and float(old["theta_inj"][0]) == float(theta_inj)):
+            raise RuntimeError(f"{tdir} holds a different job; use another "
+                               "--tag or --outdir")
+    man = {"sig": sig, "ntask": np.array([len(tasks)]),
+           "groups": np.array(list(groups)),
+           "collinear": np.array([bool(collinear)]),
+           "theta_inj": np.array([float(theta_inj)]),
+           "caps": np.array(caps, float), "nshower": np.array([nshower]),
+           "nproc": np.array([nproc]), "site": np.array([site]),
+           "model": np.array([model]), "seed0": np.array([seed0]),
+           "chunk": np.array([chunk]), "n_pool": np.array([n_pool]),
+           "e_nu_min": np.array([e_nu_min]),
+           "nstrata": np.array([-1 if nstrata is None else int(nstrata)])}
+    _atomic_savez(mpath, man)
+    todo = [t + (task_path(outdir, tag, i),) for i, t in enumerate(tasks)
+            if not (resume and os.path.exists(task_path(outdir, tag, i)))]
+    print(f"{len(tasks)} tasks ({len(tasks)-len(todo)} already on disk), "
+          f"{nshower} primaries, theta_inj={theta_inj} deg, caps={caps}, "
+          f"collinear={collinear}, nproc={nproc}", flush=True)
+    t0 = time.time()
+    if todo:
+        ctx = mp.get_context("fork")
+        with ctx.Pool(nproc, initializer=_init,
+                      initargs=(cache, n_pool, collinear, e_nu_min, lat, lon,
+                                caps, seed0, model)) as pool:
+            done, nsh, cpu = 0, 0, 0.0
+            for r in pool.imap_unordered(_shard, todo, chunksize=1):
+                done += 1
+                nsh += r["n"]
+                cpu += r["cpu"]
+                if done % 10 == 0 or done == len(todo):
+                    dt = time.time() - t0
+                    print(f"  {done}/{len(todo)} tasks, {nsh:.0f} showers, "
+                          f"{dt:.0f} s, {nsh/dt:.1f} showers/s, "
+                          f"{nsh/max(cpu,1e-9):.2f} showers/s/core-cpu",
+                          flush=True)
+    wall = time.time() - t0
+    man["wall_s"] = np.array([wall])
+    _atomic_savez(mpath, man)
+    fp = merge_tasks(outdir, tag, groups, wall=wall, nproc=nproc)
     print("wrote", fp, f"({time.time()-t0:.0f} s)")
     return fp
 
@@ -268,15 +402,23 @@ def main(argv=None):
     ap.add_argument("--nstrata", type=int, default=None,
                     help="use only the first N ln E strata (truncates the "
                          "primary energy range; fractions are renormalised)")
+    ap.add_argument("--no-resume", action="store_true",
+                    help="re-run every task even if its file exists")
+    ap.add_argument("--merge-only", action="store_true",
+                    help="only merge existing task files into the totals")
     a = ap.parse_args(argv)
     th = a.theta_inj if a.theta_inj is not None else max(a.caps) + 30.0
     groups = a.groups
     if groups is None:
         groups = ["N"] if a.model.upper() == "GSF" else ["p", "He"]
+    if a.merge_only:
+        print("wrote", merge_tasks(a.outdir, a.tag, groups))
+        return
     run(a.nshower, a.nproc, groups, th, tuple(a.caps), a.cache,
         n_pool=a.n_pool, collinear=a.collinear, e_nu_min=a.e_nu_min,
         site=a.site, chunk=a.chunk, seed0=a.seed, model=a.model,
-        outdir=a.outdir, tag=a.tag, nstrata=a.nstrata)
+        outdir=a.outdir, tag=a.tag, nstrata=a.nstrata,
+        resume=not a.no_resume)
 
 
 if __name__ == "__main__":

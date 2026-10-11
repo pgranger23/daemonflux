@@ -323,7 +323,9 @@ tables we compare against.)
 * **`ChromoBackend`** — a real generator through `chromo`: SIBYLL-2.3d above
   `e_switch = 80 GeV`, DPMJET-III-19.3 below (SIBYLL is not valid below ~10 GeV
   lab, and DPMJET-III-19.3 is what MCEq's shipped `lext_dpm193` database splices
-  in below 80 GeV — Honda's own generator family).  Returns the exclusive final
+  in at low energy — Honda's own generator family; the database's own splice
+  sits lower, between the 44.7 and 56.2 GeV kinetic bins, with a 0.8x blend
+  bin at 56.2 GeV: `MILESTONE2_RESULTS.md` §2.4).  Returns the exclusive final
   state with full 3-momenta; this is the backend the 3D physics needs.
   Smoke-tested against the MCEq tables (p–N at 100 GeV, per interaction):
   `pi+` 3.393 vs 3.399, `pi-` 2.860 vs 2.971, `K+` 0.257 vs 0.279,
@@ -554,14 +556,17 @@ version, or the full fine grid, is `1e4`–`1e5` core-hours — consistent with 
 audit's Phase-2 estimate.  The *survey* table (all zeniths and energies at 5%) is
 `~300` core-hours, **~8 h on 40 cores**.  These are estimates from the flux
 argument above; **milestone 2b must replace them with a measured entries/primary
-from a pilot run** before any long job is launched.
+from a pilot run** before any long job is launched.  *Done:*
+`MILESTONE2_RESULTS.md` §4.1 holds the measured cost table; note also that
+the `A_patch` above should read `6.15e17 cm²` (a factor 100 smaller).
 
 ---
 
 ## 8. Work breakdown (each ≤3 h of compute, each leaves resumable state on disk)
 
-State lives in `tools/mc3d/` (code, plan, results) and
-`scratchpad/mc3d/` (npz shards, logs).  Every shard is a self-contained
+State lives in `tools/mc3d/` (code, plan, small result tables in
+`results/`) and, for raw outputs, on local disk under
+`/home/pigrange/mc3d_work/runs/` (npz shards, logs; never `/tmp`).  Every shard is a self-contained
 `YieldScorer`/`CapScorer` `to_dict()` npz that merges additively, so an
 interrupted run resumes by re-launching the missing shards.
 

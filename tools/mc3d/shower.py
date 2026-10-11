@@ -200,19 +200,35 @@ def transport_muon(rng, pdg, e_tot, r, u, cfg):
 # the shower
 # ---------------------------------------------------------------------------
 def run_shower(rng, pdg0, e0, r0, u0, backend, cfg, scorer, weight=1.0):
-    """Track one primary and everything it makes."""
+    """Track one primary and everything it makes.
+
+    Every stack entry carries, besides the kinematics, the PDG id of the
+    particle whose **decay** made it (``parent``; 0 for the primary and for
+    interaction products) and its **generation** = the number of hadronic
+    interactions in its ancestry (the primary is generation 0, the products of
+    its first interaction generation 1; decay products inherit the
+    generation).  A scorer that declares ``wants_parent = True`` receives both
+    for every neutrino, as ``add(pdg, e, r, u, w, parent=..., gen=...)`` --
+    that is what lets ``scoring.ConeScorer`` split the production cone by
+    parent channel (direct pi, K, mu decay) at no extra cost.  Other scorers
+    keep the plain ``add(pdg, e, r, u, w)`` call.
+    """
+    tagged = bool(getattr(scorer, "wants_parent", False))
     stack = [(int(pdg0), float(e0), np.array(r0, float), np.array(u0, float),
-              float(weight), 0.0)]
+              float(weight), 0.0, 0, 0)]
     n_done = 0
     n_escape = 0
     while stack:
-        pdg, e, r, u, w, pol = stack.pop()
+        pdg, e, r, u, w, pol, par, gen = stack.pop()
         n_done += 1
         if n_done > cfg.max_particles:
             break
         if pdg in NEUTRINOS:
             if e >= cfg.e_nu_min:
-                scorer.add(pdg, e, r, u, w)
+                if tagged:
+                    scorer.add(pdg, e, r, u, w, parent=par, gen=gen)
+                else:
+                    scorer.add(pdg, e, r, u, w)
             continue
         thr = cfg.thr.get(pdg)
         if thr is None or e < thr:
@@ -227,7 +243,8 @@ def run_shower(rng, pdg0, e0, r0, u0, backend, cfg, scorer, weight=1.0):
             p4 = _p4(pdg, e, u)
             for d_pdg, d_p4, d_pol in kin_decay(
                     rng, pdg, p4, pol if cfg.polarisation else 0.0):
-                stack.append(_child(d_pdg, d_p4, r, u, w, d_pol, cfg))
+                stack.append(_child(d_pdg, d_p4, r, u, w, d_pol, cfg,
+                                    pdg, gen))
             continue
         kind, r_new = transport_hadron(rng, pdg, e, r, u, backend)
         if kind == "ground":
@@ -238,7 +255,8 @@ def run_shower(rng, pdg0, e0, r0, u0, backend, cfg, scorer, weight=1.0):
         if kind == "decay":
             p4 = _p4(pdg, e, u)
             for d_pdg, d_p4, d_pol in kin_decay(rng, pdg, p4, 0.0):
-                stack.append(_child(d_pdg, d_p4, r_new, u, w, d_pol, cfg))
+                stack.append(_child(d_pdg, d_p4, r_new, u, w, d_pol, cfg,
+                                    pdg, gen))
             continue
         # interaction: backends return (pdg, E) [inclusive] or
         # (pdg, E, p_vec) [exclusive, generator frame with z along the parent]
@@ -248,7 +266,7 @@ def run_shower(rng, pdg0, e0, r0, u0, backend, cfg, scorer, weight=1.0):
                 continue
             uc = u if (cfg.collinear or len(item) < 3) \
                 else _rotate_from_z(u, item[2])
-            stack.append((c, ec, r_new, uc, w, 0.0))
+            stack.append((c, ec, r_new, uc, w, 0.0, 0, gen + 1))
     return n_done, n_escape
 
 
@@ -258,7 +276,7 @@ def _p4(pdg, e, u):
     return np.concatenate([[e], p * np.asarray(u, float)])
 
 
-def _child(d_pdg, d_p4, r, u_parent, w, pol, cfg):
+def _child(d_pdg, d_p4, r, u_parent, w, pol, cfg, parent=0, gen=0):
     e = float(d_p4[0])
     if cfg.collinear:
         uc = u_parent
@@ -266,7 +284,8 @@ def _child(d_pdg, d_p4, r, u_parent, w, pol, cfg):
         pv = d_p4[1:]
         n = np.linalg.norm(pv)
         uc = pv / n if n > 0 else u_parent
-    return (int(d_pdg), e, np.array(r, float), np.array(uc, float), w, float(pol))
+    return (int(d_pdg), e, np.array(r, float), np.array(uc, float), w,
+            float(pol), int(parent), int(gen))
 
 
 def _rotate_from_z(u, pvec):

@@ -1,0 +1,136 @@
+# diag_m2b.py outputs, 2026-10-08 (see MILESTONE2_RESULTS.md sec. 2.4, 2.6, 4.4)
+## db_check (database identity; fresh export vs shipped npz)
+MCEq version file: /afs/cern.ch/work/p/pigrange/daemonflux/.venv/lib/python3.12/site-packages/MCEq/__init__.py
+config.mceq_db_fname = mceq_db_lext_dpm193_v140.h5
+config.data_dir      = /afs/cern.ch/work/p/pigrange/daemonflux/.venv/lib/python3.12/site-packages/MCEq/data
+data_dir listing     = ['DDM_1.0.npy', 'README.md', 'mceq_db_lext_dpm193_v140.h5']
+npz model/emin: ['SIBYLL23D'] [0.05]  n_E = 124
+E_kin grid matches the npz grid
+(1) shipped npz vs a fresh SIBYLL23D export (identity of the build):
+   y_2212_211: max|diff| = 0.000e+00  (sum 4.0918e+03)
+   y_2212_-211: max|diff| = 0.000e+00  (sum 4.0483e+03)
+   y_2212_2212: max|diff| = 0.000e+00  (sum 4.3060e+02)
+   y_211_211: max|diff| = 0.000e+00  (sum 4.2824e+03)
+   y_2212_321: max|diff| = 0.000e+00  (sum 5.0032e+02)
+(2) column-wise SIBYLL23D(npz) / DPMJETIII193 total yield per interaction, and max relative cell difference, vs projectile E_kin:
+  2212->211
+     E_kin=    2.82  sum S23D=  0.66899  sum DPM=  0.66899  ratio= 1.00000  max cell rel diff=0.00e+00
+     E_kin=    4.47  sum S23D=  0.86505  sum DPM=  0.86505  ratio= 1.00000  max cell rel diff=0.00e+00
+     E_kin=    8.91  sum S23D=  1.60212  sum DPM=  1.60212  ratio= 1.00000  max cell rel diff=0.00e+00
+     E_kin=   17.78  sum S23D=  2.13716  sum DPM=  2.13716  ratio= 1.00000  max cell rel diff=0.00e+00
+     E_kin=   44.67  sum S23D=  2.96312  sum DPM=  2.96312  ratio= 1.00000  max cell rel diff=0.00e+00
+     E_kin=   70.79  sum S23D=  3.25538  sum DPM=  3.39786  ratio= 0.95807  max cell rel diff=3.46e-01
+     E_kin=   89.13  sum S23D=  3.39864  sum DPM=  3.62978  ratio= 0.93632  max cell rel diff=5.85e-01
+     E_kin=  112.20  sum S23D=  3.53217  sum DPM=  3.87769  ratio= 0.91090  max cell rel diff=6.73e-01
+     E_kin=  891.25  sum S23D=  5.91844  sum DPM=  6.65063  ratio= 0.88991  max cell rel diff=9.42e-01
+  2212->-211
+     E_kin=    2.82  sum S23D=  0.37751  sum DPM=  0.37751  ratio= 1.00000  max cell rel diff=0.00e+00
+     E_kin=    4.47  sum S23D=  0.54485  sum DPM=  0.54485  ratio= 1.00000  max cell rel diff=0.00e+00
+     E_kin=    8.91  sum S23D=  1.26773  sum DPM=  1.26773  ratio= 1.00000  max cell rel diff=0.00e+00
+     E_kin=   17.78  sum S23D=  1.79424  sum DPM=  1.79424  ratio= 1.00000  max cell rel diff=0.00e+00
+     E_kin=   44.67  sum S23D=  2.61408  sum DPM=  2.61408  ratio= 1.00000  max cell rel diff=0.00e+00
+     E_kin=   70.79  sum S23D=  2.85250  sum DPM=  3.04765  ratio= 0.93597  max cell rel diff=3.39e-01
+     E_kin=   89.13  sum S23D=  2.97128  sum DPM=  3.27967  ratio= 0.90597  max cell rel diff=3.03e-01
+     E_kin=  112.20  sum S23D=  3.07930  sum DPM=  3.52709  ratio= 0.87304  max cell rel diff=5.42e-01
+     E_kin=  891.25  sum S23D=  5.47702  sum DPM=  6.30443  ratio= 0.86876  max cell rel diff=7.54e-01
+  2212->2212
+     E_kin=    2.82  sum S23D=  1.46461  sum DPM=  1.46461  ratio= 1.00000  max cell rel diff=0.00e+00
+     E_kin=    4.47  sum S23D=  1.33509  sum DPM=  1.33509  ratio= 1.00000  max cell rel diff=0.00e+00
+     E_kin=    8.91  sum S23D=  1.47389  sum DPM=  1.47389  ratio= 1.00000  max cell rel diff=0.00e+00
+     E_kin=   17.78  sum S23D=  1.47291  sum DPM=  1.47291  ratio= 1.00000  max cell rel diff=0.00e+00
+     E_kin=   44.67  sum S23D=  1.52073  sum DPM=  1.52073  ratio= 1.00000  max cell rel diff=0.00e+00
+     E_kin=   70.79  sum S23D=  1.44570  sum DPM=  1.56885  ratio= 0.92150  max cell rel diff=6.05e-01
+     E_kin=   89.13  sum S23D=  1.40419  sum DPM=  1.58636  ratio= 0.88516  max cell rel diff=9.95e-01
+     E_kin=  112.20  sum S23D=  1.36495  sum DPM=  1.60286  ratio= 0.85157  max cell rel diff=1.43e+00
+     E_kin=  891.25  sum S23D=  1.52709  sum DPM=  1.77771  ratio= 0.85902  max cell rel diff=1.25e+00
+  2212->2112
+     E_kin=    2.82  sum S23D=  1.07407  sum DPM=  1.07407  ratio= 1.00000  max cell rel diff=0.00e+00
+     E_kin=    4.47  sum S23D=  1.00692  sum DPM=  1.00692  ratio= 1.00000  max cell rel diff=0.00e+00
+     E_kin=    8.91  sum S23D=  1.18977  sum DPM=  1.18977  ratio= 1.00000  max cell rel diff=0.00e+00
+     E_kin=   17.78  sum S23D=  1.21725  sum DPM=  1.21725  ratio= 1.00000  max cell rel diff=0.00e+00
+     E_kin=   44.67  sum S23D=  1.28045  sum DPM=  1.28045  ratio= 1.00000  max cell rel diff=0.00e+00
+     E_kin=   70.79  sum S23D=  1.21169  sum DPM=  1.33232  ratio= 0.90946  max cell rel diff=1.26e+00
+     E_kin=   89.13  sum S23D=  1.15751  sum DPM=  1.34981  ratio= 0.85753  max cell rel diff=1.58e+00
+     E_kin=  112.20  sum S23D=  1.09611  sum DPM=  1.36764  ratio= 0.80146  max cell rel diff=1.72e+00
+     E_kin=  891.25  sum S23D=  1.16893  sum DPM=  1.54768  ratio= 0.75528  max cell rel diff=7.27e-01
+  211->211
+     E_kin=    2.82  sum S23D=  1.36058  sum DPM=  1.36058  ratio= 1.00000  max cell rel diff=0.00e+00
+     E_kin=    4.47  sum S23D=  1.43913  sum DPM=  1.43913  ratio= 1.00000  max cell rel diff=0.00e+00
+     E_kin=    8.91  sum S23D=  2.15387  sum DPM=  2.15387  ratio= 1.00000  max cell rel diff=0.00e+00
+     E_kin=   17.78  sum S23D=  2.65758  sum DPM=  2.65758  ratio= 1.00000  max cell rel diff=0.00e+00
+     E_kin=   44.67  sum S23D=  3.36063  sum DPM=  3.36063  ratio= 1.00000  max cell rel diff=0.00e+00
+     E_kin=   70.79  sum S23D=  3.83774  sum DPM=  3.72906  ratio= 1.02914  max cell rel diff=8.89e-01
+     E_kin=   89.13  sum S23D=  4.08659  sum DPM=  3.93712  ratio= 1.03796  max cell rel diff=1.47e+00
+     E_kin=  112.20  sum S23D=  4.32815  sum DPM=  4.14628  ratio= 1.04386  max cell rel diff=2.30e+00
+     E_kin=  891.25  sum S23D=  6.53253  sum DPM=  6.38656  ratio= 1.02286  max cell rel diff=3.22e+00
+  211->-211
+     E_kin=    2.82  sum S23D=  0.46074  sum DPM=  0.46074  ratio= 1.00000  max cell rel diff=0.00e+00
+     E_kin=    4.47  sum S23D=  0.52771  sum DPM=  0.52771  ratio= 1.00000  max cell rel diff=0.00e+00
+     E_kin=    8.91  sum S23D=  1.30031  sum DPM=  1.30031  ratio= 1.00000  max cell rel diff=0.00e+00
+     E_kin=   17.78  sum S23D=  1.77549  sum DPM=  1.77549  ratio= 1.00000  max cell rel diff=0.00e+00
+     E_kin=   44.67  sum S23D=  2.45778  sum DPM=  2.45778  ratio= 1.00000  max cell rel diff=0.00e+00
+     E_kin=   70.79  sum S23D=  2.86702  sum DPM=  2.82024  ratio= 1.01659  max cell rel diff=5.73e-01
+     E_kin=   89.13  sum S23D=  3.08592  sum DPM=  3.02536  ratio= 1.02002  max cell rel diff=1.06e+00
+     E_kin=  112.20  sum S23D=  3.29899  sum DPM=  3.23140  ratio= 1.02092  max cell rel diff=1.75e+00
+     E_kin=  891.25  sum S23D=  5.51352  sum DPM=  5.46335  ratio= 1.00918  max cell rel diff=3.75e+00
+  2212->321
+     E_kin=    2.82  sum S23D=  0.00000  sum DPM=  0.00000  ratio= 1.00000  max cell rel diff=0.00e+00
+     E_kin=    4.47  sum S23D=  0.01348  sum DPM=  0.01348  ratio= 1.00000  max cell rel diff=0.00e+00
+     E_kin=    8.91  sum S23D=  0.08295  sum DPM=  0.08295  ratio= 1.00000  max cell rel diff=0.00e+00
+     E_kin=   17.78  sum S23D=  0.18286  sum DPM=  0.18286  ratio= 1.00000  max cell rel diff=0.00e+00
+     E_kin=   44.67  sum S23D=  0.26798  sum DPM=  0.26798  ratio= 1.00000  max cell rel diff=0.00e+00
+     E_kin=   70.79  sum S23D=  0.27491  sum DPM=  0.30803  ratio= 0.89248  max cell rel diff=4.00e-01
+     E_kin=   89.13  sum S23D=  0.27894  sum DPM=  0.32697  ratio= 0.85310  max cell rel diff=6.00e-01
+     E_kin=  112.20  sum S23D=  0.28366  sum DPM=  0.34754  ratio= 0.81619  max cell rel diff=8.00e-01
+     E_kin=  891.25  sum S23D=  0.54288  sum DPM=  0.60134  ratio= 0.90279  max cell rel diff=9.10e-01
+(3) p-air inelastic cross section ratio S23D/DPMJET at E_kin = 4.5: 1.0000, 17.8: 1.0000, 44.7: 1.0000, 70.8: 0.9953, 89.1: 0.9911, 891.3: 0.9717
+
+m_spliced_v2.npz: rows 4-1000000 GeV
+  E_pi [0.3,0.5): engine pooling  39.71 deg, pions-per-cell x E_proj^-1.7  49.68 deg (x1.25); rows > 1 TeV carry 0.85 of the engine weight
+  E_pi [0.5,1.0): engine pooling  25.31 deg, pions-per-cell x E_proj^-1.7  35.02 deg (x1.38); rows > 1 TeV carry 0.91 of the engine weight
+  E_pi [1.0,2.0): engine pooling  14.19 deg, pions-per-cell x E_proj^-1.7  19.29 deg (x1.36); rows > 1 TeV carry 0.97 of the engine weight
+  E_pi [2.0,5.0): engine pooling   6.99 deg, pions-per-cell x E_proj^-1.7  10.30 deg (x1.47); rows > 1 TeV carry 0.99 of the engine weight
+m_piminus_v2.npz: rows 4-1000000 GeV
+  E_pi [0.3,0.5): engine pooling  38.27 deg, pions-per-cell x E_proj^-1.7  49.54 deg (x1.29); rows > 1 TeV carry 0.85 of the engine weight
+  E_pi [0.5,1.0): engine pooling  24.30 deg, pions-per-cell x E_proj^-1.7  35.01 deg (x1.44); rows > 1 TeV carry 0.91 of the engine weight
+  E_pi [1.0,2.0): engine pooling  14.00 deg, pions-per-cell x E_proj^-1.7  19.46 deg (x1.39); rows > 1 TeV carry 0.97 of the engine weight
+  E_pi [2.0,5.0): engine pooling   6.99 deg, pions-per-cell x E_proj^-1.7  10.33 deg (x1.48); rows > 1 TeV carry 0.99 of the engine weight
+per projectile energy, RMS arcsin(p_T/p) of pi+ [deg] in E_pi bins 0.3-0.5 / 0.5-1 / 1-2 / 2-5: pool | engine row
+      9.0 GeV (DpmjetIII193):  50.2  32.1  17.7  11.1 |  49.2  35.1  19.6  11.4  (row 9 GeV)
+     17.9 GeV (DpmjetIII193):  47.5  33.0  18.1   9.7 |  47.4  32.2  18.6   9.9  (row 16 GeV)
+     45.0 GeV (DpmjetIII193):  44.8  32.2  17.1   8.9 |  46.0  31.6  17.2   9.0  (row 46 GeV)
+     95.1 GeV (Sibyll23d):  46.3  29.9  16.3   8.4 |  45.9  30.6  17.4   8.5  (row 111 GeV)
+    300.4 GeV (Sibyll23d):  42.6  29.0  14.8   7.9 |  45.6  30.9  16.5   8.8  (row 294 GeV)
+    949.0 GeV (Sibyll23d):  42.0  28.7  15.0   7.5 |  43.4  28.5  15.0   7.9  (row 1080 GeV)
+p+air pool E_tot 17.88 (DpmjetIII193) vs table E_kin 17.78
+  pi+  pool 2.135 table 2.137 ratio 0.999; per x bin: nan 1.19 1.03 1.03 0.98 0.95 0.90 0.88 1.07 0.91 1.70 0.00
+  nucleons E_tot > 2 GeV: pool 1.371 table 1.475; slow: pool 1.790 table 1.215
+  leading nucleon x > 0.9: pool 0.013 table 0.014
+p+air pool E_tot 22.51 (DpmjetIII193) vs table E_kin 22.39
+  pi+  pool 2.298 table 2.336 ratio 0.984; per x bin: 8.45 1.18 0.89 0.96 0.98 0.92 0.91 1.01 0.97 0.73 0.48 0.00
+  nucleons E_tot > 2 GeV: pool 1.403 table 1.500; slow: pool 1.752 table 1.213
+  leading nucleon x > 0.9: pool 0.015 table 0.016
+p+air pool E_tot 44.95 (DpmjetIII193) vs table E_kin 44.67
+  pi+  pool 2.966 table 2.963 ratio 1.001; per x bin: 1.98 1.08 0.95 0.96 0.96 1.02 0.85 0.97 1.07 0.75 0.00 0.00
+  nucleons E_tot > 2 GeV: pool 1.496 table 1.587; slow: pool 1.774 table 1.214
+  leading nucleon x > 0.9: pool 0.018 table 0.019
+p+air pool E_tot 56.61 (DpmjetIII193) vs table E_kin 56.23
+  pi+  pool 3.142 table 2.534 ratio 1.240; per x bin: 1.98 1.16 1.20 1.18 1.23 1.22 1.20 1.21 1.25 0.96 1.86 0.00
+  nucleons E_tot > 2 GeV: pool 1.530 table 1.297; slow: pool 1.821 table 0.987
+  leading nucleon x > 0.9: pool 0.017 table 0.017
+(2212, 211): 28.2:=1.000  35.5:=1.000  44.7:=1.000  56.2:x0.800  70.8:x0.958  89.1:x0.936  112.2:x0.911
+(2212, -211): 28.2:=1.000  35.5:=1.000  44.7:=1.000  56.2:x0.800  70.8:x0.936  89.1:x0.906  112.2:x0.873
+(2212, 2212): 28.2:=1.000  35.5:=1.000  44.7:=1.000  56.2:x0.800  70.8:x0.922  89.1:x0.885  112.2:x0.852
+(2212, 2112): 28.2:=1.000  35.5:=1.000  44.7:=1.000  56.2:x0.800  70.8:x0.909  89.1:x0.858  112.2:x0.801
+(211, 211): 28.2:=1.000  35.5:=1.000  44.7:=1.000  56.2:x0.800  70.8:x1.029  89.1:x1.038  112.2:x1.044
+
+## sigma (raw chromo Sigma+- per p+air event)
+/home/pigrange/mc3d_work/runs/m2b/logs/dpm_diag.log:=== p + air: pool bin 9 E_tot=17.88 (E_kin 16.94) <-> MCEq column E_kin=17.78 (+5.0%), pool model DpmjetIII193, 2000 events
+/home/pigrange/mc3d_work/runs/m2b/logs/dpm_diag.log:=== p + air: pool bin 10 E_tot=22.51 (E_kin 21.57) <-> MCEq column E_kin=22.39 (+3.8%), pool model DpmjetIII193, 2000 events
+/home/pigrange/mc3d_work/runs/m2b/logs/dpm_diag.log:=== p + air: pool bin 13 E_tot=44.95 (E_kin 44.02) <-> MCEq column E_kin=44.67 (+1.5%), pool model DpmjetIII193, 2000 events
+/home/pigrange/mc3d_work/runs/m2b/logs/dpm_diag.log:=== p + air: pool bin 14 E_tot=56.61 (E_kin 55.67) <-> MCEq column E_kin=56.23 (+1.0%), pool model DpmjetIII193, 2000 events
+
+## sigma (diag_m2b.py sigma: raw chromo Sigma+- per p+air event, 3000 events)
+E_tot 22.51 DpmjetIII193: Sigma+- per event 0.0503, decay nucleons above 2 GeV 0.0310
+E_tot 44.95 DpmjetIII193: Sigma+- per event 0.0537, decay nucleons above 2 GeV 0.0373
+E_tot 95.00 Sibyll23d: Sigma+- per event 0.0810, decay nucleons above 2 GeV 0.0663
