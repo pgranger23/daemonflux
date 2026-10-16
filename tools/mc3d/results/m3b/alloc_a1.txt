@@ -1,0 +1,46 @@
+stratum  n  ms/prim  var-share
+p    0   434485     3.8 0.000
+p    1   172972    22.5 0.150
+p    2    68861    29.2 0.248
+p    3    27414    43.1 0.089
+p    4    10914    85.0 0.014
+p    5     4345   209.0 0.002
+p    6     1730   477.3 0.000
+He   0   108621     4.9 0.006
+He   1    43243    13.3 0.149
+He   2    17215    28.3 0.139
+He   3     6854    53.9 0.046
+He   4     2728    94.3 0.010
+He   5     1086   220.1 0.001
+He   6      432   480.5 0.000
+CNO  0    32586     4.4 0.002
+CNO  1    12973    15.5 0.041
+CNO  2     5165    36.2 0.021
+CNO  3     2056    48.7 0.008
+CNO  4      819    83.1 0.000
+CNO  5      326   165.6 0.000
+CNO  6      130   453.3 0.000
+MgSi 0    16293     3.7 0.001
+MgSi 1     6486    15.8 0.015
+MgSi 2     2582    24.9 0.006
+MgSi 3     1028    53.9 0.001
+MgSi 4      409   112.8 0.000
+MgSi 5      163   174.3 0.000
+MgSi 6       65   278.5 0.000
+Fe   0    10862     3.3 0.001
+Fe   1     4324    15.6 0.035
+Fe   2     1722    24.2 0.012
+Fe   3      685    46.2 0.001
+Fe   4      273    81.7 0.001
+Fe   5      109   145.0 0.000
+Fe   6       43   273.6 0.000
+thr   0.0 GV: Neyman  N = 7.66e+06 primaries in 60 core-h, mean rel var 0.0576 (rms rel err x0.240 of A's); E^-0.8 alloc: N = 1.39e+07, x0.272
+   frac: p1:0.244 p2:0.174 p3:0.054 p4:0.010 He0:0.083 He1:0.158 He2:0.066 He3:0.017 He4:0.004 CNO0:0.025 CNO1:0.042 CNO2:0.012 CNO3:0.004 MgSi0:0.012 MgSi1:0.018 MgSi2:0.006 Fe0:0.011 Fe1:0.022 Fe2:0.007
+thr  10.9 GV: Neyman  N = 4.16e+06 primaries in 60 core-h, mean rel var 0.1061 (rms rel err x0.326 of A's); E^-0.8 alloc: N = 5.54e+06, x0.431
+   frac: p1:0.157 p2:0.251 p3:0.078 p4:0.014 He0:0.061 He1:0.133 He2:0.095 He3:0.025 He4:0.006 CNO0:0.018 CNO1:0.037 CNO2:0.018 CNO3:0.006 MgSi0:0.008 MgSi1:0.016 MgSi2:0.008 Fe0:0.008 Fe1:0.021 Fe2:0.009
+thr  20.0 GV: Neyman  N = 2.6e+06 primaries in 60 core-h, mean rel var 0.1731 (rms rel err x0.416 of A's); E^-0.8 alloc: N = 4.18e+06, x0.496
+   frac: p1:0.201 p2:0.135 p3:0.100 p4:0.018 He0:0.078 He1:0.115 He2:0.122 He3:0.032 He4:0.007 CNO0:0.022 CNO1:0.033 CNO2:0.023 CNO3:0.008 MgSi0:0.010 MgSi1:0.014 MgSi2:0.010 Fe0:0.010 Fe1:0.018 Fe2:0.012
+thr  33.0 GV: Neyman  N = 1.98e+06 primaries in 60 core-h, mean rel var 0.2292 (rms rel err x0.479 of A's); E^-0.8 alloc: N = 3.46e+06, x0.545
+   frac: p1:0.232 p2:0.120 p3:0.107 p4:0.020 He0:0.090 He1:0.128 He2:0.069 He3:0.037 He4:0.008 CNO0:0.026 CNO1:0.036 CNO2:0.013 CNO3:0.009 MgSi0:0.012 MgSi1:0.015 MgSi2:0.007 Fe0:0.011 Fe1:0.019 Fe2:0.008
+thr  60.0 GV: Neyman  N = 1.61e+06 primaries in 60 core-h, mean rel var 0.2859 (rms rel err x0.535 of A's); E^-0.8 alloc: N = 2.98e+06, x0.587
+   frac: p1:0.257 p2:0.132 p3:0.050 p4:0.023 p5:0.003 He0:0.099 He1:0.142 He2:0.052 He3:0.041 He4:0.009 CNO0:0.029 CNO1:0.040 CNO2:0.010 CNO3:0.010 MgSi0:0.013 MgSi1:0.016 MgSi2:0.005 Fe0:0.013 Fe1:0.021 Fe2:0.006

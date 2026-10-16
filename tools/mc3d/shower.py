@@ -143,21 +143,33 @@ def transport_hadron(rng, pdg, e_tot, r, u, backend):
     return ("ground" if hit_ground else "escape"), r + s_bound * u
 
 
-def transport_muon(rng, pdg, e_tot, r, u, cfg):
+def transport_muon(rng, pdg, e_tot, r, u, cfg, stats=None):
     """Advance a muon with continuous energy loss (and, in 3D mode, IGRF
     bending).  Returns ``(kind, r, u, E)``; ``kind in {'decay','ground',
-    'escape','stop'}``."""
+    'escape','stop'}``.  With a ``stats`` dict, ``stats['sinv']`` receives
+    ``int ds / p`` [cm/GeV] along the path (milestone 3b: the bound on how
+    far the segment can bend in any field orientation, ``Q_C |B|_max sinv``).
+
+    The field branch (``cfg.bfield``) is the scalar reference; the production
+    path of milestone 3b is the vectorised ``bend.transport_muons``.  Its bend
+    constant was ``2.998e-4`` rad/m/T/GeV (1000x too small for ``B`` in tesla)
+    until 2026-10-11; the branch had never been exercised."""
     m = M_MU
     ctau = CTAU_CM[int(pdg)]
     t_target = -np.log(rng.random())            # in units of the lifetime
+    if stats is not None:
+        stats["t_target"] = t_target
     t_acc = 0.0
     charge = +1.0 if pdg < 0 else -1.0          # PDG 13 = mu-
     r = np.array(r, float)
     u = np.array(u, float)
     e = float(e_tot)
+    sinv = 0.0
     for _ in range(_MU_MAX_STEPS):
         s_bound, hit_ground = _boundary(r, u)
         if s_bound <= 0.0:
+            if stats is not None:
+                stats["sinv"] = sinv
             return ("ground" if hit_ground else "escape"), r, u, e
         rn = float(np.linalg.norm(r))
         h = rn - R_EARTH_CM
@@ -171,10 +183,13 @@ def transport_muon(rng, pdg, e_tot, r, u, cfg):
         if t_acc + dt >= t_target:
             ds = ds * (t_target - t_acc) / max(dt, 1e-30)
             r_dec = r + ds * u
+            if stats is not None:
+                stats["sinv"] = sinv + ds / max(p, 1e-9)
             if cfg.energy_loss:
                 e = max(e - dedx_air(e) * atm.grammage(r, u, ds), m)
             return "decay", r_dec, u, e
         t_acc += dt
+        sinv += ds / max(p, 1e-9)
         r_new = r + ds * u
         if cfg.energy_loss:
             dX = atm.grammage(r, u, ds)
@@ -183,23 +198,28 @@ def transport_muon(rng, pdg, e_tot, r, u, cfg):
                 e_mid = max(e - 0.5 * dedx_air(e) * dX, m)
                 e = e - dedx_air(e_mid) * dX
                 if e <= m * 1.0005:
+                    if stats is not None:
+                        stats["sinv"] = sinv
                     return "stop", r_new, u, m
         if (not cfg.collinear) and cfg.bfield is not None:
             b = cfg.bfield(np.array([r_new / 100.0]))[0]      # cm -> m, tesla
             # d u / ds = (q c / (p c [GeV])) u x B ; p in GeV/c, B in T
             p = np.sqrt(max(e * e - m * m, 0.0))
-            k = charge * 2.99792458e-4 / max(p, 1e-9)        # rad per metre
+            k = charge * 0.299792458 / max(p, 1e-9)          # rad per metre per T
             du = k * np.cross(u, b) * (ds / 100.0)
             u = u + du
             u /= np.linalg.norm(u)
         r = r_new
+    if stats is not None:
+        stats["sinv"] = sinv
     return "escape", r, u, e
 
 
 # ---------------------------------------------------------------------------
 # the shower
 # ---------------------------------------------------------------------------
-def run_shower(rng, pdg0, e0, r0, u0, backend, cfg, scorer, weight=1.0):
+def run_shower(rng, pdg0, e0, r0, u0, backend, cfg, scorer, weight=1.0,
+               first=None):
     """Track one primary and everything it makes.
 
     Every stack entry carries, besides the kinematics, the PDG id of the
@@ -212,8 +232,24 @@ def run_shower(rng, pdg0, e0, r0, u0, backend, cfg, scorer, weight=1.0):
     that is what lets ``scoring.ConeScorer`` split the production cone by
     parent channel (direct pi, K, mu decay) at no extra cost.  Other scorers
     keep the plain ``add(pdg, e, r, u, w)`` call.
+
+    Milestone 3b hooks (both default off, leaving the RNG stream and every
+    result unchanged):
+
+    ``first = (kind, r_new, u_new)``  the primary's transport to its first
+        interaction, computed outside (``bend.bend_primary``, vectorised over
+        all the primaries of a task, in the geomagnetic field); ``kind`` is
+        ``'interact'``, ``'ground'`` or ``'escape'``.  The interaction then
+        happens at ``r_new`` with the bent direction ``u_new``.
+    ``scorer.add_muon``  if the scorer has it (``wants_muons = True``), it is
+        called for every muon after its transport with the muon's start state
+        and polarisation, its outcome, ``int ds/p`` and its proper decay time
+        (``t_target``) -- what the per-copy re-transport of the muon segments
+        in the azimuthal copies needs (it re-uses ``t_target``).
     """
     tagged = bool(getattr(scorer, "wants_parent", False))
+    want_mu = bool(getattr(scorer, "wants_muons", False))
+    mstats = {} if want_mu else None
     stack = [(int(pdg0), float(e0), np.array(r0, float), np.array(u0, float),
               float(weight), 0.0, 0, 0)]
     n_done = 0
@@ -234,7 +270,13 @@ def run_shower(rng, pdg0, e0, r0, u0, backend, cfg, scorer, weight=1.0):
         if thr is None or e < thr:
             continue
         if abs(pdg) == 13:
-            kind, r, u, e = transport_muon(rng, pdg, e, r, u, cfg)
+            if want_mu:
+                r_s, u_s, e_s = r, u, e
+            kind, r, u, e = transport_muon(rng, pdg, e, r, u, cfg, mstats)
+            if want_mu:
+                scorer.add_muon(pdg, e_s, r_s, u_s, pol, par, gen, kind, r, u,
+                                e, mstats.get("sinv", 0.0),
+                                mstats.get("t_target", 0.0))
             if kind in ("ground", "escape"):
                 if kind == "escape":
                     n_escape += 1
@@ -246,7 +288,11 @@ def run_shower(rng, pdg0, e0, r0, u0, backend, cfg, scorer, weight=1.0):
                 stack.append(_child(d_pdg, d_p4, r, u, w, d_pol, cfg,
                                     pdg, gen))
             continue
-        kind, r_new = transport_hadron(rng, pdg, e, r, u, backend)
+        if first is not None and n_done == 1:
+            kind, r_new, u = first[0], np.asarray(first[1], float), \
+                np.asarray(first[2], float)
+        else:
+            kind, r_new = transport_hadron(rng, pdg, e, r, u, backend)
         if kind == "ground":
             continue
         if kind == "escape":

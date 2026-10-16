@@ -33,8 +33,11 @@ New here:
   (model, date) -- equal to ``ppigrf`` to ~1e-15 relative (``test_cutoff.py``)
   -- and is swapped in for the duration of a trace by a context manager.  It
   also makes the model explicit: ``ppigrf`` 2.1.0 *defaults to IGRF-14*,
-  whatever ``geomag_backtrace``'s docstrings say; here the default is IGRF-13
-  (``DEFAULT_MODEL``) and either can be chosen.
+  whatever ``geomag_backtrace``'s docstrings say.  **The default here is
+  IGRF-14** (``DEFAULT_MODEL``; project decision of milestone 3b: it holds the
+  definitive DGRF-2020 coefficients and it is what every Phase-1 map actually
+  used through ppigrf's default), for the 3D cutoff test, the 1D site map, and
+  the primary and muon bending alike; IGRF-13 stays selectable.
 * **A rigidity-dependent step and a path budget** (``step_m``, ``MAX_S_M``).
   ``backtrace_vec``'s default ``ds = 100 km`` exceeds the gyroradius of a
   1.7 GV proton near the surface (~95 km at 60 uT), and the injection patch
@@ -69,7 +72,10 @@ import geomag_backtrace as gb
 from constants import H_INJ_KM, M_P, R_EARTH_CM
 
 DEFAULT_DATE = datetime.datetime(2020, 1, 1)
-DEFAULT_MODEL = "IGRF13"
+#: field model everywhere (cutoff test, 1D site map, primary and muon bending):
+#: IGRF-14 = DGRF-2020 at the 2020-01-01 epoch (milestone-3b decision; it was
+#: "IGRF13" in milestone 3a, whose studies quote IGRF-13 numbers)
+DEFAULT_MODEL = "IGRF14"
 #: escape sphere [R_E = 6371 km] -- Honda's 10 R_e (he uses R_e = 6378.18 km)
 R_ESCAPE_RE = 10.0
 #: path budget [m] (31 R_E); a trace still bound after it is trapped -> forbidden.
@@ -497,7 +503,7 @@ def trace_allowed(r_cm, u, rigidity, charge=1, *, date=DEFAULT_DATE,
     r_escape : escape radius [R_E]; ``ds_m`` the step [m] (scalar, or ``None``
         for the rigidity-dependent :func:`step_m`); ``max_s_m`` the path budget
         [m] after which a still-bound trace counts as forbidden.
-    model, fast_field : field model (``"IGRF13"``/``"IGRF14"``) and whether to
+    model, fast_field : field model (``"IGRF14"`` default /``"IGRF13"``) and whether to
         use :class:`FastIGRF` (``False`` = stock ppigrf, the reference path).
     r_switch, m_hat : passed to ``backtrace_vec`` (``r_switch=0`` with
         ``m_hat`` = a unit axis is a pure centred dipole -- the Stoermer case).

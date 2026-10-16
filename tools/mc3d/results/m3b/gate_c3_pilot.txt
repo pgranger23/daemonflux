@@ -1,0 +1,60 @@
+C3 vertical     nue       E=0.3: MC v/t = 0.4561 +- 0.0139   engine G_s = 0.4488   MC/engine = 1.016 +- 0.031
+C3 vertical     nue       E=0.5: MC v/t = 0.5665 +- 0.0166   engine G_s = 0.5425   MC/engine = 1.044 +- 0.031
+C3 vertical     nue       E=1.0: MC v/t = 0.6464 +- 0.0199   engine G_s = 0.6901   MC/engine = 0.937 +- 0.029
+C3 vertical     antinue   E=0.3: MC v/t = 0.5152 +- 0.0122   engine G_s = 0.5095   MC/engine = 1.011 +- 0.024
+C3 vertical     antinue   E=0.5: MC v/t = 0.6225 +- 0.0229   engine G_s = 0.6066   MC/engine = 1.026 +- 0.038
+C3 vertical     antinue   E=1.0: MC v/t = 0.7515 +- 0.0229   engine G_s = 0.7491   MC/engine = 1.003 +- 0.031
+C3 vertical     numu      E=0.3: MC v/t = 0.4829 +- 0.0082   engine G_s = 0.4935   MC/engine = 0.978 +- 0.017
+C3 vertical     numu      E=0.5: MC v/t = 0.6043 +- 0.0123   engine G_s = 0.5934   MC/engine = 1.018 +- 0.021
+C3 vertical     numu      E=1.0: MC v/t = 0.7508 +- 0.0211   engine G_s = 0.7480   MC/engine = 1.004 +- 0.028
+C3 vertical     antinumu  E=0.3: MC v/t = 0.3937 +- 0.1270   engine G_s = 0.4919   MC/engine = 0.800 +- 0.258
+C3 vertical     antinumu  E=0.5: MC v/t = 0.5934 +- 0.0100   engine G_s = 0.5924   MC/engine = 1.002 +- 0.017
+C3 vertical     antinumu  E=1.0: MC v/t = 0.7629 +- 0.0190   engine G_s = 0.7520   MC/engine = 1.014 +- 0.025
+C3 87E 60-90    nue       E=0.3: MC v/t = 0.1049 +- 0.0240   engine G_s = 0.1151   MC/engine = 0.911 +- 0.209
+C3 87E 60-90    nue       E=0.5: MC v/t = 0.1711 +- 0.0287   engine G_s = 0.1590   MC/engine = 1.076 +- 0.180
+C3 87E 60-90    nue       E=1.0: MC v/t = 0.1976 +- 0.0383   engine G_s = 0.2548   MC/engine = 0.776 +- 0.150
+C3 87E 60-90    antinue   E=0.3: MC v/t = 0.1118 +- 0.0295   engine G_s = 0.1363   MC/engine = 0.820 +- 0.216
+C3 87E 60-90    antinue   E=0.5: MC v/t = 0.1887 +- 0.0382   engine G_s = 0.1886   MC/engine = 1.000 +- 0.203
+C3 87E 60-90    antinue   E=1.0: MC v/t = 0.3016 +- 0.0540   engine G_s = 0.2993   MC/engine = 1.008 +- 0.180
+C3 87E 60-90    numu      E=0.3: MC v/t = 0.1296 +- 0.0173   engine G_s = 0.1329   MC/engine = 0.975 +- 0.130
+C3 87E 60-90    numu      E=0.5: MC v/t = 0.2076 +- 0.0256   engine G_s = 0.1821   MC/engine = 1.140 +- 0.141
+C3 87E 60-90    numu      E=1.0: MC v/t = 0.2446 +- 0.0528   engine G_s = 0.2900   MC/engine = 0.843 +- 0.182
+C3 87E 60-90    antinumu  E=0.3: MC v/t = 0.1095 +- 0.0204   engine G_s = 0.1305   MC/engine = 0.839 +- 0.156
+C3 87E 60-90    antinumu  E=0.5: MC v/t = 0.1836 +- 0.0341   engine G_s = 0.1797   MC/engine = 1.022 +- 0.190
+C3 87E 60-90    antinumu  E=1.0: MC v/t = 0.3657 +- 0.0722   engine G_s = 0.2891   MC/engine = 1.265 +- 0.250
+C3 87E 90-120   nue       E=0.3: MC v/t = 0.1058 +- 0.0239   engine G_s = 0.1352   MC/engine = 0.783 +- 0.177
+C3 87E 90-120   nue       E=0.5: MC v/t = 0.1951 +- 0.0447   engine G_s = 0.1849   MC/engine = 1.055 +- 0.242
+C3 87E 90-120   nue       E=1.0: MC v/t = 0.2265 +- 0.0404   engine G_s = 0.2908   MC/engine = 0.779 +- 0.139
+C3 87E 90-120   antinue   E=0.3: MC v/t = 0.1260 +- 0.0320   engine G_s = 0.1597   MC/engine = 0.789 +- 0.200
+C3 87E 90-120   antinue   E=0.5: MC v/t = 0.2252 +- 0.0442   engine G_s = 0.2185   MC/engine = 1.030 +- 0.202
+C3 87E 90-120   antinue   E=1.0: MC v/t = 0.3150 +- 0.0598   engine G_s = 0.3395   MC/engine = 0.928 +- 0.176
+C3 87E 90-120   numu      E=0.3: MC v/t = 0.1307 +- 0.0162   engine G_s = 0.1557   MC/engine = 0.839 +- 0.104
+C3 87E 90-120   numu      E=0.5: MC v/t = 0.2253 +- 0.0276   engine G_s = 0.2113   MC/engine = 1.067 +- 0.131
+C3 87E 90-120   numu      E=1.0: MC v/t = 0.2965 +- 0.0637   engine G_s = 0.3297   MC/engine = 0.899 +- 0.193
+C3 87E 90-120   antinumu  E=0.3: MC v/t = 0.1191 +- 0.0214   engine G_s = 0.1529   MC/engine = 0.779 +- 0.140
+C3 87E 90-120   antinumu  E=0.5: MC v/t = 0.1909 +- 0.0374   engine G_s = 0.2084   MC/engine = 0.916 +- 0.179
+C3 87E 90-120   antinumu  E=1.0: MC v/t = 0.3869 +- 0.0691   engine G_s = 0.3283   MC/engine = 1.179 +- 0.211
+C3 87W 240-270  nue       E=0.3: MC v/t = 0.4615 +- 0.0799   engine G_s = 0.5739   MC/engine = 0.804 +- 0.139
+C3 87W 240-270  nue       E=0.5: MC v/t = 0.7765 +- 0.0728   engine G_s = 0.6790   MC/engine = 1.144 +- 0.107
+C3 87W 240-270  nue       E=1.0: MC v/t = 0.9001 +- 0.0629   engine G_s = 0.8213   MC/engine = 1.096 +- 0.077
+C3 87W 240-270  antinue   E=0.3: MC v/t = 0.5561 +- 0.1077   engine G_s = 0.6360   MC/engine = 0.874 +- 0.169
+C3 87W 240-270  antinue   E=0.5: MC v/t = 0.8848 +- 0.0460   engine G_s = 0.7387   MC/engine = 1.198 +- 0.062
+C3 87W 240-270  antinue   E=1.0: MC v/t = 0.8608 +- 0.0757   engine G_s = 0.8641   MC/engine = 0.996 +- 0.088
+C3 87W 240-270  numu      E=0.3: MC v/t = 0.6059 +- 0.0360   engine G_s = 0.6311   MC/engine = 0.960 +- 0.057
+C3 87W 240-270  numu      E=0.5: MC v/t = 0.8064 +- 0.0472   engine G_s = 0.7339   MC/engine = 1.099 +- 0.064
+C3 87W 240-270  numu      E=1.0: MC v/t = 0.9502 +- 0.0348   engine G_s = 0.8643   MC/engine = 1.099 +- 0.040
+C3 87W 240-270  antinumu  E=0.3: MC v/t = 0.5907 +- 0.0800   engine G_s = 0.6186   MC/engine = 0.955 +- 0.129
+C3 87W 240-270  antinumu  E=0.5: MC v/t = 0.8508 +- 0.0434   engine G_s = 0.7191   MC/engine = 1.183 +- 0.060
+C3 87W 240-270  antinumu  E=1.0: MC v/t = 0.9809 +- 0.0192   engine G_s = 0.8548   MC/engine = 1.148 +- 0.022
+C3 87W 270-300  nue       E=0.3: MC v/t = 0.5074 +- 0.0878   engine G_s = 0.5744   MC/engine = 0.883 +- 0.153
+C3 87W 270-300  nue       E=0.5: MC v/t = 0.8278 +- 0.0487   engine G_s = 0.6797   MC/engine = 1.218 +- 0.072
+C3 87W 270-300  nue       E=1.0: MC v/t = 0.9275 +- 0.0416   engine G_s = 0.8223   MC/engine = 1.128 +- 0.051
+C3 87W 270-300  antinue   E=0.3: MC v/t = 0.5420 +- 0.1129   engine G_s = 0.6367   MC/engine = 0.851 +- 0.177
+C3 87W 270-300  antinue   E=0.5: MC v/t = 0.8303 +- 0.0688   engine G_s = 0.7397   MC/engine = 1.122 +- 0.093
+C3 87W 270-300  antinue   E=1.0: MC v/t = 0.8659 +- 0.0733   engine G_s = 0.8652   MC/engine = 1.001 +- 0.085
+C3 87W 270-300  numu      E=0.3: MC v/t = 0.6348 +- 0.0336   engine G_s = 0.6318   MC/engine = 1.005 +- 0.053
+C3 87W 270-300  numu      E=0.5: MC v/t = 0.8226 +- 0.0473   engine G_s = 0.7348   MC/engine = 1.119 +- 0.064
+C3 87W 270-300  numu      E=1.0: MC v/t = 0.9387 +- 0.0348   engine G_s = 0.8654   MC/engine = 1.085 +- 0.040
+C3 87W 270-300  antinumu  E=0.3: MC v/t = 0.5949 +- 0.0842   engine G_s = 0.6192   MC/engine = 0.961 +- 0.136
+C3 87W 270-300  antinumu  E=0.5: MC v/t = 0.8446 +- 0.0453   engine G_s = 0.7200   MC/engine = 1.173 +- 0.063
+C3 87W 270-300  antinumu  E=1.0: MC v/t = 0.9802 +- 0.0199   engine G_s = 0.8558   MC/engine = 1.145 +- 0.023

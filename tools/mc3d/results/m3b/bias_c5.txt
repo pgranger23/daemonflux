@@ -1,0 +1,60 @@
+# gate C5: bias of reusing a cascade by rotation for primaries above r_thr,
+# = 3D observable(re-anchored above r_thr) - observable(rotated everywhere),
+# paired runs a1rot/a1anc (1e6 primaries, same seeds), stratified jackknife
+r_thr    0.0 GV (35 strata reused): d(a1/a0) mean +0.1504, rms 0.1687, max |.| 0.3103; mean rel +0.838, rms rel 1.353; rms d(dphi) 41.17 deg; chi2(d=0)/36 = 7.15; |d|/sigma_stat(1e6) rms 3.471
+   nue +0.159+-0.194 +0.072+-0.065 +0.181+-0.040 +0.215+-0.153 +0.228+-0.067 +0.163+-0.048 +0.290+-0.115 +0.189+-0.116 +0.152+-0.088
+   antinue +0.296+-0.088 +0.034+-0.059 +0.080+-0.050 +0.124+-0.187 +0.122+-0.088 +0.190+-0.065 -0.036+-0.208 +0.051+-0.134 +0.154+-0.107
+   numu +0.140+-0.077 +0.142+-0.052 +0.086+-0.033 +0.214+-0.106 +0.113+-0.062 +0.179+-0.040 +0.286+-0.133 +0.144+-0.074 +0.173+-0.053
+   antinumu +0.057+-0.071 +0.062+-0.038 +0.141+-0.026 +0.105+-0.108 +0.081+-0.039 +0.149+-0.046 +0.223+-0.096 +0.310+-0.049 +0.147+-0.040
+r_thr    4.5 GV (29 strata reused): d(a1/a0) mean +0.1300, rms 0.1492, max |.| 0.2941; mean rel +0.812, rms rel 1.468; rms d(dphi) 38.46 deg; chi2(d=0)/36 = 6.19; |d|/sigma_stat(1e6) rms 2.993
+r_thr   10.9 GV (24 strata reused): d(a1/a0) mean +0.0416, rms 0.0670, max |.| 0.1755; mean rel +0.254, rms rel 0.633; rms d(dphi) 33.04 deg; chi2(d=0)/36 = 2.19; |d|/sigma_stat(1e6) rms 1.278
+r_thr   15.0 GV (24 strata reused): d(a1/a0) mean +0.0416, rms 0.0670, max |.| 0.1755; mean rel +0.254, rms rel 0.633; rms d(dphi) 33.04 deg; chi2(d=0)/36 = 2.19; |d|/sigma_stat(1e6) rms 1.278
+r_thr   20.0 GV (24 strata reused): d(a1/a0) mean +0.0416, rms 0.0670, max |.| 0.1755; mean rel +0.254, rms rel 0.633; rms d(dphi) 33.04 deg; chi2(d=0)/36 = 2.19; |d|/sigma_stat(1e6) rms 1.278
+   nue -0.044+-0.130 +0.016+-0.027 +0.038+-0.014 -0.036+-0.098 +0.045+-0.036 +0.053+-0.030 +0.147+-0.100 +0.105+-0.083 +0.047+-0.048
+   antinue +0.110+-0.119 +0.009+-0.026 +0.010+-0.027 -0.030+-0.162 +0.014+-0.055 +0.014+-0.024 -0.004+-0.113 -0.001+-0.091 +0.091+-0.071
+   numu +0.061+-0.063 +0.056+-0.023 +0.003+-0.019 +0.072+-0.064 +0.031+-0.030 +0.044+-0.023 +0.175+-0.094 +0.056+-0.050 +0.030+-0.021
+   antinumu -0.010+-0.053 +0.001+-0.015 +0.047+-0.016 +0.001+-0.067 -0.031+-0.032 +0.049+-0.023 +0.140+-0.075 +0.132+-0.040 +0.054+-0.017
+r_thr   33.0 GV (19 strata reused): d(a1/a0) mean +0.0031, rms 0.0154, max |.| 0.0379; mean rel +0.024, rms rel 0.151; rms d(dphi) 11.87 deg; chi2(d=0)/36 = 1.25; |d|/sigma_stat(1e6) rms 0.292
+   nue +0.011+-0.014 -0.002+-0.009 +0.007+-0.006 +0.010+-0.022 +0.012+-0.008 -0.002+-0.008 -0.002+-0.074 -0.010+-0.036 -0.005+-0.016
+   antinue +0.023+-0.030 +0.014+-0.010 -0.008+-0.008 -0.038+-0.026 +0.005+-0.012 -0.005+-0.009 -0.003+-0.059 -0.004+-0.058 +0.030+-0.014
+   numu -0.022+-0.019 +0.008+-0.003 +0.004+-0.003 +0.012+-0.022 -0.010+-0.007 +0.011+-0.005 +0.034+-0.070 +0.017+-0.015 -0.005+-0.011
+   antinumu -0.027+-0.026 +0.002+-0.005 +0.004+-0.004 +0.016+-0.034 +0.004+-0.009 -0.010+-0.007 -0.004+-0.028 +0.031+-0.017 +0.013+-0.010
+r_thr   60.0 GV (19 strata reused): d(a1/a0) mean +0.0031, rms 0.0154, max |.| 0.0379; mean rel +0.024, rms rel 0.151; rms d(dphi) 11.87 deg; chi2(d=0)/36 = 1.25; |d|/sigma_stat(1e6) rms 0.292
+r_thr  101.0 GV (14 strata reused): d(a1/a0) mean +0.0006, rms 0.0093, max |.| 0.0389; mean rel +0.002, rms rel 0.070; rms d(dphi) 1.95 deg; chi2(d=0)/36 = 0.97; |d|/sigma_stat(1e6) rms 0.112
+
+# per stratum: chi2/36 of (re-anchored - rotated) for that stratum alone, and the mean d(a1/a0)
+  p    0 R_lo     1.7 GV: chi2/36   0.00  mean d +0.0000  rms d 0.0000
+  p    1 R_lo     4.0 GV: chi2/36   2.23  mean d +0.0130  rms d 0.0483
+  p    2 R_lo    10.9 GV: chi2/36   3.80  mean d +0.0615  rms d 0.0724
+  p    3 R_lo    32.5 GV: chi2/36   1.22  mean d +0.0157  rms d 0.0266
+  p    4 R_lo   100.9 GV: chi2/36   1.03  mean d -0.0006  rms d 0.0092
+  p    5 R_lo   317.2 GV: chi2/36   0.83  mean d +0.0005  rms d 0.0028
+  p    6 R_lo  1000.9 GV: chi2/36   1.13  mean d -0.0000  rms d 0.0005
+  He   0 R_lo     3.4 GV: chi2/36   1.05  mean d +0.0011  rms d 0.0066
+  He   1 R_lo     8.0 GV: chi2/36   1.20  mean d +0.0186  rms d 0.0372
+  He   2 R_lo    21.8 GV: chi2/36   1.59  mean d +0.0153  rms d 0.0431
+  He   3 R_lo    65.1 GV: chi2/36   1.10  mean d +0.0029  rms d 0.0120
+  He   4 R_lo   201.9 GV: chi2/36   1.04  mean d -0.0000  rms d 0.0090
+  He   5 R_lo   634.3 GV: chi2/36   1.37  mean d +0.0002  rms d 0.0015
+  He   6 R_lo  2001.9 GV: chi2/36   2.80  mean d +0.0000  rms d 0.0001
+  CNO  0 R_lo     3.4 GV: chi2/36   0.34  mean d -0.0006  rms d 0.0024
+  CNO  1 R_lo     8.0 GV: chi2/36   1.10  mean d -0.0010  rms d 0.0179
+  CNO  2 R_lo    21.8 GV: chi2/36   0.96  mean d +0.0038  rms d 0.0100
+  CNO  3 R_lo    65.1 GV: chi2/36   0.62  mean d +0.0004  rms d 0.0064
+  CNO  4 R_lo   201.9 GV: chi2/36   0.84  mean d +0.0001  rms d 0.0010
+  CNO  5 R_lo   634.3 GV: chi2/36   0.62  mean d +0.0001  rms d 0.0005
+  CNO  6 R_lo  2001.9 GV: chi2/36   0.89  mean d +0.0000  rms d 0.0000
+  MgSi 0 R_lo     3.5 GV: chi2/36   0.15  mean d +0.0002  rms d 0.0013
+  MgSi 1 R_lo     8.3 GV: chi2/36   3.14  mean d +0.0006  rms d 0.0083
+  MgSi 2 R_lo    22.7 GV: chi2/36   1.90  mean d +0.0000  rms d 0.0060
+  MgSi 3 R_lo    67.8 GV: chi2/36   0.66  mean d +0.0001  rms d 0.0026
+  MgSi 4 R_lo   210.3 GV: chi2/36   0.99  mean d +0.0001  rms d 0.0010
+  MgSi 5 R_lo   660.8 GV: chi2/36   0.32  mean d -0.0000  rms d 0.0002
+  MgSi 6 R_lo  2085.3 GV: chi2/36   0.25  mean d +0.0000  rms d 0.0000
+  Fe   0 R_lo     3.7 GV: chi2/36   0.16  mean d +0.0001  rms d 0.0011
+  Fe   1 R_lo     8.6 GV: chi2/36  14.45  mean d -0.0008  rms d 0.0105
+  Fe   2 R_lo    23.5 GV: chi2/36   5.46  mean d +0.0008  rms d 0.0070
+  Fe   3 R_lo    70.1 GV: chi2/36   1.15  mean d -0.0004  rms d 0.0043
+  Fe   4 R_lo   217.4 GV: chi2/36   0.86  mean d -0.0004  rms d 0.0033
+  Fe   5 R_lo   683.1 GV: chi2/36   0.34  mean d -0.0000  rms d 0.0001
+  Fe   6 R_lo  2155.9 GV: chi2/36   0.24  mean d +0.0000  rms d 0.0000
