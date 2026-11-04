@@ -188,8 +188,8 @@ def mceq_reference(e_p, model="SIBYLL23D", e_min=0.05, theta_deg=0.0,
     cfg.debug_level = 0
     cfg.muon_helicity_dependence = bool(helicity)
     import crflux.models as crf
-    from MCEq.core import MCEqRun
-    mc = MCEqRun(interaction_model=model,
+    import mceq3d_db
+    mc = mceq3d_db.make_run(interaction_model=model,
                  primary_model=(crf.HillasGaisser2012, "H3a"),
                  theta_deg=theta_deg)
     mc.set_single_primary_particle(float(e_p), pdg_id=2212)

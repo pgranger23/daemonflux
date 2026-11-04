@@ -36,7 +36,48 @@ A_TARGET = 14.6568
 M_TARGET_G = A_TARGET * 1.672621e-24
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
-DEFAULT_TABLES = os.path.join(_HERE, "mceq_tables_SIBYLL23D.npz")
+#: MC tables.  ``mceq_tables_SIBYLL23D.npz`` = MCEq's shipped v1.4.0 database
+#: (56 GeV hole; milestones 1-3d); ``..._v142p.npz`` = patched v1.4.2 (milestone
+#: 3e default).  ``MC3D_TABLES=v140`` (or a path) selects another one.
+TABLES_V140 = os.path.join(_HERE, "mceq_tables_SIBYLL23D.npz")
+TABLES_V142P = os.path.join(_HERE, "mceq_tables_SIBYLL23D_v142p.npz")
+
+
+def _default_tables():
+    sel = os.environ.get("MC3D_TABLES")
+    if sel in (None, "", "v142p"):
+        return TABLES_V142P if os.path.exists(TABLES_V142P) else TABLES_V140
+    return TABLES_V140 if sel == "v140" else sel
+
+
+DEFAULT_TABLES = _default_tables()
+
+
+def table_database(d):
+    """``(label, sha256)`` recorded in a table npz (``None, None`` for the
+    pre-3e tables: MCEq's shipped v1.4.0 file)."""
+    if "db_sha256" in d.files:
+        return str(d["db_label"][0]), str(d["db_sha256"][0])
+    return None, None
+
+
+def check_database(d, path):
+    """Warn when the table's database is not the one ``mceq3d_db`` selects
+    (``$MCEQ3D_DB``, default v142p): the closure references and the cross
+    sections would then come from different files."""
+    import warnings
+    try:
+        import mceq3d_db
+        want = mceq3d_db.resolve()
+    except Exception:       # pragma: no cover  (mceq3d not on the path)
+        return
+    label, sha = table_database(d)
+    if sha is None:
+        sha, label = mceq3d_db.LEGACY_SHA256, "v140 (shipped; table predates the sha record)"
+    if sha != want.sha256:
+        warnings.warn(f"MC tables {os.path.basename(path)} were built from database "
+                      f"{label} but mceq3d_db selects {want.label}; set MCEQ3D_DB / "
+                      "MC3D_TABLES consistently", RuntimeWarning, stacklevel=3)
 
 
 class MCEqYieldBackend:
@@ -44,6 +85,8 @@ class MCEqYieldBackend:
 
     def __init__(self, path=DEFAULT_TABLES, decays=False):
         d = np.load(path)
+        check_database(d, path)
+        self.db = table_database(d)
         self.e_grid = d["e_grid"]
         self.e_bins = d["e_bins"]
         self.e_widths = d["e_widths"]

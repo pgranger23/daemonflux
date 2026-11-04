@@ -127,6 +127,9 @@ COUNT_NAMES = ("n_prim", "n_real", "n_pend3", "n_pend1", "n_pend_prim",
                "n_prim_escape", "cpu_mu")
 
 
+SPECIES_ORDER = tuple(g[0] for g in prim.SPECIES)
+
+
 class Options:
     """Run switches.  Defaults = everything on (milestone 3b)."""
 
@@ -135,7 +138,8 @@ class Options:
                  margin_extra_deg=2.0, model=None, date=None,
                  trace_batch=10000, max_files_per_group=64, keep_cfiles=True,
                  keep_reals=False, reanchor=False, mu_bend="full", crn=False,
-                 primary_energy=None, mu_cf=False, primary_model="H3A"):
+                 primary_energy=None, mu_cf=False, primary_model="H3A",
+                 resim_rmin=0.0, resim_groups=None):
         self.cutoff = bool(cutoff)
         self.bend_primary = bool(bend_primary)
         self.muon_field = bool(muon_field)
@@ -151,6 +155,12 @@ class Options:
         self.keep_cfiles = bool(keep_cfiles)
         self.keep_reals = bool(keep_reals)
         self.reanchor = bool(reanchor)
+        #: hybrid transport (milestone 3e): a primary is re-simulated in every
+        #: azimuthal copy only if ``resim_rmin <= R < r_thr`` and its group is in
+        #: ``resim_groups`` (``None`` = all); every other primary is rotated /
+        #: re-anchored.  Defaults = the milestone-3b rule ``R < r_thr``.
+        self.resim_rmin = float(resim_rmin)
+        self.resim_groups = None if resim_groups is None else tuple(resim_groups)
         if mu_bend not in MU_BEND_MODES:
             raise ValueError(f"mu_bend must be one of {MU_BEND_MODES}")
         #: diagnostic (milestone 3c): keep only the vertical or only the
@@ -189,6 +199,9 @@ class Options:
             s += [MU_BEND_MODES.index(self.mu_bend), self.crn]
         if pe:
             s += [prim.ENERGY_CONVENTIONS.index(self.primary_energy)]
+        if self.resim_rmin > 0.0 or self.resim_groups is not None:
+            s += [-1.0, self.resim_rmin] + [float(SPECIES_ORDER.index(g))
+                                            for g in (self.resim_groups or ())]
         return np.array(s, float)
 
     def needs_field(self):
@@ -473,6 +486,10 @@ def cascade_task(task):
         gate = np.ones((n, naz), int)
     # the realisation plan
     resim = (R < opts.r_thr) if opts.bend_primary else np.zeros(n, bool)
+    if opts.resim_rmin > 0.0:
+        resim &= R >= opts.resim_rmin
+    if opts.resim_groups is not None and gname not in opts.resim_groups:
+        resim[:] = False
     plan = []                    # (i, kind, copy j, r_start, u_start, bent?)
     for i in range(n):
         if not resim[i]:
@@ -1424,6 +1441,11 @@ def main(argv=None):
                          "model's own -- total for H3A/GST/GSF, kinetic for "
                          "GH), or force total (crflux's and MCEq's "
                          "convention) or kinetic (milestones 1-3b)")
+    ap.add_argument("--resim-rmin", type=float, default=0.0,
+                    help="hybrid transport: re-simulate only primaries with "
+                         "rigidity in [resim-rmin, r-thr) GV (default 0)")
+    ap.add_argument("--resim-groups", nargs="+", default=None,
+                    help="hybrid transport: groups that may be re-simulated")
     ap.add_argument("--mu-cf", action="store_true",
                     help="diagnostic: zero-field counterfactual of every "
                          "re-transported muon, fate classes (Tally.mucf)")
@@ -1438,7 +1460,8 @@ def main(argv=None):
                    margin_extra_deg=a.margin_extra, trace_batch=a.trace_batch,
                    reanchor=a.reanchor, mu_bend=a.mu_bend, crn=a.crn,
                    primary_energy=a.primary_energy, mu_cf=a.mu_cf,
-                   primary_model=a.model)
+                   primary_model=a.model, resim_rmin=a.resim_rmin,
+                   resim_groups=a.resim_groups)
     alloc = None
     if a.alloc:
         d = np.load(a.alloc)

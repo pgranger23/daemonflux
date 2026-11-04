@@ -46,9 +46,10 @@ def build(model="SIBYLL23D", emin=0.05, primary="H3a", out="mceq_tables.npz"):
     cfg.e_min = emin
     cfg.debug_level = 0
     import crflux.models as crf
-    from MCEq.core import MCEqRun
+    import mceq3d_db   # read-only: the one place that selects the MCEq database
 
-    mc = MCEqRun(
+    spec = mceq3d_db.resolve()
+    mc = mceq3d_db.make_run(
         interaction_model=model,
         primary_model=(crf.HillasGaisser2012, primary),
         theta_deg=0.0,
@@ -58,7 +59,9 @@ def build(model="SIBYLL23D", emin=0.05, primary="H3a", out="mceq_tables.npz"):
     xr = eg[:, None] / eg[None, :]        # E_i / E_j
 
     data = {"e_grid": eg, "e_widths": ew, "e_bins": eb,
-            "model": np.array([model]), "emin": np.array([emin])}
+            "model": np.array([model]), "emin": np.array([emin]),
+            "db_label": np.array([spec.label]),
+            "db_sha256": np.array([spec.sha256])}
     for p in PARENTS:
         data[f"cs_{p}"] = mc._int_cs.get_cs(p)
         for c in CHILDREN:
@@ -98,7 +101,7 @@ def main(argv=None):
     ap.add_argument("--model", default="SIBYLL23D")
     ap.add_argument("--emin", type=float, default=0.05)
     ap.add_argument("--primary", default="H3a")
-    ap.add_argument("--out", default="mceq_tables_SIBYLL23D.npz")
+    ap.add_argument("--out", default="mceq_tables_SIBYLL23D_v142p.npz")
     a = ap.parse_args(argv)
     build(a.model, a.emin, a.primary, a.out)
 

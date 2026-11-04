@@ -190,3 +190,42 @@ def test_primary_sample_draw_order_is_what_the_replay_regenerates():
         e2 = np.exp(rng.uniform(np.log(sky.STRATA[k]), np.log(sky.STRATA[k + 1]), n))
         isp2 = rng.random(n) < (z / a_mass)
         assert np.array_equal(e, e2) and np.array_equal(isp, isp2)
+
+
+def test_hybrid_resim_option_keeps_signatures_and_selects_primaries():
+    import sky3d
+    a = sky3d.Options(primary_energy="kinetic")
+    assert np.array_equal(a.signature(), sky3d.Options(primary_energy="kinetic",
+                                                       resim_rmin=0.0).signature())
+    h = sky3d.Options(r_thr=65.0, reanchor=True, resim_rmin=32.0,
+                      resim_groups=("p",))
+    s = h.signature()
+    assert s[-3] == -1.0 and s[-2] == 32.0 and s[-1] == 0.0
+    assert not np.array_equal(s[:9], sky3d.Options(r_thr=65.0).signature()[:9]) \
+        or len(s) > 9
+    assert len(sky3d.Options(r_thr=65.0, reanchor=True).signature()) < len(s)
+
+
+def test_mc_tables_record_and_check_their_database():
+    import os
+    import warnings
+    import interactions as I
+    p = I.TABLES_V142P
+    if not os.path.exists(p):
+        pytest.skip("v142p tables not built")
+    d = np.load(p)
+    assert I.table_database(d)[1] and len(I.table_database(d)[1]) == 64
+    old = np.load(I.TABLES_V140)
+    assert I.table_database(old) == (None, None)
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        I.check_database(old, I.TABLES_V140)          # v140 table, v142p selected
+    assert any("built from database" in str(x.message) for x in w)
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        I.check_database(d, p)
+    assert not w
+    # the 56 GeV hole is gone in the new table
+    i = int(np.argmin(abs(d["e_grid"] - 56.2)))
+    assert d["cs_2212"][i] > 0.95 * d["cs_2212"][i - 1]
+    assert old["cs_2212"][i] < 0.85 * old["cs_2212"][i - 1]
