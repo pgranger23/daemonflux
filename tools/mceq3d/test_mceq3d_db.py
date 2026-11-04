@@ -63,7 +63,9 @@ def test_cache_key_changes_with_database():
     assert len({t_old, t_hole, t_new}) == 3
     args = ("SIBYLL23D", ("GlobalSplineFitBeta", None), 0.1, None)
     tags = [engine_tag(*args, t) for t in (t_old, t_hole, t_new)]
-    assert tags[0] == "SIBYLL23D_GlobalSplineFitBeta-None_emin0.1_atmstd"  # legacy
+    # the shipped v1.4.0 file keeps an empty database tag; the rigidity-convention
+    # token (2026-11) is in every key, so no pre-fix G_s can be served
+    assert tags[0] == "SIBYLL23D_GlobalSplineFitBeta-None_emin0.1_atmstd_rigp1"
     names = [gs_cache_name(t, 1.0, RC, 0.5) for t in tags]
     assert len(set(names)) == 3
     # prefix property used by offaxis_factor(): the table tag is still a prefix

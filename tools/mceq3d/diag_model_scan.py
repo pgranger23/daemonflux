@@ -69,7 +69,7 @@ PRIMARIES = {
     # Gaisser-Honda (2002) -- the closest thing crflux carries to Honda's own
     # primary parametrisation.  HKKM2014's actual fit (Honda et al. 2011/2015,
     # refitted to AMS-02/BESS/PAMELA) is NOT distributed with crflux.
-    "GH": ("GaisserHonda", None),
+    "GH": ("GaisserHondaAtTotal", None),
 }
 
 

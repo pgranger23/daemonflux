@@ -82,6 +82,7 @@ import os
 import numpy as np
 
 import mceq3d_db as _db
+from mceq3d_primary import M_NUCLEON, primary_class
 
 # Site-independent G_s and per-site cutoff maps are cached here (see solve(use_cache)).
 _CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "flux_cache")
@@ -222,12 +223,62 @@ def _transmission(e_grid, rc_gv, sigma_lnr=None, az_over_z=1.0, dlne=None):
     return np.clip(0.5 + (prim(b) - prim(a)) / (2.0 * w), 0.0, 1.0)
 
 
+#: Rigidity convention of the G_s response, part of every G_s cache key.
+#: ``rigp1`` (2026-11): the cut acts on R = (A/Z) p_N with the true per-nucleon
+#: momentum p_N = sqrt(T (T + 2 m)) of the (kinetic) grid.  The previous, unlabelled
+#: convention used R = (A/Z) T, i.e. cut at the kinetic energy; no such G_s may be
+#: served any more.
+RIGIDITY_TAG = "rigp1"
+
+
+def _nucleon_transmission(e_kin, rc_gv, sigma_lnr=None, az_over_z=1.0,
+                          m=M_NUCLEON, dlne=None, nsub=32):
+    """Rigidity-cutoff transmission of nucleons on a KINETIC-energy grid.
+
+    The cutoff is ``R = (A/Z) p_N >= R_c`` with ``p_N = sqrt(T (T + 2 m))`` the
+    momentum per nucleon (``az_over_z`` may be an array, one value per bin).  The
+    step (an erf of width ``sigma_lnr`` in ``ln R``; 0 = hard) is averaged over each
+    bin of the log-uniform ``T`` grid, as :func:`_transmission` does for a momentum
+    grid, but in the variable the bins are uniform in:
+
+    * hard step: exact, the fraction of the bin ``[ln T -+ dlnT/2]`` above the
+      threshold ``T_c = sqrt(m^2 + (R_c/az)^2) - m``;
+    * ``sigma > 0``: midpoint rule with ``nsub`` points per bin (the integrand is
+      smooth on the bin scale for ``sigma >~ 0.03``).
+
+    For ``T >> m`` it reduces to :func:`_transmission`.
+    """
+    from scipy.special import erf
+
+    if sigma_lnr is None:
+        sigma_lnr = SIGMA_LNR
+    s = float(sigma_lnr)
+    T = np.maximum(np.asarray(e_kin, float), 1e-9)
+    az = np.asarray(az_over_z, float)
+    w = _grid_dlne(T) if dlne is None else np.asarray(dlne, float)
+    lnT = np.log(T)
+    if np.all(w <= 0):
+        sub, wt = np.zeros((1,) + T.shape), 1.0
+    else:
+        k = (np.arange(nsub) + 0.5) / nsub - 0.5
+        sub, wt = k[:, None] * w[None, :], 1.0 / nsub
+    if s <= 0:
+        if np.all(w <= 0):
+            p = np.sqrt(T * (T + 2 * m))
+            return (az * p >= rc_gv).astype(float)
+        tc = np.sqrt(m * m + (rc_gv / az) ** 2) - m
+        return np.clip((lnT + 0.5 * w - np.log(tc)) / w, 0.0, 1.0)
+    Tk = np.exp(lnT[None, :] + sub)
+    x = np.log(az * np.sqrt(Tk * (Tk + 2 * m))) - np.log(float(rc_gv))
+    return (0.5 * (1.0 + erf(x / (np.sqrt(2) * s)))).sum(0) * wt
+
+
 def engine_tag(model, primary, e_min, atmosphere, db_tag=""):
     """Identity of an engine for the disk caches: model / primary / e_min /
     atmosphere / MCEq database (``db_tag`` = :attr:`mceq3d_db.DBSpec.tag`)."""
     return (
         f"{model}_{primary[0]}-{primary[1]}_emin{e_min:g}"
-        f"_atm{'std' if atmosphere is None else str(atmosphere)}{db_tag}"
+        f"_atm{'std' if atmosphere is None else str(atmosphere)}_{RIGIDITY_TAG}{db_tag}"
     )
 
 
@@ -594,13 +645,17 @@ def _nucleon_split(mceq, pm, e_grid):
     with np.errstate(invalid="ignore", divide="ignore"):
         f_free = np.where(p_arr > 0, np.clip((p_arr - n_arr) / p_arr, 0.0, 1.0), 1.0)
     cr = pm[0](pm[1])
+    # MCEq evaluates the primary model at the TOTAL energy per nucleon
+    # e_grid + m (MCEqRun.set_primary_model, m = mean nucleon mass), nucleus
+    # energy A (e_grid + m); weight with the same arguments.
+    m_nuc = 0.5 * (mceq.pman[(2212, 0)].mass + mceq.pman[(2112, 0)].mass)
     num = np.zeros_like(e_grid)
     den = np.zeros_like(e_grid)
     for cid in cr.nucleus_ids:
         Z, A = cr.Z_A(cid)
         if A <= 1:
             continue  # free protons handled separately (A/Z=1)
-        w = A * A * np.ravel(cr.nucleus_flux(cid, A * e_grid))
+        w = A * A * np.ravel(cr.nucleus_flux(cid, A * (e_grid + m_nuc)))
         num += (A / Z) * w
         den += w
     az_bound = np.where(den > 0, num / den, 2.0)
@@ -680,7 +735,7 @@ class MCEq3DFlux:
 
             self._df = Flux(location=daemonflux_location)
         config.e_min = e_min
-        pm = (getattr(crf, primary[0]), primary[1])
+        pm = (primary_class(primary[0]), primary[1])
         self.mceq = make_run(
             interaction_model=interaction_model, primary_model=pm, theta_deg=0.0
         )
@@ -730,7 +785,7 @@ class MCEq3DFlux:
 
             gim, gpr, atmosphere, e_min = self._gs_spec
             config.e_min = e_min
-            pm = (getattr(crf, gpr[0]), gpr[1])
+            pm = (primary_class(gpr[0]), gpr[1])
             run = make_run(
                 interaction_model=gim, primary_model=pm, theta_deg=0.0
             )
@@ -913,8 +968,10 @@ class MCEq3DFlux:
         for j, rc in enumerate(rc_grid):
             # proper per-nucleus rigidity: split the proton flux into free
             # (A/Z=1) and bound (A/Z~2); neutrons are all bound.
-            t1 = _transmission(self.e, rc, sigma_lnr, az_over_z=1.0)
-            t2 = _transmission(self.e, rc, sigma_lnr, az_over_z=az_bound)
+            # self.e is MCEq's KINETIC grid: cut on R = (A/Z) p_N, p_N = sqrt(T(T+2m))
+            # (RIGIDITY_TAG; before 2026-11 this cut R = (A/Z) T)
+            t1 = _nucleon_transmission(self.e, rc, sigma_lnr, az_over_z=1.0)
+            t2 = _nucleon_transmission(self.e, rc, sigma_lnr, az_over_z=az_bound)
             tp = f_free * t1 + (1.0 - f_free) * t2
             tn = t2
             mq._phi0[:] = phi0_std

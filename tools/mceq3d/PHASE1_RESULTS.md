@@ -831,3 +831,24 @@ tracked file touched; no git commands run.
   (the 4 failures are a stub in `test_cutoff_sublimb.py` unrelated to W4's files);
   W5 (channel E_off) 32 passed; W6 (muon-segment MC) 15 passed; W7 (penumbra)
   full suite 233 passed, 2 skipped.
+
+## 9. 2026-11-04: rigidity convention of G_s and the Gaisser-Honda energy variable
+
+Two errata, details and tables in `RIGIDITY_FIX.md`.
+
+* `geomag_response` cut R = (A/Z) T (kinetic energy per nucleon) instead of (A/Z) p_N.
+  Fixed (`_nucleon_transmission`, `RIGIDITY_TAG = "rigp1"` in every G_s cache key). **Every G_s
+  and every number of this file that depends on it was computed with the wrong cut**: G_s
+  was 3-15% too low below ~3 GeV at Kamioka cutoffs (GSF nu_mu, 7 GV: +14.5/+8.7/+3.3/+0.5%
+  at 0.1/0.3/1/3 GeV after the fix; 40 GV: +4.8/+4.3/+3.3/+1.7%). Delivered engine,
+  v142p before | after: H/V -0.6..+0.2%, W/E nu_mu (0.5 GeV, 87-75 deg) +1.4..+1.6%, N/S
+  model/Honda +6.5..+7.5% in every species (a level shift), charge splitting and phase
+  offsets unchanged (< 0.1 deg).
+* The primary scan of section 8.3 evaluated `GaisserHonda` at total energy per nucleon
+  (what MCEq passes), whereas the GH formula takes kinetic energy: its all-nucleon flux
+  was 0.64-0.88 of GSF at 3-20 GeV/n instead of 1.05-0.99. With the native variable and
+  the rigidity fix, nu_mu W/E at 87 deg, 0.5 GeV (muon_bending on): GSF +12%, H3a +3%,
+  **GH +9%** (the 8.3 value for GH, +1%, belongs to the mis-evaluated `GaisserHondaAtTotal`).
+  So the primary spectrum still accounts for most of the 0.5 GeV E-W residual through H3a,
+  but Gaisser-Honda does not.
+

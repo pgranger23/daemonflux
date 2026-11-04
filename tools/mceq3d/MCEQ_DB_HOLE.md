@@ -836,3 +836,13 @@ it, for the data-driven model) to exist; `MCEQ3D_DB=v140` needs nothing new.
   They test geometry, not database-dependent numbers; they were left alone.
 * The upstream issue text (section 7) is still unposted and should be amended: v1.4.2
   still has the hole, and the file differs from v1.4.0 for every model.
+
+### 10.11 Erratum (2026-11-04): G_s numbers in this file predate the rigidity fix
+
+All G_s values and G_s-based observables quoted in sections 5.4 and 10.5 were computed with the
+kinetic-energy cutoff convention fixed in `RIGIDITY_FIX.md` (G_s 3-15% too low below ~3 GeV).
+The *database-effect ratios* (hole patch, v1.4.2 fixes) are ratios at fixed convention and are
+expected to change little, but they were not re-measured; the v142p-before | after columns of
+the headline observables are in `RIGIDITY_FIX.md` table A. The database cache identity of this
+section is unchanged; `gs_*` keys additionally carry `rigp1`.
+
