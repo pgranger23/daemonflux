@@ -1,0 +1,11 @@
+# decay-pipeline check, cutoff on: zero-field counterfactual of a1ancd (muons re-transported, keyed Michel decay)
+# vs a1nomu (the cascade's own muon decays), same cascades; ratio of the cos Z 0-0.3 flux, and the a1/a0 difference
+nue       flux ratio cf/a1nomu: 1.077+-0.051 1.134+-0.075 0.926+-0.085
+antinue   flux ratio cf/a1nomu: 1.011+-0.069 1.146+-0.064 0.956+-0.114
+numu      flux ratio cf/a1nomu: 1.011+-0.029 0.991+-0.032 1.068+-0.047
+antinumu  flux ratio cf/a1nomu: 1.075+-0.032 1.052+-0.045 1.063+-0.064
+nue       a1/a0 cf - a1nomu: +0.079+-0.035 +0.065+-0.071 +0.057+-0.112
+antinue   a1/a0 cf - a1nomu: +0.066+-0.062 -0.026+-0.066 -0.013+-0.092
+numu      a1/a0 cf - a1nomu: +0.044+-0.023 +0.013+-0.028 +0.054+-0.028
+antinumu  a1/a0 cf - a1nomu: +0.015+-0.041 +0.056+-0.034 -0.020+-0.045
+chi2(flux ratio = 1)/12 = 1.81; chi2(d a1/a0 = 0)/12 = 1.54

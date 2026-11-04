@@ -1,0 +1,20 @@
+# H3a per group: nucleon flux MC (crflux at A*T, primaries.nucleon_intensity) / MCEq (crflux at A*(T+m), MCEqRun.set_primary_model); rigidity of the cut MC (A/Z)p (cutoff.rigidity_gv) vs engine (A/Z)T (mceq3d_flux._transmission)
+T=  2.0 GeV/n:  p flux 2.783 R 2.78/2.00  He flux 2.698 R 5.57/4.00  CNO flux 2.748 R 5.57/4.00  MgSi flux 2.786 R 5.80/4.17  Fe flux 2.747 R 6.00/4.31
+T=  3.0 GeV/n:  p flux 2.063 R 3.82/3.00  He flux 2.018 R 7.65/6.00  CNO flux 2.044 R 7.65/6.00  MgSi flux 2.064 R 7.97/6.25  Fe flux 2.044 R 8.24/6.46
+T=  4.0 GeV/n:  p flux 1.752 R 4.85/4.00  He flux 1.722 R 9.70/8.00  CNO flux 1.740 R 9.70/8.00  MgSi flux 1.752 R 10.10/8.33  Fe flux 1.739 R 10.44/8.62
+T=  6.0 GeV/n:  p flux 1.472 R 6.87/6.00  He flux 1.455 R 13.75/12.00  CNO flux 1.465 R 13.75/12.00  MgSi flux 1.472 R 14.32/12.50  Fe flux 1.464 R 14.81/12.92
+T= 10.0 GeV/n:  p flux 1.269 R 10.90/10.00  He flux 1.260 R 21.80/20.00  CNO flux 1.266 R 21.80/20.00  MgSi flux 1.269 R 22.70/20.83  Fe flux 1.265 R 23.47/21.54
+T= 15.0 GeV/n:  p flux 1.175 R 15.91/15.00  He flux 1.169 R 31.82/30.00  CNO flux 1.173 R 31.82/30.00  MgSi flux 1.175 R 33.15/31.25  Fe flux 1.173 R 34.27/32.31
+T= 30.0 GeV/n:  p flux 1.085 R 30.92/30.00  He flux 1.083 R 61.85/60.00  CNO flux 1.084 R 61.85/60.00  MgSi flux 1.085 R 64.43/62.50  Fe flux 1.084 R 66.61/64.62
+T=100.0 GeV/n:  p flux 1.025 R 100.93/100.00  He flux 1.024 R 201.87/200.00  CNO flux 1.025 R 201.87/200.00  MgSi flux 1.025 R 210.28/208.33  Fe flux 1.025 R 217.40/215.38
+
+# kinetic energy per nucleon cut at a nucleus rigidity R_c: MC (true p) vs engine (R = (A/Z) T)
+R_c   7.5 GV A/Z=1 : MC cuts T <   6.62, engine cuts T <   7.50 GeV/n
+R_c   7.5 GV A/Z=2 : MC cuts T <   2.93, engine cuts T <   3.75 GeV/n
+R_c   7.5 GV Fe    : MC cuts T <   2.67, engine cuts T <   3.48 GeV/n
+R_c  11.5 GV A/Z=1 : MC cuts T <  10.60, engine cuts T <  11.50 GeV/n
+R_c  11.5 GV A/Z=2 : MC cuts T <   4.89, engine cuts T <   5.75 GeV/n
+R_c  11.5 GV Fe    : MC cuts T <   4.48, engine cuts T <   5.34 GeV/n
+R_c  42.0 GV A/Z=1 : MC cuts T <  41.07, engine cuts T <  42.00 GeV/n
+R_c  42.0 GV A/Z=2 : MC cuts T <  20.08, engine cuts T <  21.00 GeV/n
+R_c  42.0 GV Fe    : MC cuts T <  18.58, engine cuts T <  19.50 GeV/n

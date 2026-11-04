@@ -1,0 +1,5 @@
+E_tot  3.56 (DpmjetIII193): Sigma+- per interaction 0.0000; decay nucleons E>=2 GeV 0.0000, all 0.0000; decay charged pi E>=0.7 0.0000  (3000 events)
+E_tot  5.64 (DpmjetIII193): Sigma+- per interaction 0.0090; decay nucleons E>=2 GeV 0.0033, all 0.0090; decay charged pi E>=0.7 0.0000  (3000 events)
+E_tot  7.11 (DpmjetIII193): Sigma+- per interaction 0.0230; decay nucleons E>=2 GeV 0.0087, all 0.0230; decay charged pi E>=0.7 0.0017  (3000 events)
+E_tot 11.27 (DpmjetIII193): Sigma+- per interaction 0.0473; decay nucleons E>=2 GeV 0.0157, all 0.0473; decay charged pi E>=0.7 0.0053  (3000 events)
+E_tot 17.88 (DpmjetIII193): Sigma+- per interaction 0.0433; decay nucleons E>=2 GeV 0.0247, all 0.0433; decay charged pi E>=0.7 0.0113  (3000 events)

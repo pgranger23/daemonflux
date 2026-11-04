@@ -1,0 +1,7 @@
+# decay-pipeline check without the cutoff and the primary bend: zero-field counterfactual of a1ncnb vs a1ncnbnomu (same cascades)
+nue       flux ratio cf/nomu (cos Z 0-0.3): 0.902+-0.106 0.986+-0.122 1.495+-0.194
+antinue   flux ratio cf/nomu (cos Z 0-0.3): 0.836+-0.092 0.986+-0.147 0.921+-0.116
+numu      flux ratio cf/nomu (cos Z 0-0.3): 0.974+-0.033 0.962+-0.059 0.996+-0.095
+antinumu  flux ratio cf/nomu (cos Z 0-0.3): 1.000+-0.063 1.114+-0.066 0.961+-0.085
+chi2(ratio = 1)/12 = 1.26; weighted mean ratio 0.9845 +- 0.0206
+(vertical bin not decomposable: mucf covers cos Z 0-0.3 only)

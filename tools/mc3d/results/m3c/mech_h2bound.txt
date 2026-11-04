@@ -1,0 +1,5 @@
+# H2 bound: [eps(cutoff on) - eps(cutoff off)], paired (same cascades), charge-odd and -even parts, pooled cos Z 0-0.3
+e  (nue, antinue): charge-odd diff +0.011+-0.050 +0.116+-0.104 -0.012+-0.067  | charge-odd fan-out (cutoff on) +0.138 +0.278 +0.262  | charge-even diff +0.051+-0.047 +0.168+-0.087 +0.021+-0.071
+mu (antinumu, numu): charge-odd diff +0.008+-0.024 +0.012+-0.027 +0.012+-0.037  | charge-odd fan-out (cutoff on) +0.102 +0.120 +0.113  | charge-even diff +0.044+-0.025 +0.013+-0.026 +0.018+-0.031
+weighted mean charge-odd diff over 6 values: +0.011 +- 0.015; chi2/6 = 0.29
+mean charge-odd fan-out with the cutoff: +0.169  -> cutoff-mediated share +0.07 +- 0.09

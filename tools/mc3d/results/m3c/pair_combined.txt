@@ -1,0 +1,2 @@
+36 cells: unpaired pilot - a1anc -0.0266 +- 0.0169 (corrected for the >65 GV rotation: -0.0236 +- 0.0171); paired c3res - c3anc -0.0144 +- 0.0218; combined -0.0201 +- 0.0135; |bias| < 0.047 (2 sigma)
+pooled 12: unpaired pilot - a1anc -0.0222 +- 0.0195 (corrected for the >65 GV rotation: -0.0192 +- 0.0197); paired c3res - c3anc -0.0168 +- 0.0248; combined -0.0183 +- 0.0154; |bias| < 0.049 (2 sigma)

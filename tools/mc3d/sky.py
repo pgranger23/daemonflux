@@ -125,6 +125,11 @@ def primary_sample(rng, model, gname, k, n, n_tot, theta_inj, axis):
     if getattr(model, "nucleon_level", False):
         j_nuc, p_frac = model.nucleon_flux(e_nuc)
         is_p = rng.random(n) < p_frac
+    elif hasattr(model, "group_split"):          # GSFGroups: its own p/n split
+        jp, jn = model.group_split(gid, e_nuc)
+        j_nuc = jp + jn
+        is_p = rng.random(n) < np.where(j_nuc > 0, jp / np.where(j_nuc > 0,
+                                                                  j_nuc, 1.0), 0.0)
     else:
         j_nuc = prim.nucleon_intensity(model, gid, e_nuc, a_mass)
         is_p = rng.random(n) < (z / a_mass)

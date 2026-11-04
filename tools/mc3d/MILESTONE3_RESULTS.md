@@ -4,6 +4,21 @@ Factual record, written as the work proceeds (2026-10-11).  Raw outputs under
 `/home/pigrange/mc3d_work/runs/m3b/` (never `/tmp`); small summaries copied to
 `results/m3b/`.  **Status / resume point: see §0.**
 
+> **Superseded headline (PM, 2026-11-04).** The pilot's agreement with Honda
+> (chi2/12 = 1.95 on a1/a0) was a cancellation of two mc3d bugs found later:
+> H3a evaluated at kinetic instead of total energy (MILESTONE3C_RESULTS.md
+> sec. 1.1, item 2: a1/a0 -0.033..-0.045) and the pool's energy-conservation
+> guard, which rescaled 9-56% of the low-energy interactions (MILESTONE3D
+> sec. 3: about +0.012). H3a is also ~30% below the data-driven GSF and
+> Gaisser-Honda spectra at 5-30 GeV/n. With GSF primaries and both fixes
+> (exact re-weighting plus an approximate guard correction) the mean a1/a0 is
+> 0.439-0.442 against Honda 0.454 (chi2/12 2.2-2.8). The **species fan-out** is
+> unaffected by all of this; the MC's antinumu-numu split is +0.145 / +0.218 /
+> +0.277 at 0.3 / 0.5 / 1 GeV against Honda's +0.125 / +0.158 / +0.186. The MC
+> reproduces the existence and sign of Honda's fan-out (which the engine lacks),
+> but overshoots its size above 0.3 GeV. Gate C3 (sec. 3.1) is explained in
+> MILESTONE3C sec. 1.
+
 ---
 
 ## 0. Status (resume here)

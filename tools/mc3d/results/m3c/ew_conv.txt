@@ -1,0 +1,11 @@
+# pilot_tot (crflux at the total energy) vs pilot (at the kinetic energy): pooled cos Z 0-0.3 a1/a0, paired jackknife of the difference
+E 0.3: nue 0.602+-0.021 -> 0.559+-0.020 (d -0.043+-0.003; Honda 0.583)  antinue 0.299+-0.015 -> 0.256+-0.014 (d -0.043+-0.003; Honda 0.315)  numu 0.386+-0.012 -> 0.342+-0.011 (d -0.044+-0.002; Honda 0.400)  antinumu 0.531+-0.009 -> 0.489+-0.009 (d -0.043+-0.001; Honda 0.525)
+E 0.5: nue 0.620+-0.015 -> 0.576+-0.016 (d -0.043+-0.003; Honda 0.643)  antinue 0.273+-0.044 -> 0.237+-0.042 (d -0.036+-0.005; Honda 0.310)  numu 0.360+-0.014 -> 0.314+-0.014 (d -0.045+-0.002; Honda 0.410)  antinumu 0.577+-0.016 -> 0.534+-0.015 (d -0.043+-0.002; Honda 0.569)
+E 1.0: nue 0.607+-0.030 -> 0.575+-0.030 (d -0.033+-0.003; Honda 0.615)  antinue 0.167+-0.048 -> 0.129+-0.046 (d -0.039+-0.004; Honda 0.226)  numu 0.308+-0.018 -> 0.271+-0.017 (d -0.037+-0.002; Honda 0.332)  antinumu 0.584+-0.108 -> 0.543+-0.106 (d -0.041+-0.003; Honda 0.518)
+chi2/12 vs Honda (MC errors): pilot 1.95
+chi2/12 vs Honda (MC errors): pilot_tot 12.85
+mean d(a1/a0) -0.0407; chi2(d=0)/12 314.60
+fan-out nue-antinumu: +0.071->+0.071 +0.043->+0.043 +0.024->+0.032  (Honda +0.059 +0.075 +0.097)
+fan-out antinumu-numu: +0.146->+0.147 +0.217->+0.219 +0.275->+0.271  (Honda +0.125 +0.158 +0.186)
+fan-out numu-antinue: +0.087->+0.086 +0.087->+0.077 +0.141->+0.143  (Honda +0.084 +0.100 +0.106)
+3D flux (s, cos Z 0-0.3, az-summed) new/old: nue 0.830 0.856 0.888  antinue 0.843 0.866 0.895  numu 0.843 0.865 0.892  antinumu 0.840 0.860 0.886

@@ -103,6 +103,11 @@ KEEP = frozenset((2212, -2212, 2112, -2112, 211, -211, 321, -321,
 
 E_SWITCH = 80.0                 # GeV: DPMJET below, SIBYLL above
 E_MIN_POOL = 2.0                # GeV total energy of the projectile
+#: rest-mass budget of the energy-conservation guard in ``EventPool.draw``:
+#: the heaviest air nucleus (O-16, 14.9 GeV).  0.94 (one nucleon) reproduces
+#: milestones 1-3c, where the guard fired on a large share of the low-energy
+#: draws (see ``draw``).
+GUARD_MASS = 16 * 0.931494
 E_MAX_POOL = 1.0e6
 BINS_PER_DECADE = {"lo": 10, "hi": 20}
 
@@ -436,10 +441,17 @@ class EventPool:
             m = MASS.get(int(q), 0.0)
             e = float(np.sqrt(m * m + x * x + y * y + z * z))
             out.append((int(q), e, np.array([x, y, z])))
-        # energy-conservation guard: with 20 bins/decade this never fires,
-        # but a pathological rescale must not create energy.
+        # energy-conservation guard: a pathological rescale must not create
+        # energy.  The budget is the projectile plus the STRUCK NUCLEUS (the
+        # kept final state includes the target's evaporation / fragmentation
+        # nucleons, ~2.5-3 GeV of rest mass at any energy: with the single
+        # nucleon mass ``E_tot + 0.94`` that the guard used up to milestone 3c
+        # it fired on 56% of the p + air draws at E_kin = 1.5 GeV, 46% at 4,
+        # 33% at 10, 18% at 20, 9% at 40 GeV -- and then scaled EVERY
+        # product's energy (and momentum) down, by 0.87 on average at 1.5 GeV
+        # and down to 0.31: MILESTONE3D_RESULTS.md sec. 3.)
         tot = sum(o[1] for o in out)
-        avail = e_tot + 0.94
+        avail = e_tot + GUARD_MASS
         if tot > avail:
             s = avail / tot
             out = [(q, e * s, p * s) for q, e, p in out]

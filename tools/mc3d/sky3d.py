@@ -94,7 +94,26 @@ B_MAX_T = 6.5e-5
 TAGS = ("s", "n", "t", "v")
 SUFFIX = ("0", "0sq", "1", "1sq")
 SUMMED = tuple(t + s for t in TAGS for s in SUFFIX) + ("hinj", "cone_h",
-                                                       "cone_h2", "cone_m")
+                                                       "cone_h2", "cone_m",
+                                                       "mub_m", "mub_h",
+                                                       "mucf")
+#: muon-bend modes (``Options.mu_bend``): the full bend, or a diagnostic
+#: decomposition keeping only its vertical or only its horizontal component,
+#: or ``"none"``: the muon-field pipeline (per-copy re-transport and Michel
+#: decay with the keyed random numbers) with a zero muon field -- the control
+#: that separates the bend from the decay pipeline
+MU_BEND_MODES = ("full", "vertical", "horizontal", "none")
+#: the muon-bend diagnostic histograms (``Tally.mub_m``, ``mub_h``, milestone
+#: 3c): the energy bands (``[i0, i1)`` of ``sky.E_BINS``, =
+#: ``analyse_m3b.E_BANDS``), the cos Z bins (``[10, 13)`` of ``sky.CZ_BINS``,
+#: i.e. 0-0.3) and the bin edges of the vertical (``d cos Z``) and the
+#: horizontal (``d az`` [deg]) bend of the parent muon
+MUB_EBANDS = ((7, 12), (12, 16), (18, 22))
+MUB_CZ = (10, 13)
+MUB_BV = np.linspace(-0.3, 0.3, 31)
+MUB_BH = np.linspace(-30.0, 30.0, 31)
+#: the stream key of the common-random-number cascades (``Options.crn``)
+CRN_KEY = 104729
 _SIDX = {s: k for k, s in enumerate(SPECIES)}
 _KIND = {"decay": bend.MU_DECAY, "ground": bend.MU_GROUND,
          "escape": bend.MU_ESCAPE, "stop": bend.MU_STOP}
@@ -115,7 +134,8 @@ class Options:
                  r_thr=30.0, n_az=N_AZ, skip_gated=True, pend_all=False,
                  margin_extra_deg=2.0, model=None, date=None,
                  trace_batch=10000, max_files_per_group=64, keep_cfiles=True,
-                 keep_reals=False, reanchor=False):
+                 keep_reals=False, reanchor=False, mu_bend="full", crn=False,
+                 primary_energy=None, mu_cf=False, primary_model="H3A"):
         self.cutoff = bool(cutoff)
         self.bend_primary = bool(bend_primary)
         self.muon_field = bool(muon_field)
@@ -131,11 +151,45 @@ class Options:
         self.keep_cfiles = bool(keep_cfiles)
         self.keep_reals = bool(keep_reals)
         self.reanchor = bool(reanchor)
+        if mu_bend not in MU_BEND_MODES:
+            raise ValueError(f"mu_bend must be one of {MU_BEND_MODES}")
+        #: diagnostic (milestone 3c): keep only the vertical or only the
+        #: horizontal component of each muon's bend, at its decay point,
+        #: before the Michel decay (``split_bend``)
+        self.mu_bend = mu_bend
+        #: common random numbers per primary (milestone 3c, the paired
+        #: re-anchor vs re-simulate test): every realisation of primary ``i``
+        #: draws its cascade from the same stream ``(seed, CRN_KEY, i)``, every
+        #: bent copy has the same sampled first-interaction depth (stream
+        #: ``(seed, 7919, i)``) and every realisation the same muon-decay
+        #: numbers -- so that a re-simulated copy and the re-anchored copy of
+        #: the same primary differ only through the geometry.  Off by
+        #: default: the default RNG stream is milestone 3b's.
+        self.crn = bool(crn)
+        #: crflux energy variable, resolved to ``kinetic`` / ``total`` for the
+        #: primary model (``primaries.ENERGY_CONVENTION``; ``None`` = the
+        #: module's current default, ``native`` = the model's own variable).
+        #: Resolving here keeps the signature of a H3a run what milestone 3c
+        #: wrote (``native`` = ``total``) and a Gaisser-Honda one = ``kinetic``.
+        self.primary_model = primary_model
+        self._pe_req = primary_energy or prim.ENERGY_CONVENTION
+        self.primary_energy = prim.resolve_convention(self._pe_req,
+                                                      name=primary_model)
+        #: diagnostic (milestone 3c): the zero-field counterfactual of every
+        #: re-transported muon (same proper time, same decay numbers), and the
+        #: fate classes of ``Tally.mucf`` -- no effect on the physics tallies
+        self.mu_cf = bool(mu_cf)
 
     def signature(self):
-        return np.array([self.cutoff, self.bend_primary, self.muon_field,
-                         self.r_thr, self.n_az, self.skip_gated, self.pend_all,
-                         self.margin_extra_deg, self.reanchor], float)
+        s = [self.cutoff, self.bend_primary, self.muon_field, self.r_thr,
+             self.n_az, self.skip_gated, self.pend_all, self.margin_extra_deg,
+             self.reanchor]
+        pe = self.primary_energy != "kinetic"
+        if self.mu_bend != "full" or self.crn or pe:   # 3b manifests stay valid
+            s += [MU_BEND_MODES.index(self.mu_bend), self.crn]
+        if pe:
+            s += [prim.ENERGY_CONVENTIONS.index(self.primary_energy)]
+        return np.array(s, float)
 
     def needs_field(self):
         return self.bend_primary or self.muon_field
@@ -366,6 +420,7 @@ def _init(cache, n_pool, e_nu_min, lat, lon, caps, model, opts, fieldgrid,
                          polarisation=True)
     _CTX["caps"] = NestedCaps(lat, lon, caps)
     _CTX["model"] = prim.primary_model(model)
+    prim.ENERGY_CONVENTION = opts.primary_energy
     _CTX["opts"] = opts
     _CTX["field"] = fieldgrid
     _CTX["sitemap"] = sitemap
@@ -440,7 +495,14 @@ def cascade_task(task):
             jj = np.array([p[2] for p in bi])
             lam = np.array([backend.lambda_int(int(pdg0[i]), float(e_tot[i]))
                             for i in ii])
-            dX = -np.log(rng_b.random(len(bi))) * lam
+            if opts.crn:
+                # one depth per primary, shared by all its bent copies (=
+                # what the re-anchoring assumes for the rotated copies)
+                ux = np.array([np.random.default_rng([seed, 7919, int(i)])
+                               .random() for i in ii])
+                dX = -np.log(ux) * lam
+            else:
+                dX = -np.log(rng_b.random(len(bi))) * lam
             st, ri, ui, _L, _b = bend.bend_primary(rr[ii, jj], uu[ii, jj], R[ii],
                                                    dX, fld)
             for q, p in enumerate(bi):
@@ -456,7 +518,9 @@ def cascade_task(task):
         rec = Recorder(cone if is_base else None, r0[i], u0[i])
         rs, us = (r0[i], u0[i]) if j == 0 else (rr[i, j], uu[i, j])
         fst = first.get((i, j)) if bent else None
-        run_shower(rng, int(pdg0[i]), float(e_tot[i]), rs, us, backend, cfg,
+        rng_c = np.random.default_rng([seed, CRN_KEY, int(i)]) if opts.crn \
+            else rng
+        run_shower(rng_c, int(pdg0[i]), float(e_tot[i]), rs, us, backend, cfg,
                    rec, float(w[i]), first=None if fst is None else fst[:3])
         cnt["n_real"] += 1
         nu, mu = rec.arrays()
@@ -472,7 +536,7 @@ def cascade_task(task):
         cnt["n_pend3"] += p3
         cnt["n_pend1"] += p1
         real = {"kind": kind, "j": j, "p3": p3, "p1": p1, "nu": nu}
-        if kind == "B" and bent and (i, j) in first:
+        if bent and (i, j) in first:      # (C: kept for the diagnostics only)
             f = first[(i, j)]
             real["int"] = (f[1], f[2], f[3])
         if p3 and opts.muon_field:
@@ -581,6 +645,16 @@ class Tally:
         self.a = {t + s: np.zeros(grid.size) for t in TAGS for s in SUFFIX}
         self.hinj = np.zeros((2, len(SPECIES), len(CONE_BANDS) - 1,
                               len(self.HINJ_CZ) - 1, self.HINJ_NTH))
+        # muon-bend diagnostics of the 3D [s] entries born in a muon decay:
+        # (species, E band, cos Z bin, az bin, [sum w, w bv, w bv^2, w bh,
+        # w bh^2]) and the histograms (..., [bv, bh], bin) -- measure 0
+        nb = (len(SPECIES), len(MUB_EBANDS), MUB_CZ[1] - MUB_CZ[0], grid.naz)
+        self.mub_m = np.zeros(nb + (5,))
+        self.mub_h = np.zeros(nb + (2, len(MUB_BV) - 1))
+        # fate classes of the muon-born 3D entries, field on [0] and its
+        # zero-field counterfactual [1] (``Options.mu_cf``): (2, class, sp,
+        # E band, cos Z bin, az bin), measure 1, the s weight
+        self.mucf = np.zeros((2, 3) + nb)
 
     def accumulate(self, tag, flat, w0, w1, prim):
         """Entries (smallest-cap flat index, weights in both measures, owning
@@ -620,6 +694,57 @@ class Tally:
         np.add.at(self.hinj, (np.full(ok.sum(), view), k[ok], ib[ok], iz[ok],
                               ith[ok]), w[ok])
 
+    def add_mub(self, flat, bv, bh, w):
+        """Muon-bend diagnostics of the 3D entries (``flat`` = smallest-cap
+        flat index, ``bv``/``bh`` the parent muon's bend, NaN if not born in
+        a muon decay, ``w`` the measure-0 weight)."""
+        g = self.g
+        bv = np.asarray(bv, float)
+        ok = (flat >= 0) & np.isfinite(bv) & (w != 0)
+        if not ok.any():
+            return
+        flat, bv, bh, w = flat[ok], bv[ok], np.asarray(bh, float)[ok], w[ok]
+        ia = flat % g.naz
+        iz = (flat // g.naz) % g.ncz
+        ie = (flat // (g.naz * g.ncz)) % g.ne
+        k = (flat // (g.naz * g.ncz * g.ne)) % len(SPECIES)
+        ib = np.full(len(flat), -1)
+        for b, (i0, i1) in enumerate(MUB_EBANDS):
+            ib[(ie >= i0) & (ie < i1)] = b
+        sel = (ib >= 0) & (iz >= MUB_CZ[0]) & (iz < MUB_CZ[1])
+        if not sel.any():
+            return
+        k, ib, iz, ia = k[sel], ib[sel], iz[sel] - MUB_CZ[0], ia[sel]
+        bv, bh, w = bv[sel], bh[sel], w[sel]
+        for q, x in enumerate((w, w * bv, w * bv * bv, w * bh, w * bh * bh)):
+            np.add.at(self.mub_m, (k, ib, iz, ia, q), x)
+        for c, (x, edges) in enumerate(((bv, MUB_BV), (bh, MUB_BH))):
+            jb = np.clip(np.searchsorted(edges, x, side="right") - 1, 0,
+                         len(edges) - 2)
+            np.add.at(self.mub_h, (k, ib, iz, ia, c, jb), w)
+
+    def add_mucf(self, view, flat, cls, w):
+        """Fate-class tally (``Options.mu_cf``) of muon-born 3D entries:
+        ``view`` 0 = field on, 1 = zero-field counterfactual; ``cls`` 0 =
+        decays either way, 1 = only with the field, 2 = only without (-1 =
+        not muon-born, skipped); ``w`` the measure-1 weight."""
+        g = self.g
+        cls = np.asarray(cls, int)
+        ok = (flat >= 0) & (cls >= 0) & (w != 0)
+        if not ok.any():
+            return
+        flat, cls, w = flat[ok], cls[ok], w[ok]
+        ia = flat % g.naz
+        iz = (flat // g.naz) % g.ncz
+        ie = (flat // (g.naz * g.ncz)) % g.ne
+        k = (flat // (g.naz * g.ncz * g.ne)) % len(SPECIES)
+        ib = np.full(len(flat), -1)
+        for b, (i0, i1) in enumerate(MUB_EBANDS):
+            ib[(ie >= i0) & (ie < i1)] = b
+        sel = (ib >= 0) & (iz >= MUB_CZ[0]) & (iz < MUB_CZ[1])
+        np.add.at(self.mucf, (np.full(sel.sum(), view), cls[sel], k[sel],
+                              ib[sel], iz[sel] - MUB_CZ[0], ia[sel]), w[sel])
+
     def to_dict(self):
         g = self.g
         d = {key: v.reshape(g.shape) for key, v in self.a.items()}
@@ -627,7 +752,8 @@ class Tally:
                  cap_theta=np.array(g.caps.thetas),
                  cap_area=np.array(g.caps.areas),
                  site=np.array([g.caps.lat, g.caps.lon]),
-                 hinj=self.hinj, hinj_cz=np.array(self.HINJ_CZ))
+                 hinj=self.hinj, hinj_cz=np.array(self.HINJ_CZ),
+                 mub_m=self.mub_m, mub_h=self.mub_h, mucf=self.mucf)
         return d
 
 
@@ -701,6 +827,60 @@ def _anchor_dir(d, tr):
     return d @ tr[2].T
 
 
+def _local_ne(r):
+    """Unit local vertical, North and East at the points ``r`` (rows)."""
+    n = r / np.linalg.norm(r, axis=1)[:, None]
+    nx, ny, nz = n[:, 0], n[:, 1], n[:, 2]
+    cla = np.sqrt(nx * nx + ny * ny)
+    pole = cla < 1e-12
+    clo = np.where(pole, 1.0, nx / np.where(pole, 1.0, cla))
+    slo = np.where(pole, 0.0, ny / np.where(pole, 1.0, cla))
+    en = np.stack([-nz * clo, -nz * slo, cla], 1)
+    ee = np.stack([-slo, clo, np.zeros_like(clo)], 1)
+    return n, en, ee
+
+
+def bend_components(u0, u1, r):
+    """The bend of a muon from direction ``u0`` (production) to ``u1``
+    (decay), in the local frame at its decay point ``r`` (rows):
+    ``(bv, bh)`` with ``bv`` the change of the *arrival* cos(zenith),
+    ``cos Z = -u . up`` (``> 0``: the muon -- and its neutrinos -- now
+    appear to come from higher up, i.e. migrate away from the horizon), and
+    ``bh`` the change of the arrival azimuth [deg, compass: N = 0, E = 90]."""
+    n, en, ee = _local_ne(r)
+    bv = -np.einsum("ij,ij->i", u1 - u0, n)
+    a0 = np.arctan2(-np.einsum("ij,ij->i", u0, ee),
+                    -np.einsum("ij,ij->i", u0, en))
+    a1 = np.arctan2(-np.einsum("ij,ij->i", u1, ee),
+                    -np.einsum("ij,ij->i", u1, en))
+    bh = (np.degrees(a1 - a0) + 180.0) % 360.0 - 180.0
+    return bv, bh
+
+
+def split_bend(u0, u1, r, mode):
+    """Diagnostic decomposition of a bend ``u0 -> u1`` at the points ``r``
+    (rows): ``"vertical"`` keeps the bent elevation and the unbent azimuth,
+    ``"horizontal"`` the unbent elevation and the bent azimuth (both about the
+    local vertical at ``r``); ``"full"`` returns ``u1``."""
+    if mode == "full":
+        return u1
+    n = r / np.linalg.norm(r, axis=1)[:, None]
+    s0 = np.einsum("ij,ij->i", u0, n)
+    s1 = np.einsum("ij,ij->i", u1, n)
+    h0 = u0 - s0[:, None] * n
+    h1 = u1 - s1[:, None] * n
+    h0 /= np.maximum(np.linalg.norm(h0, axis=1), 1e-300)[:, None]
+    h1 /= np.maximum(np.linalg.norm(h1, axis=1), 1e-300)[:, None]
+    if mode == "vertical":
+        s, h = s1, h0
+    elif mode == "horizontal":
+        s, h = s0, h1
+    else:
+        raise ValueError(mode)
+    s = np.clip(s, -1.0, 1.0)
+    return np.sqrt(1.0 - s * s)[:, None] * h + s[:, None] * n
+
+
 def build_entries(prims, seed, grid, opts, fld, sitemap, e_nu_min,
                   polarisation=True):
     """Every cap entry of every copy of the pending realisations, before the
@@ -714,7 +894,9 @@ def build_entries(prims, seed, grid, opts, fld, sitemap, e_nu_min,
     naz = opts.n_az
     shifts = 360.0 * np.arange(naz) / naz
     E = {key: [] for key in ("pdg", "e", "r", "u", "w0", "wn", "prim", "copy",
-                             "ith")}
+                             "ith", "bv", "bh", "cls")}
+    CF = {key: [] for key in ("pdg", "e", "r", "u", "w0", "prim", "copy",
+                              "cls")}
     M = {key: [] for key in ("pdg", "e", "r", "u", "pol", "rnd", "w0", "wn",
                              "prim", "copy", "ith")}
     D = {key: [] for key in ("flat", "k", "e", "cz", "ith", "wt", "wv", "inv",
@@ -742,9 +924,10 @@ def build_entries(prims, seed, grid, opts, fld, sitemap, e_nu_min,
                     # cascade's proper decay time, and one decay sample per
                     # muon, keyed by (task seed, primary, realisation, muon)
                     # so that they do not depend on what else is pending
-                    rnd = np.random.default_rng(
+                    key = [seed, p["i"], 0, 0] if opts.crn else \
                         [seed, p["i"], _KCODE[re_["kind"]], int(re_["j"])]
-                    ).random((re_["n_mu"], 7))[re_["mu_idx"]]
+                    rnd = np.random.default_rng(key).random(
+                        (re_["n_mu"], 7))[re_["mu_idx"]]
                     rnd[:, 0] = 1.0 - np.exp(-mu[:, RM_TT])
                 for c in copies:
                     w0 = w / naz
@@ -766,6 +949,9 @@ def build_entries(prims, seed, grid, opts, fld, sitemap, e_nu_min,
                         E["prim"].append(np.full(m, pi))
                         E["copy"].append(np.full(m, c))
                         E["ith"].append(np.full(m, ith))
+                        E["bv"].append(np.full(m, np.nan))
+                        E["bh"].append(np.full(m, np.nan))
+                        E["cls"].append(np.full(m, -1))
                     if rnd is not None:
                         m = len(mu)
                         M["pdg"].append(mu[:, MU_PDG])
@@ -817,12 +1003,38 @@ def build_entries(prims, seed, grid, opts, fld, sitemap, e_nu_min,
         n_mu = len(mp)
         rnd = _cat(M["rnd"], shape=(0, 7))
         tt = -np.log(1.0 - rnd[:, 0])
+        m_e, m_r, m_u = (_cat(M["e"]), _cat(M["r"], shape=(0, 3)),
+                         _cat(M["u"], shape=(0, 3)))
         kind, rm, um, em = bend.transport_muons(
-            mp, _cat(M["e"]), _cat(M["r"], shape=(0, 3)),
-            _cat(M["u"], shape=(0, 3)), tt, fld if opts.muon_field else None)
+            mp, m_e, m_r, m_u, tt,
+            fld if (opts.muon_field and opts.mu_bend != "none") else None)
         dec = kind == bend.MU_DECAY
+        # the zero-field counterfactual (diagnostic): fate classes
+        # 0 = decays with and without the field, 1 = only with it (saved
+        # from the ground / escape), 2 = only without it (lost)
+        dec0 = dec
+        if opts.mu_cf and opts.muon_field:
+            kind0, rm0, um0, em0 = bend.transport_muons(mp, m_e, m_r, m_u, tt,
+                                                        None)
+            dec0 = kind0 == bend.MU_DECAY
+            if dec0.any():
+                pn0, en0, dn0 = bend.michel_decay(
+                    mp[dec0], em0[dec0], um0[dec0], _cat(M["pol"])[dec0],
+                    rnd[dec0, 1:7], axis)
+                for key in ("w0", "prim", "copy"):
+                    CF[key].append(np.repeat(_cat(M[key])[dec0], 2))
+                CF["pdg"].append(pn0.reshape(-1).astype(float))
+                CF["e"].append(en0.reshape(-1))
+                CF["r"].append(np.repeat(rm0[dec0], 2, axis=0))
+                CF["u"].append(dn0.reshape(-1, 3))
+                CF["cls"].append(np.repeat(np.where(dec[dec0], 0, 2), 2))
         if dec.any():
-            pn, en, dn = bend.michel_decay(mp[dec], em[dec], um[dec],
+            u_in = _cat(M["u"], shape=(0, 3))[dec]
+            ud = um[dec]
+            if opts.muon_field and opts.mu_bend in ("vertical", "horizontal"):
+                ud = split_bend(u_in, ud, rm[dec], opts.mu_bend)
+            bv, bh = bend_components(u_in, ud, rm[dec])
+            pn, en, dn = bend.michel_decay(mp[dec], em[dec], ud,
                                            _cat(M["pol"])[dec], rnd[dec, 1:7],
                                            axis)
             for key in ("w0", "wn", "prim", "copy", "ith"):
@@ -831,10 +1043,14 @@ def build_entries(prims, seed, grid, opts, fld, sitemap, e_nu_min,
             E["e"].append(en.reshape(-1))
             E["r"].append(np.repeat(rm[dec], 2, axis=0))
             E["u"].append(dn.reshape(-1, 3))
+            E["bv"].append(np.repeat(bv, 2))
+            E["bh"].append(np.repeat(bh, 2))
+            E["cls"].append(np.repeat(np.where(dec0[dec], 0, 1), 2))
     build_entries.cpu_mu = time.process_time() - c_mu
     # --- the 3D cap crossings; only the hits are kept
     e3 = {key: np.zeros(0) for key in ("flat", "k", "e", "cz", "ith", "w0",
-                                        "wn", "inv", "prim", "copy")}
+                                        "wn", "inv", "prim", "copy", "bv",
+                                        "bh")}
     if E["pdg"]:
         pdg = _cat(E["pdg"]).astype(int)
         e = _cat(E["e"])
@@ -852,13 +1068,34 @@ def build_entries(prims, seed, grid, opts, fld, sitemap, e_nu_min,
         e3["prim"] = e3["prim"].astype(np.int64)
         e3["copy"] = e3["copy"].astype(np.int64)
         e3["ith"] = e3["ith"].astype(np.int64)
+        # the parent muon's (applied) bend, NaN for neutrinos not born in a
+        # muon decay -- diagnostics only (``Tally.add_mub``)
+        for key in ("bv", "bh"):
+            e3[key] = _cat(E[key])[keep][hit].astype(np.float32)
+        e3["cls"] = _cat(E["cls"])[keep][hit].astype(np.int8)
+    ent = {}
+    if CF["pdg"]:
+        pdg = _cat(CF["pdg"]).astype(int)
+        e = _cat(CF["e"])
+        keep = e >= e_nu_min
+        i0, cz, az, cosi = locate_vec(caps, _cat(CF["r"], shape=(0, 3))[keep],
+                                      _cat(CF["u"], shape=(0, 3))[keep])
+        flat, _kk = grid.bins(pdg[keep], e[keep], i0, cz, az)
+        hit = flat >= 0
+        ent["3dcf"] = {"flat": flat[hit].astype(np.int64),
+                       "inv": 1.0 / np.maximum(cosi[hit], 1e-6)}
+        for key in ("w0", "prim", "copy", "cls"):
+            ent["3dcf"][key] = _cat(CF[key])[keep][hit]
+        for key in ("prim", "copy"):
+            ent["3dcf"][key] = ent["3dcf"][key].astype(np.int64)
     e1 = {key: _cat(D[key]) for key in D}
     if len(e1["flat"]):
         hit = e1["flat"] >= 0
         e1 = {key: v[hit] for key, v in e1.items()}
         for key in ("flat", "prim", "ith", "k"):
             e1[key] = e1[key].astype(np.int64)
-    return {"3d": e3, "1d": e1}, n_mu
+    ent.update({"3d": e3, "1d": e1})
+    return ent, n_mu
 
 
 def tally_entries(grid, ent, A):
@@ -872,6 +1109,14 @@ def tally_entries(grid, ent, A):
         tal.accumulate("n", e3["flat"], e3["wn"], e3["wn"] * e3["inv"],
                        e3["prim"])
         tal.add_hinj(0, e3["k"].astype(int), e3["e"], e3["cz"], e3["ith"], ws)
+        if "bv" in e3 and len(e3["bv"]) == len(e3["flat"]):
+            tal.add_mub(e3["flat"], e3["bv"], e3["bh"], ws)
+        if "cls" in e3 and len(e3["cls"]) == len(e3["flat"]):
+            tal.add_mucf(0, e3["flat"], e3["cls"], ws * e3["inv"])
+    cf = ent.get("3dcf")
+    if cf is not None and len(cf["flat"]):
+        wc = cf["w0"] * A[cf["prim"], cf["copy"]]
+        tal.add_mucf(1, cf["flat"], cf["cls"], wc * cf["inv"])
     if len(e1["flat"]):
         tal.accumulate("t", e1["flat"], e1["wt"], e1["wt"] * e1["inv"],
                        e1["prim"])
@@ -1034,6 +1279,10 @@ def run(nshower, nproc, groups, theta_inj, caps, cache, opts, n_pool=2000,
         def log(msg):
             print(msg, flush=True)
     lat, lon = sky.SITES[site]
+    opts.primary_model = model
+    opts.primary_energy = prim.resolve_convention(opts._pe_req, name=model)
+    # (the module default is set in every worker by ``_init``; the parent's is
+    # left alone)
     work = work or os.path.join(outdir, "..", "work")
     os.makedirs(outdir, exist_ok=True)
     tasks = build_tasks(nshower, groups, theta_inj, chunk, seed0, nstrata, alloc)
@@ -1044,6 +1293,7 @@ def run(nshower, nproc, groups, theta_inj, caps, cache, opts, n_pool=2000,
     if os.path.exists(mpath):
         old = np.load(mpath, allow_pickle=False)
         if not (old["sig"].shape == sig.shape and np.all(old["sig"] == sig)
+                and old["opts"].shape == opts.signature().shape
                 and np.allclose(old["opts"], opts.signature())
                 and float(old["theta_inj"][0]) == float(theta_inj)):
             raise RuntimeError(f"{tdir} holds a different job")
@@ -1161,6 +1411,22 @@ def main(argv=None):
     ap.add_argument("--reanchor", action="store_true",
                     help="bias study: re-anchor each rotated copy of a reused "
                          "cascade on the copy's own exact bent primary")
+    ap.add_argument("--mu-bend", default="full", choices=MU_BEND_MODES,
+                    help="diagnostic: keep only the vertical or the "
+                         "horizontal component of each muon's bend, or none "
+                         "(the muon-field decay pipeline with a zero field)")
+    ap.add_argument("--crn", action="store_true",
+                    help="common random numbers per primary (paired "
+                         "re-anchor vs re-simulate test); changes the stream")
+    ap.add_argument("--primary-energy", default=None,
+                    choices=prim.ENERGY_CONVENTIONS,
+                    help="crflux energy variable: native (default: the "
+                         "model's own -- total for H3A/GST/GSF, kinetic for "
+                         "GH), or force total (crflux's and MCEq's "
+                         "convention) or kinetic (milestones 1-3b)")
+    ap.add_argument("--mu-cf", action="store_true",
+                    help="diagnostic: zero-field counterfactual of every "
+                         "re-transported muon, fate classes (Tally.mucf)")
     ap.add_argument("--merge-only", action="store_true")
     a = ap.parse_args(argv)
     if a.merge_only:
@@ -1170,7 +1436,9 @@ def main(argv=None):
                    muon_field=not a.no_muon_field, r_thr=a.r_thr, n_az=a.n_az,
                    skip_gated=not a.no_skip_gated, pend_all=a.pend_all,
                    margin_extra_deg=a.margin_extra, trace_batch=a.trace_batch,
-                   reanchor=a.reanchor)
+                   reanchor=a.reanchor, mu_bend=a.mu_bend, crn=a.crn,
+                   primary_energy=a.primary_energy, mu_cf=a.mu_cf,
+                   primary_model=a.model)
     alloc = None
     if a.alloc:
         d = np.load(a.alloc)

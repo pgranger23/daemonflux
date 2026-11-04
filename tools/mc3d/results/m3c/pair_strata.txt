@@ -1,0 +1,57 @@
+# pooled a1/a0 jackknife errors (same primaries): c3anc (2.78 core-h) | c3res (11.62 core-h)
+E 0.3: nue 0.041 | 0.043  antinue 0.044 | 0.053  numu 0.036 | 0.027  antinumu 0.030 | 0.028
+E 0.5: nue 0.030 | 0.051  antinue 0.077 | 0.050  numu 0.036 | 0.037  antinumu 0.046 | 0.028
+E 1.0: nue 0.093 | 0.064  antinue 0.089 | 0.065  numu 0.053 | 0.040  antinumu 0.049 | 0.072
+mean variance ratio anc/res 1.31; CPU ratio res/anc 4.18 -> re-anchoring is x3.2 cheaper per unit variance
+# per-stratum contribution: mean over the 12 pooled values of d when only stratum h is re-simulated (paired jackknife)
+p:1     mean d -0.0074 +- 0.0081
+p:2     mean d -0.0062 +- 0.0096
+p:3     mean d -0.0256 +- 0.0079
+He:0    mean d -0.0015 +- 0.0010
+He:1    mean d +0.0045 +- 0.0039
+He:2    mean d +0.0006 +- 0.0121
+CNO:0   mean d +0.0012 +- 0.0009
+CNO:1   mean d +0.0074 +- 0.0031
+CNO:2   mean d +0.0037 +- 0.0059
+MgSi:1  mean d -0.0008 +- 0.0016
+MgSi:2  mean d -0.0025 +- 0.0038
+Fe:0    mean d -0.0008 +- 0.0008
+Fe:1    mean d +0.0032 +- 0.0018
+Fe:2    mean d -0.0006 +- 0.0018
+# CPU per stratum [core-h]: c3anc | c3res
+p:0     0.00 | 0.00
+p:1     0.50 | 2.34
+p:2     0.44 | 3.08
+p:3     0.27 | 1.38
+p:4     0.21 | 0.20
+p:5     0.07 | 0.07
+p:6     0.02 | 0.01
+He:0    0.05 | 0.20
+He:1    0.22 | 1.33
+He:2    0.15 | 1.20
+He:3    0.23 | 0.21
+He:4    0.09 | 0.09
+He:5    0.03 | 0.03
+He:6    0.01 | 0.01
+CNO:0   0.02 | 0.07
+CNO:1   0.08 | 0.40
+CNO:2   0.03 | 0.21
+CNO:3   0.05 | 0.04
+CNO:4   0.02 | 0.01
+CNO:5   0.04 | 0.03
+CNO:6   0.02 | 0.01
+MgSi:0  0.00 | 0.02
+MgSi:1  0.03 | 0.14
+MgSi:2  0.01 | 0.12
+MgSi:3  0.01 | 0.01
+MgSi:4  0.02 | 0.02
+MgSi:5  0.03 | 0.02
+MgSi:6  0.01 | 0.02
+Fe:0    0.01 | 0.02
+Fe:1    0.03 | 0.17
+Fe:2    0.02 | 0.11
+Fe:3    0.01 | 0.01
+Fe:4    0.01 | 0.01
+Fe:5    0.03 | 0.02
+Fe:6    0.01 | 0.01
+hybrid (re-simulate p 32-100 GeV below 65 GV, re-anchor the rest): 3.89 core-h vs c3anc 2.78, c3res 11.62

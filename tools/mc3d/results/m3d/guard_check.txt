@@ -1,0 +1,17 @@
+# raw pool events at E0 (no rescale): sum of kept-product energies vs avail = E_tot + 0.94
+E0    2.24: fraction tot>avail 0.469; mean scale 0.862; mean tot 3.79 avail 3.18; slow nucleon rest-mass share 2.67
+E0    3.56: fraction tot>avail 0.500; mean scale 0.886; mean tot 5.11 avail 4.50; slow nucleon rest-mass share 2.72
+E0    5.64: fraction tot>avail 0.294; mean scale 0.952; mean tot 6.46 avail 6.58; slow nucleon rest-mass share 2.50
+E0    7.11: fraction tot>avail 0.397; mean scale 0.942; mean tot 7.97 avail 8.05; slow nucleon rest-mass share 2.96
+E0   11.27: fraction tot>avail 0.284; mean scale 0.966; mean tot 11.35 avail 12.21; slow nucleon rest-mass share 3.07
+E0   17.88: fraction tot>avail 0.185; mean scale 0.987; mean tot 16.48 avail 18.82; slow nucleon rest-mass share 2.96
+E0   44.95: fraction tot>avail 0.073; mean scale 0.998; mean tot 37.85 avail 45.89; slow nucleon rest-mass share 3.09
+E0  134.25: fraction tot>avail 0.002; mean scale 1.000; mean tot 105.57 avail 135.19; slow nucleon rest-mass share 2.24
+# the guard at the MC's energies (draw at E_tot): fraction of draws with scale<1, mean scale
+E_p   1.5: fraction scaled 0.558; mean scale 0.868; min 0.309
+E_p   2.5: fraction scaled 0.528; mean scale 0.882; min 0.372
+E_p   4.0: fraction scaled 0.463; mean scale 0.927; min 0.471
+E_p   6.0: fraction scaled 0.398; mean scale 0.942; min 0.516
+E_p  10.0: fraction scaled 0.326; mean scale 0.961; min 0.581
+E_p  20.0: fraction scaled 0.183; mean scale 0.990; min 0.709
+E_p  40.0: fraction scaled 0.090; mean scale 0.998; min 0.871

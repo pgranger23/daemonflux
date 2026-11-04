@@ -1,0 +1,21 @@
+# task 3: c3res (re-simulate below 65 GV) - c3anc (re-anchor), paired (--crn); 2.887e+05 primaries each; CPU c3anc 2.78 core-h, c3res 11.62 core-h
+
+## 36 cells: d = a1/a0(c3res) - a1/a0(c3anc), paired jackknife; unpaired error sqrt(e_a^2 + e_b^2) for comparison
+E 0.3 cz 0.0-0.1: nue d +0.1133+-0.1250 (unp 0.108)  antinue d +0.1469+-0.1164 (unp 0.112)  numu d +0.2042+-0.0949 (unp 0.103)  antinumu d +0.0074+-0.0779 (unp 0.092)
+E 0.3 cz 0.1-0.2: nue d +0.0593+-0.0529 (unp 0.067)  antinue d +0.1090+-0.0603 (unp 0.081)  numu d +0.0437+-0.0395 (unp 0.065)  antinumu d +0.0465+-0.0501 (unp 0.066)
+E 0.3 cz 0.2-0.3: nue d +0.0345+-0.0582 (unp 0.064)  antinue d -0.0158+-0.0585 (unp 0.057)  numu d +0.0734+-0.0447 (unp 0.046)  antinumu d +0.0419+-0.0388 (unp 0.044)
+E 0.5 cz 0.0-0.1: nue d -0.1057+-0.1187 (unp 0.118)  antinue d +0.0347+-0.1855 (unp 0.199)  numu d -0.0509+-0.1010 (unp 0.126)  antinumu d -0.2261+-0.1346 (unp 0.136)
+E 0.5 cz 0.1-0.2: nue d -0.0104+-0.0652 (unp 0.102)  antinue d -0.0811+-0.1037 (unp 0.095)  numu d -0.0530+-0.0506 (unp 0.064)  antinumu d +0.0450+-0.0659 (unp 0.080)
+E 0.5 cz 0.2-0.3: nue d +0.0086+-0.0801 (unp 0.088)  antinue d -0.1351+-0.1031 (unp 0.122)  numu d -0.0292+-0.0513 (unp 0.059)  antinumu d +0.0212+-0.0466 (unp 0.050)
+E 1.0 cz 0.0-0.1: nue d -0.2578+-0.1746 (unp 0.225)  antinue d +0.0422+-0.2271 (unp 0.239)  numu d -0.2153+-0.1345 (unp 0.147)  antinumu d -0.2925+-0.2151 (unp 0.212)
+E 1.0 cz 0.1-0.2: nue d +0.0404+-0.1064 (unp 0.129)  antinue d -0.1346+-0.1343 (unp 0.161)  numu d -0.0515+-0.0850 (unp 0.130)  antinumu d +0.0151+-0.1031 (unp 0.113)
+E 1.0 cz 0.2-0.3: nue d -0.0777+-0.0775 (unp 0.098)  antinue d +0.0373+-0.1224 (unp 0.116)  numu d +0.0116+-0.0830 (unp 0.091)  antinumu d +0.0832+-0.0727 (unp 0.081)
+mean d -0.0144 +- 0.0218; rms d 0.1104; chi2(d=0)/36 = 1.03; median paired error 0.0840 (median unpaired 0.0998, gain x1.1)
+phase dphi: mean d -7.73 deg, chi2/36 = 1.03
+
+## pooled cos Z 0-0.3 (12 values): d = a1/a0(c3res) - a1/a0(c3anc), paired jackknife; unpaired error sqrt(e_a^2 + e_b^2) for comparison
+E 0.3: nue 0.618/0.690 d +0.0721+-0.0557 (unpaired 0.060)  antinue 0.138/0.237 d +0.0983+-0.0640 (unpaired 0.069)  numu 0.339/0.455 d +0.1155+-0.0422 (unpaired 0.045)  antinumu 0.534/0.561 d +0.0271+-0.0359 (unpaired 0.041)
+E 0.5: nue 0.687/0.645 d -0.0419+-0.0513 (unpaired 0.060)  antinue 0.331/0.241 d -0.0902+-0.1008 (unpaired 0.092)  numu 0.427/0.381 d -0.0462+-0.0429 (unpaired 0.051)  antinumu 0.542/0.478 d -0.0640+-0.0532 (unpaired 0.054)
+E 1.0: nue 0.767/0.649 d -0.1177+-0.0823 (unpaired 0.113)  antinue 0.229/0.221 d -0.0085+-0.1066 (unpaired 0.110)  numu 0.373/0.298 d -0.0755+-0.0505 (unpaired 0.066)  antinumu 0.488/0.417 d -0.0707+-0.0860 (unpaired 0.087)
+mean d -0.0168 +- 0.0248; rms d 0.0762; chi2(d=0)/12 = 1.76; median paired error 0.0544 (median unpaired 0.0632, gain x1.1)
+phase dphi: mean d -7.90 deg, chi2/12 = 1.78
