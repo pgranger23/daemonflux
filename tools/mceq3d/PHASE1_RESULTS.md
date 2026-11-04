@@ -16,6 +16,17 @@ number could not be traced it is omitted.
 > `diag_penumbra_width.py`, `diag_ew_charge_fourier.py`). New run outputs are kept
 > on persistent disk and their summary tables are committed.
 
+> **Database note (2026-11-04).** The engine numbers in this file were produced with the
+> MCEq database `mceq_db_lext_dpm193_v140.h5` (shipped with MCEq 1.4.1, withdrawn
+> upstream; `MCEQ3D_DB=v140` reproduces it bit for bit). The engine default is now the
+> v1.4.2 database with the 56.2 GeV hole patched. Re-measured in the delivered engine
+> path, the headline observables of sections 3.1, 3.2, 3.3 and 6.3 move by: H/V
+> +0.1..+0.3% (nu_mu), W/E near the horizon -1.4..-1.9% (the nu_mu overshoot of Honda at
+> 87 deg falls from +12.3 to +10.4% at 0.5 GeV and from +21.3 to +19.1% at 1 GeV), charge
+> splitting and phase offsets unchanged (< 0.02 deg), N/S model/Honda +1.0..+1.6% (level
+> shift). Old | new | ratio | Honda tables, the hole-patch / v1.4.2-fix split, the cache
+> identity mechanism and the reproduction commands: `MCEQ_DB_HOLE.md` section 10.
+
 ## 1. What was wrong (2026-09-03 audit)
 
 `REVIEW.md`'s "CURRENT STATUS" block made two headline claims. Both are **retracted**:

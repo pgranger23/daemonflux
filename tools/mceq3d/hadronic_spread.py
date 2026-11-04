@@ -35,13 +35,13 @@ def compute():
     import mceq_config as config
 
     config.e_min = 0.1
-    from MCEq.core import MCEqRun
+    from mceq3d_db import make_run
     import crflux.models as crf
 
     fluxes = {}
     e = None
     for name in MODELS:
-        m = MCEqRun(
+        m = make_run(
             interaction_model=name,
             primary_model=(crf.HillasGaisser2012, "H3a"),
             theta_deg=0.0,

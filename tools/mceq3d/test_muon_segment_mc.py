@@ -162,8 +162,7 @@ def test_wstats():
 def _have_source():
     import os
 
-    return os.path.exists(os.path.join(ms.SCRATCH,
-                                       "muon_source_mu_transport.npz"))
+    return os.path.exists(ms.source_cache_path("mu_transport"))
 
 
 needs_source = pytest.mark.skipif(not _have_source(),
@@ -214,7 +213,7 @@ def test_source_transport_matches_pi_decay_where_both_valid():
     MCEq hadron-tracking threshold (the only place both are defined)."""
     import os
 
-    alt = os.path.join(ms.SCRATCH, "muon_source_pi_decay.npz")
+    alt = ms.source_cache_path("pi_decay")
     if not os.path.exists(alt):
         pytest.skip("pi_decay cross-check table not built")
     a = ms.source_interp(ms.muon_source_table())

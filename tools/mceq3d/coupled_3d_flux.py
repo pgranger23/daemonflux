@@ -40,12 +40,12 @@ def mceq_1d_flux(quantity="total_numu", zeniths_deg=None, model="SIBYLL23D"):
     up/down symmetry of the conventional flux), and ``flux`` of shape
     ``(n_cos_full, n_E)``.
     """
-    from MCEq.core import MCEqRun
+    from mceq3d_db import make_run
     import crflux.models as crf
 
     if zeniths_deg is None:
         zeniths_deg = np.array([0, 25, 40, 55, 70, 80, 85, 89.0])
-    mceq = MCEqRun(
+    mceq = make_run(
         interaction_model=model,
         primary_model=(crf.HillasGaisser2012, "H3a"),
         theta_deg=0.0,

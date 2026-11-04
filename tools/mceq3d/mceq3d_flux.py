@@ -81,6 +81,8 @@ import os
 
 import numpy as np
 
+import mceq3d_db as _db
+
 # Site-independent G_s and per-site cutoff maps are cached here (see solve(use_cache)).
 _CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "flux_cache")
 
@@ -218,6 +220,15 @@ def _transmission(e_grid, rc_gv, sigma_lnr=None, az_over_z=1.0, dlne=None):
         )
 
     return np.clip(0.5 + (prim(b) - prim(a)) / (2.0 * w), 0.0, 1.0)
+
+
+def engine_tag(model, primary, e_min, atmosphere, db_tag=""):
+    """Identity of an engine for the disk caches: model / primary / e_min /
+    atmosphere / MCEq database (``db_tag`` = :attr:`mceq3d_db.DBSpec.tag`)."""
+    return (
+        f"{model}_{primary[0]}-{primary[1]}_emin{e_min:g}"
+        f"_atm{'std' if atmosphere is None else str(atmosphere)}{db_tag}"
+    )
 
 
 def gs_cache_name(tag, cz_ref, rc_grid, sigma_lnr):
@@ -641,7 +652,7 @@ class MCEq3DFlux:
         two are otherwise varied together.  The override has its own cache tag.
         """
         import crflux.models as crf
-        from MCEq.core import MCEqRun
+        from mceq3d_db import make_run
         import mceq_config as config
 
         self.base_model = base_model
@@ -655,9 +666,13 @@ class MCEq3DFlux:
         # (fixed before the scan) -- NOT tuned to any reference.
         self._hybrid_e0 = float(hybrid_e0)
         # identity for the G_s disk cache (G_s depends only on these + rc_grid, cz_ref)
-        self._tag = (
-            f"{interaction_model}_{primary[0]}-{primary[1]}_emin{e_min:g}"
-            f"_atm{'std' if atmosphere is None else str(atmosphere)}"
+        # The tag ends with the database identity (mceq3d_db.db_tag(): empty for
+        # the legacy shipped v1.4.0 file, ``_db<label>-<sha8>`` otherwise), so a
+        # G_s built on one MCEq database is never served for another.  It stays
+        # a SUFFIX: offaxis_factor() compares ``self._tag.startswith(table_tag)``.
+        self._db = _db.resolve()
+        self._tag = engine_tag(
+            interaction_model, primary, e_min, atmosphere, self._db.tag
         )
         self._df = None
         if base_model in ("daemonflux", "hybrid"):
@@ -666,7 +681,7 @@ class MCEq3DFlux:
             self._df = Flux(location=daemonflux_location)
         config.e_min = e_min
         pm = (getattr(crf, primary[0]), primary[1])
-        self.mceq = MCEqRun(
+        self.mceq = make_run(
             interaction_model=interaction_model, primary_model=pm, theta_deg=0.0
         )
         if atmosphere is not None:
@@ -689,10 +704,7 @@ class MCEq3DFlux:
             gim = gs_interaction_model or interaction_model
             gpr = tuple(gs_primary) if gs_primary is not None else tuple(primary)
             self._gs_spec = (gim, gpr, atmosphere, float(e_min))
-            self._gs_tag = (
-                f"{gim}_{gpr[0]}-{gpr[1]}_emin{e_min:g}"
-                f"_atm{'std' if atmosphere is None else str(atmosphere)}"
-            )
+            self._gs_tag = engine_tag(gim, gpr, e_min, atmosphere, self._db.tag)
 
     def _gs_engine(self):
         """``(mceq, phi0_std, p_sl, n_sl, f_free, az_bound)`` behind ``G_s``.
@@ -713,13 +725,13 @@ class MCEq3DFlux:
             )
         if self._gs_cache is None:
             import crflux.models as crf
-            from MCEq.core import MCEqRun
+            from mceq3d_db import make_run
             import mceq_config as config
 
             gim, gpr, atmosphere, e_min = self._gs_spec
             config.e_min = e_min
             pm = (getattr(crf, gpr[0]), gpr[1])
-            run = MCEqRun(
+            run = make_run(
                 interaction_model=gim, primary_model=pm, theta_deg=0.0
             )
             if atmosphere is not None:
@@ -882,8 +894,11 @@ class MCEq3DFlux:
         sigma_lnr = float(sigma_lnr)
         fpath = None
         if cache_dir is not None:
+            # db-dependent: key carries the database (self._gs_tag) and, for a
+            # non-legacy database, the file lives in mceq3d_db.cache_dir()
             fpath = os.path.join(
-                cache_dir, gs_cache_name(self._gs_tag, cz_ref, rc_grid, sigma_lnr)
+                _db.cache_dir(cache_dir),
+                gs_cache_name(self._gs_tag, cz_ref, rc_grid, sigma_lnr),
             )
             if os.path.exists(fpath):
                 d = np.load(fpath)
@@ -912,7 +927,7 @@ class MCEq3DFlux:
                     G[s][j] = np.where(full[s] > 0, cut / full[s], 1.0)
         mq._phi0[:] = phi0_std
         if fpath is not None:
-            os.makedirs(cache_dir, exist_ok=True)
+            os.makedirs(os.path.dirname(fpath) or ".", exist_ok=True)
             np.savez(fpath, e=self.e, **{s: G[s] for s in SPECIES})
         return G, rc_grid
 
@@ -1086,6 +1101,10 @@ class MCEq3DFlux:
                 f"{path} not found; run 'python offaxis_mc.py {flag}' first"
             )
         d = np.load(path)
+        # Static MCEq-derived table: built with the db recorded under ``db`` (the
+        # tables checked in before 2026-11 have no such key = shipped v1.4.0 file).
+        _db.check_static_table(os.path.basename(path),
+                               str(d["db"]) if "db" in d else "")
         if "tag" in d:
             tag = str(d["tag"])
             if not self._tag.startswith(tag):
@@ -1190,7 +1209,7 @@ class MCEq3DFlux:
         fpath = None
         if cache_dir is not None:
             h = hashlib.md5(f"finrc_{key}".encode()).hexdigest()[:16]
-            fpath = os.path.join(cache_dir, f"finerc_{h}.npz")
+            fpath = _db.indep_path(cache_dir, f"finerc_{h}.npz")  # DB-independent
             if os.path.exists(fpath):
                 d = np.load(fpath)
                 out = (d["zen"], d["az"], d["rc"])
@@ -1214,7 +1233,7 @@ class MCEq3DFlux:
                 stacklevel=2,
             )
         if fpath is not None:
-            os.makedirs(cache_dir, exist_ok=True)
+            os.makedirs(os.path.dirname(fpath) or ".", exist_ok=True)
             np.savez(fpath, zen=zen, az=az, rc=rc)
         memo[key] = (zen, az, rc)
         return zen, az, rc
@@ -1315,7 +1334,7 @@ class MCEq3DFlux:
         fpath = None
         if cache_dir is not None:
             h = hashlib.md5(f"prodfam_{key}".encode()).hexdigest()[:16]
-            fpath = os.path.join(cache_dir, f"prodfam_{h}.npz")
+            fpath = _db.indep_path(cache_dir, f"prodfam_{h}.npz")  # DB-independent
             if os.path.exists(fpath):
                 d = np.load(fpath)
                 out = {k: d[k] for k in ("off", "zen", "az", "rc")}
@@ -1380,7 +1399,7 @@ class MCEq3DFlux:
             )
         out = dict(off=off, zen=zen, az=az, rc=rc)
         if fpath is not None:
-            os.makedirs(cache_dir, exist_ok=True)
+            os.makedirs(os.path.dirname(fpath) or ".", exist_ok=True)
             np.savez(fpath, **out)
         memo[key] = out
         return out
@@ -1802,9 +1821,11 @@ class MCEq3DFlux:
         import joint_cone as jc
         import offaxis_mc as ox
 
-        cdir = cache_dir or _CACHE_DIR
+        # depth-resolved MCEq production profile: depends on the database
+        # (legacy file name unchanged for the shipped v1.4.0 file)
+        cdir = _db.cache_dir(cache_dir or _CACHE_DIR)
         os.makedirs(cdir, exist_ok=True)
-        path = os.path.join(cdir, f"jointprod_chan_{ox.TAG}.npz")
+        path = os.path.join(cdir, f"jointprod_chan_{ox.TAG}{self._db.tag}.npz")
         got = self._joint_prod = jc.load_production(
             cache=path, species=ox.CHANNEL_SPECIES)
         return got
@@ -1835,9 +1856,10 @@ class MCEq3DFlux:
         if tag in memo:
             return memo[tag]
         cdir = cache_dir or _CACHE_DIR
-        os.makedirs(cdir, exist_ok=True)
         h = hashlib.md5(f"{tag}|{np.asarray(ep_grid).tobytes()}".encode())
-        path = os.path.join(cdir, f"conewidths_{h.hexdigest()[:16]}.npz")
+        # kinematic Monte Carlo from the moment files: DB-independent
+        path = _db.indep_path(cdir, f"conewidths_{h.hexdigest()[:16]}.npz")
+        os.makedirs(os.path.dirname(path), exist_ok=True)
         if os.path.exists(path):
             d = np.load(path)
             memo[tag] = {k: d[k] for k in ("pi", "k", "mu_numu", "mu_nue")}
@@ -2010,7 +2032,7 @@ class MCEq3DFlux:
             tag = (f"{lat:.4f}_{lon:.4f}_{dtag}_{cz_b}_{az_b}_{n_scan}_{r_lo}_{r_hi}"
                    f"_{gb.CUTOFF_SCHEME}")
             h = hashlib.md5(tag.encode()).hexdigest()[:16]
-            fpath = os.path.join(cache_dir, f"rc_{h}.npz")
+            fpath = _db.indep_path(cache_dir, f"rc_{h}.npz")  # DB-independent
             if os.path.exists(fpath):
                 d = np.load(fpath)
                 if d["rc"].shape == (len(cos_zeniths), len(azimuths)):
@@ -2044,7 +2066,7 @@ class MCEq3DFlux:
                 stacklevel=2,
             )
         if fpath is not None:
-            os.makedirs(cache_dir, exist_ok=True)
+            os.makedirs(os.path.dirname(fpath) or ".", exist_ok=True)
             np.savez(fpath, rc=rc)
         return rc
 

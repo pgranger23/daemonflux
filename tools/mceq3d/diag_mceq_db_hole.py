@@ -15,7 +15,10 @@ only ever opened read-only)::
 
     confirm [--db FILE]  task 1: show the hole (projectiles, secondaries, models);
                          ``--db`` checks another file (e.g. the v1.4.2 database)
-    patch                task 2: write the patched database copies to WORK/data_<variant>/
+    patch [--src FILE --outdir DIR --name TEMPLATE --only V ...]
+                         task 2: write the patched database copies (default: from the
+                         installed v1.4.0/1.4.1 file into WORK/data_<variant>/; with
+                         --src e.g. the v1.4.2 file, into DIR/TEMPLATE.format(variant))
     run VARIANT PRIMARY  task 3: MCEq fluxes (3 zenith angles) for one DB variant;
                          PRIMARY = H3a | GSF | GSF_ddm (GSF + DDM yields injected,
                          the daemonflux-like baseline)
@@ -81,7 +84,12 @@ def orig_db():
     return str(cfg.data_dir), cfg.mceq_db_fname
 
 
+SRC_DB = None  # set by ``patch --src FILE``: source database for make/verify
+
+
 def orig_db_path():
+    if SRC_DB is not None:
+        return SRC_DB
     d, n = orig_db()
     return os.path.join(d, n)
 
@@ -479,15 +487,26 @@ def verify_variant(variant, path):
     assert nbad == 0
 
 
+OUT = None  # (out_dir, name_template) set by ``patch --outdir/--name``
+
+
 def variant_files(variant):
     """(data_dir, db_fname) to hand to MCEq.config for a variant."""
     if variant == "orig":
         return orig_db()
+    if OUT is not None:
+        return OUT[0], OUT[1].format(variant=variant)
     d = os.path.join(WORK, f"data_{variant}")
     return d, f"mceq_db_lext_dpm193_v140_dbhole_{variant}.h5"
 
 
 def cmd_patch(args):
+    global SRC_DB, OUT
+    if getattr(args, "src", None):
+        SRC_DB = os.path.abspath(args.src)
+        print("source database:", SRC_DB)
+    if getattr(args, "outdir", None):
+        OUT = (os.path.abspath(args.outdir), args.name)
     for v in VARIANTS:
         if v == "orig" or (args.only and v not in args.only):
             continue
@@ -513,8 +532,13 @@ def _setup_mceq(variant):
     import MCEq.config as cfg
 
     d, n = variant_files(variant)
-    cfg.data_dir = pathlib.Path(d)
-    cfg.mceq_db_fname = n
+    # the engine's single database switch (mceq3d_db.py) -- also used by
+    # MCEq3DFlux in ``gs``; ``orig`` = the shipped v1.4.0 file.
+    sys.path.insert(0, HERE)
+    os.environ["MCEQ3D_DB"] = "v140" if variant == "orig" else os.path.join(d, n)
+    import mceq3d_db
+
+    mceq3d_db.select()
     cfg.e_min = 0.1
     cfg.debug_level = 0
     if getattr(cfg, "has_mkl", False):
@@ -531,10 +555,10 @@ def _primary(name):
 
 def cmd_run(args):
     cfg = _setup_mceq(args.variant)
-    from MCEq.core import MCEqRun
+    from mceq3d_db import make_run
 
     t0 = time.time()
-    mc = MCEqRun(
+    mc = make_run(
         interaction_model=MODEL, primary_model=_primary(args.primary), theta_deg=0.0
     )
     if PRIMARIES[args.primary][2]:
@@ -769,6 +793,17 @@ def main():
     q.set_defaults(fn=cmd_confirm)
     q = sp.add_parser("patch")
     q.add_argument("--only", nargs="*")
+    q.add_argument(
+        "--src", default=None, help="source database (default: the installed MCEq's)"
+    )
+    q.add_argument(
+        "--outdir", default=None, help="output directory (default: WORK/data_<variant>)"
+    )
+    q.add_argument(
+        "--name",
+        default="mceq_db_lext_dpm193_v140_dbhole_{variant}.h5",
+        help="output file name template, {variant} is substituted",
+    )
     q.set_defaults(fn=cmd_patch)
     for name, fn in (("run", cmd_run), ("gs", cmd_gs)):
         q = sp.add_parser(name)

@@ -401,3 +401,438 @@ rebuilt with it (`/home/pigrange/mc3d_work/pools_fix`; the n pool at 4.75 TeV we
 from pi+/pi- 1.053 to 0.976). Phase-2 results from milestone 3 on use the fixed
 pools; milestone-2b results used the buggy ones (a charge-ratio effect from
 primaries above 80 GeV/nucleon, small in the 3D/1D ratio).
+
+## 10. 2026-11: switch to the patched v1.4.2 database
+
+Status: done 2026-11-04. Decision (PI): the factorised 3D engine (`MCEq3DFlux`) moves
+from `mceq_db_lext_dpm193_v140.h5` (shipped with MCEq 1.4.1, withdrawn upstream) to the
+**v1.4.2 database with the 56.2 GeV hole patched** (`interp` variant of sections 3/8).
+Scripts: `diag_mceq_db_hole.py patch --src` (builder), `mceq3d_db.py` (the one switch),
+`diag_db_switch.py` (verification and re-validation), `test_mceq3d_db.py`. Raw outputs:
+`/home/pigrange/mc3d_work/runs/dbv142/` (`out/`, `logs/`, `NOTES.md`).
+
+### 10.1 The files
+
+| label (`MCEQ3D_DB=`) | file | sha256 |
+|---|---|---|
+| `v140` | `.venv/.../MCEq/data/mceq_db_lext_dpm193_v140.h5` (shipped with MCEq 1.4.1) | `5da415e9bcf81926b1061d5792d75cb3aceb9de173beccb4695fd3909a0bfdd0` |
+| `v140p` | `runs/dbhole/data_interp/mceq_db_lext_dpm193_v140_dbhole_interp.h5` | `d3beb1e861634322f1df840b84f2f2341a9b98e3db72efce795aeca6b3de0d73` |
+| `v142` | `mceq_db/v142_raw/mceq_db_lext_dpm193_v142.h5` (symlink to `runs/dbhole/newdb_dl/`, the upstream file) | `247f40203436c69431db4d393316940636badb2c231f68d51870fb49bf476946` |
+| **`v142p` (default)** | `mceq_db/mceq_db_lext_dpm193_v142_dbhole_interp.h5` | `7de8275ff3cbc46b6cb63c745a88761d8fd4a65e23f7617bdd8e99cfddcabddb` |
+| (check) | `mceq_db/mceq_db_lext_dpm193_v142_dbhole_noop.h5` | `d192a94b4d49d69c1b22fadd8d6ec4e3569ce99ed1dd059e53868a6a9c0b0754` |
+| (variant) | `mceq_db/mceq_db_lext_dpm193_v142_dbhole_dpm.h5` | `15b2e24e45ceb638db57a54e88cafd296c432a7c713b1474bd4e0e2ca9597157` |
+
+(`mceq_db` = `/home/pigrange/mc3d_work/mceq_db`; `DDM_1.0.npy` is symlinked into each
+data directory.)  Built with
+
+```bash
+$PY tools/mceq3d/diag_mceq_db_hole.py patch \
+    --src /home/pigrange/mc3d_work/runs/dbhole/newdb_dl/mceq_db_lext_dpm193_v142.h5 \
+    --outdir /home/pigrange/mc3d_work/mceq_db \
+    --name 'mceq_db_lext_dpm193_v142_dbhole_{variant}.h5' --only noop interp dpm
+```
+
+(without `--src`/`--outdir` the command still patches the installed v1.4.0 file into
+`runs/dbhole/data_<variant>/`, as in section 3).  The distinct file names matter:
+MCEq's `ensure_db_available()` only checksum-verifies and re-downloads its default name.
+
+### 10.2 Verification of the v1.4.2 hole and of the patch (`diag_db_switch.py verify`)
+
+Full output: `runs/dbv142/out/verify_v142.txt`.
+
+* v1.4.2 hole = same bin, same factor: the only bin with a > 10% energy-sum-rule
+  deficit between 20 and 160 GeV is index 37 (56.2 GeV); all 12,264 non-empty
+  SIBYLL23D yield cells of that column (416 tuples) are `0.800000000000` x DPMJETIII193
+  (min = max), the columns below are bit-identical to DPMJET (0 differing tuples), and
+  the inelastic cross section of all 24 tabulated projectiles is `0.800000000000` x
+  DPMJET in that bin (p-air 218.45 mb against 273.45 / 273.86 mb in the neighbours).
+* Patch: of the 116 datasets of the file exactly three differ from the v1.4.2 source
+  (`hadronic_interactions/air/SIBYLL23D`, its `_indptrs`, `cross_sections/air/SIBYLL23D`);
+  decoded, 0 of 416 tuples differ outside column 37, column 37 changes in all 416, and
+  the cross-section array differs in row 37 only. Root attributes are identical.
+* Sum rule, column 37: for all 16 projectiles 0.775-0.787 -> 0.969-0.983, within 2% of
+  the mean of the neighbour columns (proton 0.9692 against 0.9643 / 0.9744).
+* `noop` is dataset-for-dataset bit-identical to the v1.4.2 source (including the
+  yield storage) and reproduces its MCEq fluxes exactly (max |noop/v142 - 1| = 0.0,
+  H3a and GSF, all species and zeniths).
+* Still carrying the hole in the patched file: SIBYLL21, SIBYLL23E and its four `STAR`
+  variants, QGSJETII04 and QGSJETIII (air), SIBYLL23E (hydrogen). Clean: DPMJETIII193
+  (air and hydrogen), EPOSLHC, EPOSLHCR, and the patched SIBYLL23D. Only SIBYLL23D was
+  patched; the engine's default model is SIBYLL23D.
+
+### 10.3 Does MCEq 1.4.1 read the v1.4.2 file? Yes; the 1.4.2 package is not needed
+
+* The GitHub compare `v1.4.1...v1.4.2` (`runs/dbv142/cmp.json`) changes the code only in
+  `src/MCEq/config.py` (default `mceq_db_fname` -> `..._v142.h5`, the default checksum,
+  and the name of the old file `ensure_db_available()` removes), plus
+  version/changelog/docs. `data.py`, `core.py` etc. are untouched, so MCEq 1.4.1
+  with `config.mceq_db_fname` pointing at the v1.4.2 file is the same code path as
+  MCEq 1.4.2. **No recipe change** (no `pylib_mceq142`). Release notes
+  (`runs/dbv142/rel142.json`): "Fixes the Sibyll hadronic interaction matrices ... and
+  DPMJetIII-19.3 anti-particle cross sections".
+* Layout differences, all read correctly: the cross-section datasets now have 24 parent
+  columns (antiparticles explicit) instead of 13; fewer tuples (the `-> e+-` channels
+  are gone); `version` attribute still `1.4.0`.
+* Independent checks (MCEq 1.4.1 on the v1.4.2 file, SIBYLL23D, GSF, vertical):
+  mu+/mu- = 1.267 at 100 GeV (v1.4.0 file: 1.467; the measured muon charge ratio is
+  about 1.27-1.3), nu_mu/nubar_mu = 1.44 (v1.4.0: 1.60); this is the neutron fix and
+  it moves in the physical direction. MCEq(GSF, SIBYLL23D)/daemonflux for numu+nubar_mu
+  at 1/3/10/30/100 GeV = 0.925/0.969/0.883/0.843/0.866 (patched v1.4.2) against
+  0.913/0.946/0.868/0.842/0.862 (v1.4.0): same level, as expected
+  (`runs/dbv142/out/indep_check.txt`).
+* **Surprise, not in the release notes:** the v1.4.2 file differs from v1.4.0 for *every*
+  model, not only SIBYLL (`runs/dbv142/out/h5diff_v140_v142.txt`, `dbdiff_v140_v142.txt`).
+  Cross sections: DPMJETIII193 identical for the 13 old parents (+11 antiparticle
+  columns); EPOSLHC pions up to 1.7%, nucleons 0.9%, K up to 15% (56 TeV);
+  SIBYLL23D K up to 12% (141 GeV). SIBYLL23D yields are regenerated (212 of 416 tuples differ by more than 1e-6, at most 7.9% in L1); EPOS and DPMJET yields are the same to < 1e-6 (QGSJET not checked). The 1D
+  EPOSLHC flux changes by up to 5% (nubar_e at ~900 GeV), outside the 3D-relevant
+  energy range but not nothing.
+
+### 10.4 The switch and the cache identity
+
+* **One place:** `tools/mceq3d/mceq3d_db.py`. `MCEq.config.data_dir` / `mceq_db_fname`
+  are set only there, by `select()`, and every `MCEqRun` of the package is built with
+  `mceq3d_db.make_run(**kw)` (10 modules, including `diag_mceq_db_hole.py`; `test_every_mceqrun_goes_through_the_switch`
+  fails if a module constructs `MCEqRun(` or imports `MCEq.core.MCEqRun` directly).
+* **Default** `v142p` = `mceq_db/mceq_db_lext_dpm193_v142_dbhole_interp.h5`. Override with
+  the environment variable `MCEQ3D_DB` = `v142p` | `v142` | `v140p` | `v140` | a path to
+  any HDF5 file (read when the first `MCEqRun` is made; set it before importing the
+  engine). `MCEQ3D_DB=v140` restores the pre-switch behaviour bit for bit, including
+  all cache keys. Optional: `MCEQ3D_DB_DIR` (where the named files live, default
+  `$MC3D_WORK/mceq_db`), `MCEQ3D_CACHE` (default `$MC3D_WORK/mceq3d_cache`),
+  `MC3D_WORK` (default `/home/pigrange/mc3d_work`).
+* **Database identity** = sha256 of the file (memoised in `mceq_db/.sha256_memo.json` by
+  path/size/mtime). `DBSpec.tag` is `""` for the shipped v1.4.0 file (sha
+  `5da415e9...`) and `_db<label>-<sha8>` for any other file, e.g. `_dbv142p-7de8275f`.
+  Keying by content, not by name, means a file replaced under the same name changes the key.
+* **Caches that depend on MCEq yields / cross sections and now carry the tag**
+  (before, none of them had a database identity; the last two had a fixed file name
+  without even the model/primary in it):
+
+  | cache | where | key |
+  |---|---|---|
+  | `G_s` response `gs_*.npz` | `geomag_response` | `_gs_tag` / `_tag` = `engine_tag(model, primary, e_min, atmosphere, db tag)` -> `gs_cache_name` |
+  | joint production profile `jointprod_chan_<TAG>.npz` | `joint_prod` | `<TAG><db tag>` in the file name |
+  | channel fractions `channel_fractions.npz` | `kinematic_kernel.channel_fractions_cache()` | `channel_fractions<db tag>.npz` in `cache_dir()`; legacy name for the shipped file |
+  | muon source table `muon_source_<method>.npz` | `muon_segment_mc.source_cache_path()` | `muon_source_<method><db tag>.npz` |
+
+  For the shipped v1.4.0 file the tag is empty, so `.cache3d`, `channel_fractions.npz`
+  etc. remain valid and unchanged for `MCEQ3D_DB=v140`. `_tag` keeps the database as a
+  *suffix* because `offaxis_factor()` compares `self._tag.startswith(table_tag)`.
+* **Not re-keyed** (pure geomagnetic back-traces or moment-file Monte Carlo): `finerc_*`,
+  `prodfam_*`, `rc_*`, `conewidths_*`. For a non-legacy database `cache_dir()` is
+  `$MCEQ3D_CACHE` (never AFS), DB-dependent files are written there, and the
+  DB-independent maps are *copied* (never moved) from the requested directory on first
+  use (`mceq3d_db.indep_path`); for the legacy database the requested directory is used
+  unchanged. `$W/mceq3d_cache` was pre-seeded with a copy of the 50 map files of
+  `.cache3d`; `.cache3d` was not modified by the new-database runs (125 files, newest 2026-09-09; one stray `gs_*.npz` written by a first smoke test was deleted at once).
+* **Static, checked-in MCEq-derived tables are NOT memos and were NOT rebuilt:**
+  `offaxis_excess*.npz` (E_off), `channel_fractions.npz` (legacy name), `m_*.npz`
+  moments are independent of the database except E_off, whose production profile
+  `p(X,E)` came from the v1.4.0 file. They now record `db` when rebuilt
+  (`offaxis_mc.py --build`); `offaxis_factor()` emits a `UserWarning` (once per table
+  and database) when a table without that key is used with another database
+  (`mceq3d_db.check_static_table`). The warning appears in the test log. E_off is a ratio
+  (G == 1 limit of the joint factor); the joint-cone path that is the default
+  recomputes its production profile from the selected database
+  (`jointprod_chan_*_dbv142p-...`), so the delivered `solve()` does not use the old E_off
+  where it matters. Rebuilding E_off with the new database is listed under "remaining".
+* **Test** `test_mceq3d_db.py` (7 tests, 0.7 s): default is `v142p`; env selection;
+  `test_cache_key_changes_with_database` (engine tag and `gs_cache_name` differ for
+  v140 / v142 / v142p, legacy key string unchanged);
+  `test_stale_gs_cache_never_served` (a G_s file stored under the old key is read for
+  v140 and is never read for v142/v142p, even if copied into the new cache directory);
+  maps keep their name and are copied, not moved; channel-fractions cache name;
+  no direct `MCEqRun`.
+
+### 10.5 Results: old | new | new/old - 1 | Honda
+
+"old" = `MCEQ3D_DB=v140`, "new" = the default `v142p`. Every number is measured in the
+delivered engine path (`MCEq3DFlux(base_model="hybrid", primary=GSF, daemonflux_location=
+"kamioka")`, `solve(...)` with the `diag_joint_stages` stage-S4 arguments, Kamioka,
+2020-01-01), one process per database, the same cutoff maps and the same code. The split
+is by chain: v140 -> **v140p** (same file, hole patched: "hole patch") -> **v142p**
+(v1.4.2 file, hole patched: "v1.4.2 fixes" = neutron-as-proton, antiparticle
+cross sections and the other regenerated tables). The factors multiply. Source files:
+`runs/dbv142/out/engine_<label>.json`, `tables_doc.md` (these tables), `tables_engine.md`
+(all four databases, hybrid base at cos Z 1/0.5/0.1, G_s for GSF and H3a, nu and nubar).
+Check of the old column against `PHASE1_RESULTS.md`: 3.1 (S4 + the 6.3 prod-point anchor)
+H/V/Honda 1.034/1.002/0.973/0.979 (6.3: 1.031/0.998/0.971/0.978), 3.2 W/E vs Honda
++12/+21% at 87 deg (6.3: +12/+21%), 3.3 D(dphi) 4.30 / -8.53 deg (6.3: 4.30 / -8.53),
+phase offsets +1.3/+1.3/+0.5/-0.2 deg (6.3: same).
+
+**3.1 H/V numu (azimuth-averaged horizon/vertical)**
+
+| observable | old (v140) | new (v142p) | new/old - 1 | of which hole patch (v140p/v140) | of which v1.4.2 fixes (v142p/v140p) | Honda |
+|---|---|---|---|---|---|---|
+| 0.3 GeV | 1.887 | 1.889 | +0.09% | +0.03% | +0.06% | 1.825 |
+| 0.5 GeV | 1.451 | 1.454 | +0.19% | +0.09% | +0.11% | 1.448 |
+| 1.0 GeV | 1.207 | 1.211 | +0.31% | +0.17% | +0.14% | 1.241 |
+| 3.0 GeV | 1.318 | 1.323 | +0.32% | +0.19% | +0.13% | 1.346 |
+
+**3.1 H/V nue (azimuth-averaged horizon/vertical)**
+
+| observable | old (v140) | new (v142p) | new/old - 1 | of which hole patch (v140p/v140) | of which v1.4.2 fixes (v142p/v140p) | Honda |
+|---|---|---|---|---|---|---|
+| 0.3 GeV | 2.269 | 2.267 | -0.07% | -0.02% | -0.05% | 2.119 |
+| 0.5 GeV | 1.819 | 1.819 | -0.02% | +0.04% | -0.06% | 1.830 |
+| 1.0 GeV | 1.644 | 1.644 | +0.05% | +0.14% | -0.09% | 1.770 |
+| 3.0 GeV | 2.356 | 2.358 | +0.09% | +0.25% | -0.17% | 2.471 |
+
+**3.2 W/E numu (engine W/E at the E/W azimuths; Honda: max/min over azimuth)**
+
+| observable | old (v140) | new (v142p) | new/old - 1 | of which hole patch (v140p/v140) | of which v1.4.2 fixes (v142p/v140p) | Honda |
+|---|---|---|---|---|---|---|
+| 0.5 GeV, 87 deg | 2.815 | 2.768 | -1.67% | -1.54% | -0.13% | 2.507 |
+| 0.5 GeV, 81 deg | 2.711 | 2.668 | -1.58% | -1.47% | -0.12% | 2.441 |
+| 0.5 GeV, 75 deg | 2.527 | 2.490 | -1.43% | -1.34% | -0.10% | 2.285 |
+| 1.0 GeV, 87 deg | 2.536 | 2.488 | -1.87% | -1.77% | -0.09% | 2.090 |
+| 1.0 GeV, 81 deg | 2.404 | 2.363 | -1.72% | -1.65% | -0.08% | 2.024 |
+| 1.0 GeV, 75 deg | 2.216 | 2.183 | -1.51% | -1.46% | -0.06% | 1.919 |
+
+**3.2 W/E nue (engine W/E at the E/W azimuths; Honda: max/min over azimuth)**
+
+| observable | old (v140) | new (v142p) | new/old - 1 | of which hole patch (v140p/v140) | of which v1.4.2 fixes (v142p/v140p) | Honda |
+|---|---|---|---|---|---|---|
+| 0.5 GeV, 87 deg | 3.149 | 3.098 | -1.63% | -1.75% | +0.12% | 4.740 |
+| 0.5 GeV, 81 deg | 3.003 | 2.956 | -1.55% | -1.66% | +0.11% | 4.302 |
+| 0.5 GeV, 75 deg | 2.772 | 2.733 | -1.42% | -1.51% | +0.09% | 3.488 |
+| 1.0 GeV, 87 deg | 2.966 | 2.911 | -1.88% | -2.16% | +0.28% | 4.895 |
+| 1.0 GeV, 81 deg | 2.777 | 2.729 | -1.75% | -2.00% | +0.26% | 3.887 |
+| 1.0 GeV, 75 deg | 2.531 | 2.492 | -1.56% | -1.77% | +0.21% | 2.990 |
+
+**3.3 charge splitting, 87 deg (nu - nubar); the 'new/old' columns are absolute differences**
+
+| observable | old (v140) | new (v142p) | new - old | hole patch | v1.4.2 fixes | Honda |
+|---|---|---|---|---|---|---|
+| numu-anti 0.3 GeV D(dphi) [deg] | +4.563 | +4.576 | +0.012 | +0.001 | +0.011 | +5.953 |
+| numu-anti 0.3 GeV D(max/min) | -0.090 | -0.088 | +0.002 | +0.003 | -0.001 | -0.906 |
+| numu-anti 0.5 GeV D(dphi) [deg] | +4.296 | +4.313 | +0.017 | -0.000 | +0.017 | +4.355 |
+| numu-anti 0.5 GeV D(max/min) | -0.161 | -0.156 | +0.005 | +0.007 | -0.001 | -1.305 |
+| nue-anti 0.3 GeV D(dphi) [deg] | -9.118 | -9.119 | -0.000 | +0.000 | -0.001 | -12.218 |
+| nue-anti 0.3 GeV D(max/min) | +0.334 | +0.328 | -0.006 | -0.009 | +0.004 | +1.694 |
+| nue-anti 0.5 GeV D(dphi) [deg] | -8.532 | -8.533 | -0.001 | +0.000 | -0.001 | -9.209 |
+| nue-anti 0.5 GeV D(max/min) | +0.497 | +0.487 | -0.010 | -0.017 | +0.008 | +2.623 |
+
+**6.3 N/S model/Honda and first-harmonic phase offset (deg), 0.5 GeV, cos Z 0.05**
+
+| observable | old (v140) | new (v142p) | new/old - 1 | hole patch | v1.4.2 fixes | Honda |
+|---|---|---|---|---|---|---|
+| N numu | 0.948 | 0.963 | +1.58% | +1.25% | +0.32% | 1.000 |
+| S numu | 0.932 | 0.945 | +1.39% | +1.12% | +0.27% | 1.000 |
+| phase numu [deg] (abs. diff.) | +1.26 | +1.28 | +0.023 | +0.001 | +0.023 | +0.00 |
+| N antinumu | 0.980 | 0.994 | +1.42% | +1.32% | +0.10% | 1.000 |
+| S antinumu | 0.922 | 0.933 | +1.17% | +1.09% | +0.08% | 1.000 |
+| phase antinumu [deg] (abs. diff.) | +1.31 | +1.32 | +0.007 | +0.001 | +0.006 | +0.00 |
+| N nue | 1.053 | 1.065 | +1.21% | +1.30% | -0.09% | 1.000 |
+| S nue | 0.974 | 0.983 | +0.98% | +1.06% | -0.07% | 1.000 |
+| phase nue [deg] (abs. diff.) | +0.45 | +0.45 | +0.001 | +0.002 | -0.001 | +0.00 |
+| N antinue | 0.980 | 0.993 | +1.34% | +1.20% | +0.13% | 1.000 |
+| S antinue | 0.992 | 1.005 | +1.27% | +1.14% | +0.13% | 1.000 |
+| phase antinue [deg] (abs. diff.) | -0.23 | -0.22 | +0.002 | +0.002 | +0.001 | +0.00 |
+
+**hybrid base, 1D flux, cos Z = 1, GSF, SIBYLL23D: new/old - 1 (total | hole patch | v1.4.2 fixes)**
+
+| species | 0.1 GeV | 0.3 GeV | 1 GeV | 3 GeV | 10 GeV |
+|---|---|---|---|---|---|
+| numu | +0.31 / +0.27 / +0.04% | +0.61 / +0.48 / +0.13% | +1.07 / +0.89 / +0.18% | +0.35 / +0.37 / -0.02% | +0.00 / +0.01 / -0.01% |
+| antinumu | +0.30 / +0.28 / +0.02% | +0.53 / +0.48 / +0.05% | +1.06 / +0.92 / +0.14% | +0.49 / +0.38 / +0.11% | +0.03 / +0.01 / +0.02% |
+| nue | +0.29 / +0.29 / +0.01% | +0.45 / +0.45 / +0.00% | +0.76 / +0.83 / -0.06% | +0.30 / +0.38 / -0.08% | +0.00 / +0.02 / -0.01% |
+| antinue | +0.35 / +0.32 / +0.03% | +0.57 / +0.51 / +0.06% | +1.08 / +0.94 / +0.14% | +0.52 / +0.40 / +0.12% | +0.03 / +0.01 / +0.02% |
+
+**MCEq half of the hybrid base, 1D flux, cos Z = 1, GSF, SIBYLL23D: new/old - 1 (total | hole patch | v1.4.2 fixes)**
+
+| species | 0.1 GeV | 0.3 GeV | 1 GeV | 3 GeV | 10 GeV |
+|---|---|---|---|---|---|
+| numu | +0.31 / +0.27 / +0.04% | +0.62 / +0.49 / +0.13% | +1.32 / +1.09 / +0.22% | +2.09 / +2.19 / -0.10% | -0.11 / +1.96 / -2.03% |
+| antinumu | +0.30 / +0.28 / +0.02% | +0.54 / +0.49 / +0.05% | +1.30 / +1.13 / +0.17% | +2.97 / +2.29 / +0.67% | +4.69 / +1.51 / +3.13% |
+| nue | +0.29 / +0.29 / +0.01% | +0.46 / +0.45 / +0.00% | +0.94 / +1.01 / -0.07% | +1.76 / +2.25 / -0.48% | +0.63 / +2.77 / -2.08% |
+| antinue | +0.35 / +0.32 / +0.03% | +0.58 / +0.52 / +0.06% | +1.31 / +1.14 / +0.17% | +2.99 / +2.31 / +0.67% | +5.01 / +2.21 / +2.74% |
+
+**G_s response, GSF primary, cos Z_ref = 1: old value | new/old - 1 (total / hole patch / v1.4.2 fixes)**
+
+| species, R_c | 0.1 GeV | 0.3 GeV | 1 GeV | 3 GeV |
+|---|---|---|---|---|
+| numu, 7 GV | 0.5367: +0.26 / +0.23 / +0.03% | 0.7101: +0.23 / +0.20 / +0.03% | 0.9006: +0.12 / +0.12 / +0.00% | 0.9890: +0.02 / +0.02 / -0.00% |
+| numu, 11 GV | 0.3574: +0.53 / +0.48 / +0.04% | 0.5194: +0.50 / +0.45 / +0.05% | 0.7638: +0.34 / +0.34 / +0.00% | 0.9559: +0.08 / +0.10 / -0.02% |
+| numu, 40 GV | 0.0789: +3.27 / +3.14 / +0.12% | 0.1366: +3.23 / +3.11 / +0.11% | 0.2860: +2.66 / +2.76 / -0.09% | 0.5976: +1.14 / +1.46 / -0.31% |
+| nue, 7 GV | 0.5403: +0.25 / +0.24 / +0.01% | 0.6690: +0.23 / +0.23 / +0.00% | 0.8653: +0.15 / +0.16 / -0.01% | 0.9850: +0.03 / +0.03 / -0.01% |
+| nue, 11 GV | 0.3615: +0.52 / +0.50 / +0.01% | 0.4798: +0.50 / +0.49 / +0.00% | 0.7100: +0.39 / +0.42 / -0.03% | 0.9348: +0.12 / +0.15 / -0.03% |
+| nue, 40 GV | 0.0800: +3.35 / +3.29 / +0.06% | 0.1197: +3.35 / +3.36 / -0.01% | 0.2408: +2.97 / +3.23 / -0.25% | 0.5220: +1.59 / +2.04 / -0.44% |
+
+G_s(7 GV)/G_s(40 GV), numu, GSF: new/old - 1 = 0.3 GeV -2.90% (hole -2.82%), 1 GeV -2.49% (hole -2.58%), 3 GeV -1.13% (hole -1.43%)
+
+G_s(7 GV)/G_s(40 GV), nue, GSF: new/old - 1 = 0.3 GeV -3.02% (hole -3.03%), 1 GeV -2.75% (hole -2.98%), 3 GeV -1.57% (hole -1.99%)
+
+**G_s response, H3a primary, cos Z_ref = 1: old value | new/old - 1 (total / hole patch / v1.4.2 fixes)**
+
+| species, R_c | 0.1 GeV | 0.3 GeV | 1 GeV | 3 GeV |
+|---|---|---|---|---|
+| numu, 7 GV | 0.4827: +0.34 / +0.30 / +0.03% | 0.6779: +0.30 / +0.26 / +0.04% | 0.8962: +0.14 / +0.14 / +0.00% | 0.9897: +0.02 / +0.02 / -0.00% |
+| numu, 11 GV | 0.3242: +0.64 / +0.59 / +0.05% | 0.5007: +0.60 / +0.54 / +0.06% | 0.7676: +0.37 / +0.37 / -0.00% | 0.9609: +0.07 / +0.09 / -0.02% |
+| numu, 40 GV | 0.0826: +3.30 / +3.16 / +0.14% | 0.1511: +3.19 / +3.06 / +0.12% | 0.3243: +2.45 / +2.56 / -0.10% | 0.6488: +0.90 / +1.20 / -0.30% |
+| nue, 7 GV | 0.4856: +0.33 / +0.32 / +0.01% | 0.6297: +0.29 / +0.29 / +0.00% | 0.8571: +0.17 / +0.19 / -0.02% | 0.9856: +0.03 / +0.03 / -0.01% |
+| nue, 11 GV | 0.3275: +0.63 / +0.62 / +0.02% | 0.4556: +0.60 / +0.59 / +0.00% | 0.7102: +0.42 / +0.46 / -0.04% | 0.9407: +0.11 / +0.15 / -0.04% |
+| nue, 40 GV | 0.0835: +3.36 / +3.29 / +0.06% | 0.1304: +3.30 / +3.32 / -0.02% | 0.2725: +2.76 / +3.04 / -0.27% | 0.5729: +1.29 / +1.74 / -0.44% |
+
+G_s(7 GV)/G_s(40 GV), numu, H3a: new/old - 1 = 0.3 GeV -2.80% (hole -2.72%), 1 GeV -2.27% (hole -2.37%), 3 GeV -0.89% (hole -1.18%)
+
+G_s(7 GV)/G_s(40 GV), nue, H3a: new/old - 1 = 0.3 GeV -2.91% (hole -2.93%), 1 GeV -2.53% (hole -2.78%), 3 GeV -1.27% (hole -1.69%)
+
+**1D MCEq fluxes** (no geomagnetic factor, SIBYLL23D, one process per database; the
+engine's hybrid base uses only the MCEq half of these below ~1.7 GeV): the full set
+(H3a and GSF, cos Z 1 and 0.1, nu, nubar, mu+-, 0.1-1000 GeV) is in
+`runs/dbv142/out/tables_1d.md`. Maximum over 0.1-1000 GeV, vertical, GSF: hole patch
++3.05% (nu_e, 0.1-10 GeV), up to -2% at ~45 GeV in muons (as in section 5); **v1.4.2 fixes
+at fixed patch: nu_mu -4%, nubar_mu +7.8%, nu_e -2.9%, nubar_e +6.3% (10-100 GeV)**,
+and the muon charge ratio at 100 GeV falls from 1.467 to 1.267 (the v1.4.0 value is
+the neutron-as-proton artefact).
+
+### 10.6 Verdict
+
+Nothing in the delivered engine moved by more than MCEQ_DB_HOLE.md section 1 predicted,
+with three marginal exceedances/deviations that are stated here rather than rounded away.
+(i) *Hybrid base:* +0.31 / +0.61 / +1.07 / +0.35% for nu_mu at 0.1 / 0.3 / 1 / 3 GeV and
+< 0.05% from 10 GeV on; the hole patch alone reproduces the earlier +0.27 / +0.49 / +0.89 /
++0.37%, the v1.4.2 fixes add +0.04 / +0.13 / +0.18 / -0.02%, so the prediction
+"sub-percent" is exceeded only by 0.07 points at 1 GeV. (ii) *G_s at 40 GV:* +3.27% (nu_mu)
+and +3.35% (nu_e) at E <= 0.3 GeV (predicted <= 3%; hole patch alone +3.14/+3.29%,
+v1.4.2 fixes +0.1%), +2.7/+3.0% at 1 GeV, +1.1/+1.6% at 3 GeV; <= 0.64% for R_c <= 11 GV;
+`G_s(7 GV)/G_s(40 GV)` falls by 2.9% (0.3 GeV), 2.5% (1 GeV) and 1.1% (3 GeV) for nu_mu,
+as predicted. (iii) *Near-horizon E-W amplitude:* predicted 2-3% smaller; in the delivered
+engine W/E is smaller by only **1.4-1.9% for nu_mu** (87-75 deg, 0.5 and 1 GeV; 1.4-1.9%
+for nu_e), the cone average and the 1D daemonflux half diluting the 2.5-2.9% of
+`G_s(7)/G_s(40)`. This lowers the nu_mu overshoot of Honda from +12.3 to +10.4% (0.5 GeV,
+87 deg) and from +21.3 to +19.1% (1 GeV, 87 deg); the nu_e deficit gets 1.1-1.2 points
+worse (-33.6 -> -34.6%, -39.4 -> -40.5%). Everything else is below one percent: H/V
+changes by +0.1..+0.3% (nu_mu) and < 0.1% (nu_e), the charge-splitting observables by
+< 0.02 deg in D(dphi) and < 0.02 in D(max/min) (so Phase-1's finding that the amplitude
+splitting is ~5x short of Honda is untouched), the first-harmonic phase offsets by < 0.03
+deg, and N/S model/Honda rises uniformly by +1.0..+1.6% (a level shift: N and S move
+together; the N-S contrast does not change). **Separation:** the 56 GeV hole accounts for
+essentially all of it (hybrid base, G_s, W/E, N/S); the neutron and antiparticle fixes of
+v1.4.2 change no 3D observable by more than 0.3% (H/V <= 0.17%, W/E <= 0.28%, G_s <= 0.44%
+at 40 GV/3 GeV, hybrid base <= 0.18%) because they act on the charge and flavour ratio
+at E >~ 3 GeV, where the hybrid base is the muon-calibrated daemonflux (weight > 0.5 above
+1.7 GeV); the same fixes are large where MCEq itself is the base (nubar_mu +3.1%, nu_mu
+-2.0% at 10 GeV in the MCEq half; 1D nu_mu -4%, nubar_mu +8% above 10 GeV), so they matter
+for `base_model="mceq"` studies above a few GeV, for the Monte Carlo (section 10.7) and
+for anything that uses charge ratios. The v1.4.2 file also differs from v1.4.0 for models
+other than SIBYLL (10.3), which this engine does not use by default.
+
+**Test suite** (`pytest -q -p no:cacheprovider` from `tools/mceq3d`, new default, 2026-11-04,
+log `runs/dbv142/logs/pytest_final.log`): **275 passed, 2 skipped, 5 warnings in 3141 s.**
+Before the switch: 268 passed, 2 skipped; the 7 new tests are `test_mceq3d_db.py`; the two
+skips are the `test_joint_cone.py` ones that need `JOINT_CONE_PROD_CACHE`. The run started
+from a copy of the new cache directory, so it also built the missing
+`channel_fractions` entries; most of the time is the back-trace tests
+(`test_cutoff_anchor.py`, ~45 min). The warnings are the two static-table `UserWarning`s of
+10.4 and two RuntimeWarnings that were already there. An earlier full run (272 passed,
+5 skipped) had three more skips: `test_muon_segment_mc.py` needs the MCEq-derived muon source
+table in `$MSMC_SCRATCH` (a `/tmp` session scratchpad that did not contain one, so the
+three tests skip independently of the switch). Since that table depends on the database,
+its name now carries the tag (`muon_segment_mc.source_cache_path()`, test updated) and
+it was rebuilt for the default database (28 s). `test_conservation.py` and
+`test_cutoff_anchor.py` read the old `.cache3d/jointprod_chan_*.npz` by fixed path (the v1.4.0
+production profile); they test geometry and were not changed.
+
+### 10.7 What the Monte Carlo (`tools/mc3d`) would need (not changed here)
+
+Read-only inspection of `tools/mc3d/build_tables.py`, `interactions.py`, `closure.py`.
+
+* The MC takes from MCEq only the table file `tools/mc3d/mceq_tables_SIBYLL23D.npz`
+  (`build_tables.py`): the inelastic cross sections `cs_<pdg>` (interaction lengths via
+  `ChromoBackend(xs="mceq")`, the default) and, for the closure rungs, the yield and decay
+  matrices (`MCEqYieldBackend`). The event pools (`pools_fix`, chromo) do not depend on the
+  MCEq database.
+* **`build_tables.build()` constructs `MCEqRun` directly** after `import MCEq.config`, so it
+  uses MCEq's default database = the shipped v1.4.0 file. The switch in `mceq3d_db.py` is
+  *not* seen by it.
+* **The cached table is not keyed by database.** The npz holds only `e_grid, e_widths,
+  e_bins, model, emin` plus the data; no file name, no sha256. The committed
+  `mceq_tables_SIBYLL23D.npz` (10 Sep) therefore silently carries the v1.4.0 content,
+  including the 0.8 hole: `cs_2212` at 56.2 GeV is 218.45 mb against 273.45 / 273.86 mb in
+  the neighbouring bins, i.e. **the MC's interaction length is 25% too long between 50.1
+  and 63.1 GeV** (and its v1.4.0 SIBYLL neutron-as-proton yields are in the `y_*` arrays).
+* What has to change (for the agent that owns `tools/mc3d`, or the PM):
+  1. `build_tables.py::build`: replace `MCEqRun(...)` by `mceq3d_db.make_run(...)`
+     (`tools/mceq3d` is already on `PYTHONPATH` in the recipe) and write
+     `db_label=np.array([spec.label])`, `db_sha256=np.array([spec.sha256])` (from
+     `mceq3d_db.resolve()`) into the npz.
+  2. `MCEqYieldBackend.__init__`: read those keys and warn (or raise) if
+     `mceq3d_db.resolve().sha256` differs; a file without them is a v1.4.0 table.
+  3. Regenerate: `MCEQ3D_DB=v142p python build_tables.py --model SIBYLL23D --emin 0.05
+     --primary H3a --out mceq_tables_SIBYLL23D.npz` (a few minutes, one MCEq init) and
+     redo the closure references that compare against MCEq (`closure_A1.npz`,
+     `closure_A2*.npz`: MCEq is the reference of rungs A1/A2 and must use the same
+     database as the tables).
+  4. Anything that cached an MC result computed with `xs="mceq"` (`results/`, the
+     `MC3D_POOL_CACHE` pools are fine) is stale in the 50-63 GeV interaction length and,
+     through the yields, in the charge ratios above ~10 GeV (section 10.5); nothing in
+     those files records which database it used.
+  5. Optional: use `xs="hybrid"`, which takes chromo's own SIBYLL cross sections above the
+     80 GeV splice, but below it MCEq's table is used anyway, and the hole is at 56 GeV.
+* No MC code reads `mceq3d_db`; the MC runs in the same Python recipe, so
+  `MCEQ3D_DB=v140` reproduces the current table build.
+
+### 10.8 Reproducing
+
+```bash
+PY=/cvmfs/sft.cern.ch/lcg/views/LCG_108/x86_64-el9-gcc14-opt/bin/python3.12
+R=/afs/cern.ch/work/p/pigrange/daemonflux ; W=/home/pigrange/mc3d_work
+export PYTHONPATH=$W/pylib_fix:$R/.venv/lib/python3.12/site-packages:$R/src:$R/tools/mceq3d:$R/tools/mc3d
+export OMP_NUM_THREADS=1
+cd $R/tools/mceq3d
+# 1. databases (section 10.1), then verification
+$PY diag_db_switch.py verify                       # -> $W/runs/dbv142/out/verify_v142.txt
+# 2. 1D fluxes on each database (SIBYLL23D; 2 min each) and the compatibility checks
+for db in v140 v140p v142 v142p; do for pr in H3a GSF; do $PY diag_db_switch.py flux $db $pr; done; done
+$PY diag_db_switch.py flux $W/mceq_db/mceq_db_lext_dpm193_v142_dbhole_noop.h5 GSF --label noop
+$PY diag_db_switch.py compat                       # -> out/compat.txt
+# 3. delivered-path observables, one process per database (hybrid base + GSF + Kamioka;
+#    the first run of a new database builds ~4 G_s families, the joint production profile
+#    and the channel fractions at 11 zeniths: ~1.5 h of mostly single-core time at
+#    cos Z = 0.05; v140 uses the existing .cache3d, copy it first: cp -r .cache3d $W/runs/dbv142/cache_old)
+for db in v140 v140p v142 v142p; do
+  $PY diag_db_switch.py engine $db --cache-dir $W/runs/dbv142/cache_old; done
+$PY diag_db_switch.py tables                       # -> out/tables_engine.md
+# 4. tests (a full run takes ~50 min under load)
+$PY -m pytest -q -p no:cacheprovider
+# old behaviour of any script:  MCEQ3D_DB=v140 $PY <script>
+```
+
+The delivered-path observables are computed with the code of `diag_joint_stages.py` (stage
+`S4`: 3.1 H/V, 3.2 W/E; same grid, same `solve` arguments) and `diag_ew_charge_fourier.py`
+(`model_flux`, `ew_observables`, `honda_ew`: 3.3 and 6.3), called from one engine
+instance per database. N/S in 6.3 is the model/Honda ratio averaged over the two 30-degree
+Honda bins adjacent to geographic North (centres 345/15 deg, compass) or South (165/195
+deg), nu at cos Z = 0.05 and 0.5 GeV; the phase offset is `phi1(model) - phi1(Honda)`
+of the first azimuthal harmonic. The 6.3 table in `PHASE1_RESULTS.md` quotes the same
+quantities from a lost log (`ab_tables.txt`); our *v1.4.0* column reproduces its phase
+offsets (+1.3, +1.3, +0.5, -0.2 deg) but its N/S values only roughly, since the exact
+binning of that log is not recoverable. The old/new comparison is unaffected, as both
+columns use the same definition.
+
+### 10.9 Recipe change
+
+None. MCEq 1.4.1 reads the v1.4.2 file (10.3), so `pylib_mceq142` is not needed and the
+recipe of `MEMORY.md` / `PHASE1_RESULTS.md` section 7 is unchanged. New optional
+environment variables: `MCEQ3D_DB`, `MCEQ3D_DB_DIR`, `MCEQ3D_CACHE`, `MC3D_WORK`
+(10.4). The default now requires the file
+`$MC3D_WORK/mceq_db/mceq_db_lext_dpm193_v142_dbhole_interp.h5` (and `DDM_1.0.npy` beside
+it, for the data-driven model) to exist; `MCEQ3D_DB=v140` needs nothing new.
+
+### 10.10 Remaining
+
+* Rebuild the static MCEq-derived tables with the new database
+  (`offaxis_excess*.npz`, `channel_fractions.npz`; `offaxis_mc.py --build` now writes the
+  `db` key) and quantify their effect. The delivered joint-cone path already uses the
+  database-keyed production profile, so the expected effect is small, but it was not measured.
+* Models other than SIBYLL23D still carry the 56.2 GeV hole in v1.4.2 (10.2); patch them
+  with `diag_mceq_db_hole.py` (it is written for SIBYLL23D only) if they are to be used.
+* `tools/mc3d` table rebuild and closure re-run (10.7).
+* `test_conservation.py` and `test_cutoff_anchor.py` read `.cache3d/jointprod_chan_*.npz`
+  by fixed path, i.e. the v1.4.0 production profile, whatever the default database is.
+  They test geometry, not database-dependent numbers; they were left alone.
+* The upstream issue text (section 7) is still unposted and should be amended: v1.4.2
+  still has the hole, and the file differs from v1.4.0 for every model.

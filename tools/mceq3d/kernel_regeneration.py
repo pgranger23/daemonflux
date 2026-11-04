@@ -603,10 +603,10 @@ def load_mceq_reference(
     # QGSJet, EPOS, DPMJET). For a low-energy generator like UrQMD there is no
     # MCEq table; return None gracefully rather than crashing the kernel build.
     try:
-        from MCEq.core import MCEqRun
+        from mceq3d_db import make_run
         import crflux.models as crf
 
-        mceq = MCEqRun(
+        mceq = make_run(
             interaction_model=model,
             primary_model=(crf.HillasGaisser2012, "H3a"),
             theta_deg=0.0,

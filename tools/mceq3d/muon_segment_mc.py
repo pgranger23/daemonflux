@@ -191,6 +191,15 @@ def xslant(h_cm, psi_rad, geom):
 # ---------------------------------------------------------------------------
 # muon source: MCEq depth-resolved pi/K flux folded with two-body decay
 # ---------------------------------------------------------------------------
+def source_cache_path(method="mu_transport"):
+    """Default cache file of :func:`muon_source_table`.  MCEq-derived, hence keyed
+    by the database (empty tag for the shipped v1.4.0 file: the historical name is
+    unchanged)."""
+    import mceq3d_db
+
+    return os.path.join(SCRATCH, f"muon_source_{method}{mceq3d_db.db_tag()}.npz")
+
+
 def muon_source_table(cache=None, n_x=90, theta_deg=0.0, e_lo=0.1, e_hi=400.0,
                       interaction_model="SIBYLL23D", primary="H3a",
                       method="mu_transport"):
@@ -224,7 +233,7 @@ def muon_source_table(cache=None, n_x=90, theta_deg=0.0, e_lo=0.1, e_hi=400.0,
     two-body kinematics.  It is only valid above the tracking threshold and is
     kept as an independent cross-check of the transport inversion there.
     """
-    cache = cache or os.path.join(SCRATCH, f"muon_source_{method}.npz")
+    cache = cache or source_cache_path(method)
     if cache and os.path.exists(cache):
         d = np.load(cache)
         return {k: d[k] for k in ("x_grid", "e_grid", "s_plus", "s_minus")}
@@ -233,10 +242,10 @@ def muon_source_table(cache=None, n_x=90, theta_deg=0.0, e_lo=0.1, e_hi=400.0,
     import mceq_config as cfg
 
     cfg.e_min = e_lo
-    from MCEq.core import MCEqRun
+    from mceq3d_db import make_run
     import crflux.models as crf
 
-    mc = MCEqRun(interaction_model=interaction_model,
+    mc = make_run(interaction_model=interaction_model,
                  primary_model=(crf.HillasGaisser2012, primary),
                  theta_deg=theta_deg)
     xmax = float(mc.density_model.max_X)

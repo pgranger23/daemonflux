@@ -380,8 +380,24 @@ def pion_alpha_pdf(e_grid, alpha_deg, n=3_000_000, seed=4, scale=1.0,
     return W
 
 
-def channel_fractions(e_query, flavour="numu", cache="channel_fractions.npz",
-                      zenith_deg=0.0):
+def channel_fractions_cache():
+    """Default cache file of :func:`channel_fractions` for the selected database.
+
+    The fractions are MCEq-derived, hence database-dependent: the historical
+    ``channel_fractions.npz`` (built with the shipped v1.4.0 file) for that file,
+    ``<mceq3d_db.cache_dir()>/channel_fractions<db tag>.npz`` for any other
+    database, so a cache built with another database is never read.
+    """
+    import os
+    import mceq3d_db as _db
+
+    sp = _db.resolve()
+    if sp.legacy:
+        return "channel_fractions.npz"
+    return os.path.join(_db.cache_dir(), f"channel_fractions{sp.tag}.npz")
+
+
+def channel_fractions(e_query, flavour="numu", cache=None, zenith_deg=0.0):
     """Energy-dependent flux fractions f_pi, f_k, f_mu from MCEq (cached).
 
     ``flavour`` is "numu" or "nue". For nu_e the direct pi channel is helicity-
@@ -396,6 +412,9 @@ def channel_fractions(e_query, flavour="numu", cache="channel_fractions.npz",
     (0 deg) entry stays backward-compatible with the original flat layout.
     """
     import os
+
+    if cache is None:
+        cache = channel_fractions_cache()
 
     ztag = f"{float(zenith_deg):.0f}"
     suffix = "" if ztag == "0" else f"_z{ztag}"
@@ -413,10 +432,10 @@ def channel_fractions(e_query, flavour="numu", cache="channel_fractions.npz",
         import mceq_config as cfg
 
         cfg.e_min = 0.1
-        from MCEq.core import MCEqRun
+        from mceq3d_db import make_run
         import crflux.models as crf
 
-        mc = MCEqRun(
+        mc = make_run(
             interaction_model="SIBYLL23D",
             primary_model=(crf.HillasGaisser2012, "H3a"),
             theta_deg=float(zenith_deg),

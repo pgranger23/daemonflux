@@ -55,12 +55,12 @@ class MCEqCascade3D:
                  "H3a"), e_min=0.3):
         import importlib.util  # noqa: F401
         import MCEq.config as cfg
-        from MCEq.core import MCEqRun
+        from mceq3d_db import make_run
         import crflux.models as crf
 
         cfg.e_min = e_min
         pm = (getattr(crf, primary[0]), primary[1])
-        self.mceq = MCEqRun(interaction_model=interaction_model, primary_model=pm,
+        self.mceq = make_run(interaction_model=interaction_model, primary_model=pm,
                             theta_deg=0.0)
         self.e = self.mceq.e_grid
         self.dim = self.mceq.dim

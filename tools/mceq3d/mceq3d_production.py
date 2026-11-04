@@ -83,10 +83,10 @@ def _kernel_func(xmat, e_c, ll, *rest):
 
 def solve_multipoles(interaction_model="SIBYLL23D", lmax=8, quantity="total_numu"):
     """Return (e_grid, c_l[n_l, n_e]) for the given neutrino quantity."""
-    from MCEq.core import MCEqRun
+    from mceq3d_db import make_run
     import crflux.models as crf
 
-    mceq = MCEqRun(
+    mceq = make_run(
         interaction_model=interaction_model,
         primary_model=(crf.HillasGaisser2012, "H3a"),
         theta_deg=0.0,
@@ -123,10 +123,10 @@ def main(argv=None):
     e, c = solve_multipoles(args.model, args.lmax, args.quantity)
 
     # validation: l=0 must equal the plain MCEq solve
-    from MCEq.core import MCEqRun
+    from mceq3d_db import make_run
     import crflux.models as crf
 
-    ref = MCEqRun(
+    ref = make_run(
         interaction_model=args.model,
         primary_model=(crf.HillasGaisser2012, "H3a"),
         theta_deg=0.0,
