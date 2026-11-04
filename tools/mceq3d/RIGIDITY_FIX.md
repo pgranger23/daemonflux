@@ -460,3 +460,129 @@ $PY diag_rigidity_scan.py m3b h3a 0 ; $PY diag_rigidity_scan.py tables
    `muon_bending = True` columns are given only as requested.
 5. Solar modulation (`_modulate_phi0`) and `offaxis_mc`'s `rc_cut_gv` check use kinetic-grid
    conventions of their own (section 2); unchanged.
+
+## 8. Follow-up (2026-11-04, later)
+
+### 8.1 Engine cells for the MC pilot (GSF, GH-native; muon_bending off and on)
+
+Same recipe as section 3 (E): `diag_rigidity_scan.py m3b <gsf|ghn> <0|1>`; hybrid base,
+`cz_sub = 3`, band-integrated, rigidity fix, v142p. Files in `/home/pigrange/mc3d_work/runs/rigfix/out/`:
+
+| file | engine |
+|---|---|
+| `m3b_engine_gsf_mb0.npz`, `m3b_engine_gsf_mb1.npz` | GSF, `muon_bending` False / True |
+| `m3b_engine_ghnative_mb0.npz`, `m3b_engine_ghnative_mb1.npz` | `GaisserHondaNative`, False / True |
+| `m3b_engine_h3a_mb0.npz` | H3a (section E) |
+| `m3b_obs_<same>.npz` | the observables of the corresponding engine file |
+
+Keys of `m3b_engine_*.npz` (the format `analyse_m3b.engine_patterns(path)` reads):
+`e` (121,) engine energy grid [GeV, kinetic neutrino energy]; `az` (12,) azimuth bin centres
+[deg, compass: 0 = N, 90 = E; 15 + 30 j]; `total_numu`, `total_antinumu`, `total_nue`,
+`total_antinue`, each (3, 12, 121) = flux[cos Z band, azimuth, E] in /(m^2 s sr GeV) with the
+cos Z bands ordered **[0-0.1, 0.1-0.2, 0.2-0.3]** (the engine's own order 0.25/0.15/0.05
+is reversed on writing). Plug-in: `P = analyse_m3b.engine_patterns(path)` gives (species in
+`SP_NAMES` = nue, antinue, numu, antinumu; E band 0.3/0.5/1.0; cos Z band; az 12).
+Keys of `m3b_obs_*.npz`: `engine` and `honda`, each (4 species in `species`
+order nue/antinue/numu/antinumu, 3 E bands 0.3/0.5/1.0, 3 cos Z bands, 10 observables in
+the order of `obs` = a1_rel, dphi, a2_rel, WE, maxmin, fN, fS, NS, c1_rel, s1_rel), i.e.
+`analyse_m3b.table_obs(...)` with the geomagnetic axis of `analyse_m3b.ew_axis()`; `honda` is
+`table_obs(honda_patterns())`. Example (nu_mu, 0.5 GeV, cos Z 0-0.1; W/E, Honda 2.519):
+GSF 2.848 (off) / 2.801 (on); GH-native 2.766 / 2.723; H3a 2.606 (off).
+
+### 8.2 Cache routing
+
+`mceq3d_db.dep_path(requested, name)`: reads an existing `requested/name` only for the legacy
+(shipped v1.4.0) database (old `.cache3d` entries stay valid), and otherwise always returns a
+path in `$MCEQ3D_CACHE`. Used for `gs_*` (`geomag_response`) and `jointprod_chan_*`; the
+channel fractions use `channel_fractions_cache()` (tracked file if it carries the selected
+database, else `$MCEQ3D_CACHE/channel_fractions<db tag>.npz`, `_dbv140` for the shipped file).
+Geomagnetic maps (`finerc_*` ...) are database-independent and unchanged. Test:
+`test_legacy_database_never_writes_new_caches_into_the_given_directory`.
+
+### 8.3 Static tables replaced by the v142p rebuild
+
+The tracked `offaxis_excess.npz`, `_v2`, `_channel`, `_channel_v2`, `_rebuild_old` and
+`channel_fractions.npz` are now rebuilt with `v142p` and store `db` (cache tag),
+`db_label` and `db_sha256` (`7de8275f...`); `offaxis_mc.py --build/--build-channel` writes the
+same keys, `check_static_table` also compares the sha256, and the two warnings are gone for the
+default database (they now fire for the others). Changes with respect to the v1.4.0 tables:
+`E_off`, `E_off_s` <= 0.10% (0.1-10 GeV, all five files); `channel_fractions` (not a
+ratio, an absolute fraction f_pi, f_K, f_mu) <= 0.021 absolute at 0.1-10 GeV (largest at
+zenith 90 deg, 9 GeV) and <= 0.037 at 10-100 GeV: these come mostly from the v1.4.2
+changes, not the hole, and only feed the legacy blend (`joint_channels=False`) and the cone
+fractions. The v1.4.0 versions are in `/home/pigrange/mc3d_work/runs/rigfix/eoff/v140/` (copy back to
+reproduce the old tables; with `MCEQ3D_DB=v140` the code then finds the file matching that
+database; with the replaced files `MCEQ3D_DB=v140` builds its own
+`channel_fractions_dbv140.npz` in `$MCEQ3D_CACHE`). Rebuild: `build_channel` 171 s with 8 jobs,
+`build()` 375 s, channel fractions 12 zeniths ~40 min single core.
+`test_static_tables_carry_the_default_database` guards it.
+
+### 8.4 Level offset (record, not a fix)
+
+GSF, hybrid base, delivered configuration, Honda's 12-bin azimuth average at the same cos Z
+band and E (linear mean over the 12 bins). Column 4 divides the engine's **1D, no-cutoff**
+base by Honda's azimuth average; because Honda's own average contains its geomagnetic
+cutoff, that factor is not a 1D disagreement (it is 1.2-2.1 because the cutoff removes
+10-50% at these energies); the column that carries the level information is the product
+(last), and column 5 (engine az-average over its own 1D base) is the engine's
+cutoff x cone x E_off factor.
+
+| species | cos Z | E [GeV] | 1D base / Honda az-avg | engine az-avg / 1D base | engine az-avg / Honda az-avg |
+|---|---|---|---|---|---|
+| numu | 0.25 | 0.3 | 1.858 | 0.532 | 0.989 |
+| numu | 0.25 | 0.5 | 1.676 | 0.596 | 0.999 |
+| numu | 0.25 | 1.0 | 1.490 | 0.703 | 1.047 |
+| numu | 0.15 | 0.3 | 1.592 | 0.616 | 0.981 |
+| numu | 0.15 | 0.5 | 1.548 | 0.639 | 0.989 |
+| numu | 0.15 | 1.0 | 1.470 | 0.705 | 1.037 |
+| numu | 0.05 | 0.3 | 1.197 | 0.843 | 1.009 |
+| numu | 0.05 | 0.5 | 1.282 | 0.784 | 1.005 |
+| numu | 0.05 | 1.0 | 1.356 | 0.765 | 1.038 |
+| antinumu | 0.25 | 0.3 | 1.868 | 0.521 | 0.973 |
+| antinumu | 0.25 | 0.5 | 1.678 | 0.581 | 0.975 |
+| antinumu | 0.25 | 1.0 | 1.481 | 0.689 | 1.020 |
+| antinumu | 0.15 | 0.3 | 1.596 | 0.606 | 0.967 |
+| antinumu | 0.15 | 0.5 | 1.539 | 0.623 | 0.959 |
+| antinumu | 0.15 | 1.0 | 1.454 | 0.687 | 0.999 |
+| antinumu | 0.05 | 0.3 | 1.203 | 0.834 | 1.004 |
+| antinumu | 0.05 | 0.5 | 1.275 | 0.766 | 0.976 |
+| antinumu | 0.05 | 1.0 | 1.314 | 0.740 | 0.972 |
+| nue | 0.25 | 0.3 | 2.116 | 0.486 | 1.028 |
+| nue | 0.25 | 0.5 | 1.836 | 0.546 | 1.003 |
+| nue | 0.25 | 1.0 | 1.588 | 0.647 | 1.027 |
+| nue | 0.15 | 0.3 | 1.798 | 0.569 | 1.023 |
+| nue | 0.15 | 0.5 | 1.673 | 0.591 | 0.990 |
+| nue | 0.15 | 1.0 | 1.546 | 0.647 | 1.001 |
+| nue | 0.05 | 0.3 | 1.350 | 0.796 | 1.074 |
+| nue | 0.05 | 0.5 | 1.354 | 0.741 | 1.004 |
+| nue | 0.05 | 1.0 | 1.380 | 0.706 | 0.975 |
+| antinue | 0.25 | 0.3 | 1.911 | 0.552 | 1.055 |
+| antinue | 0.25 | 0.5 | 1.675 | 0.615 | 1.030 |
+| antinue | 0.25 | 1.0 | 1.460 | 0.714 | 1.043 |
+| antinue | 0.15 | 0.3 | 1.655 | 0.645 | 1.067 |
+| antinue | 0.15 | 0.5 | 1.553 | 0.665 | 1.032 |
+| antinue | 0.15 | 1.0 | 1.461 | 0.715 | 1.045 |
+| antinue | 0.05 | 0.3 | 1.240 | 0.900 | 1.116 |
+| antinue | 0.05 | 0.5 | 1.292 | 0.832 | 1.075 |
+| antinue | 0.05 | 1.0 | 1.336 | 0.780 | 1.042 |
+
+Reading: engine az-average / Honda az-average is 0.96-1.12 over the 36 cells (nu_mu
+0.98-1.05, nubar_mu 0.96-1.02, nu_e 0.98-1.07, nubar_e 1.03-1.12; the largest, 1.116, is nubar_e
+at 0.3 GeV, 87 deg). So the level offset is a genuine shift of the *average*, not of the
+N-S contrast, and it grows toward low energy and the horizon for nubar_e. Whether it comes
+from the MCEq half of the base or from the cone / E_off factor cannot be separated with this
+table: `honda_kam.npz` has no no-cutoff reference, so the "1D part" (column 4) cannot be
+compared with Honda's own 1D flux.
+
+### 8.5 Tests and CPU of the follow-up
+
+Full `pytest -q` (default `v142p`): `282 passed, 2 skipped, 4 warnings in 1951.74s (0:32:31)` (log `runs/rigfix/logs/pytest_rig3.log`). New
+tests: `test_legacy_database_never_writes_new_caches_into_the_given_directory`,
+`test_static_tables_carry_the_default_database` (and the channel-fractions test was
+rewritten). `test_joint_cone.py` and `test_mceq3d_flux.py` took their production profile
+from the legacy `.cache3d` file; with tables now built on v142p they use the profile of the
+active database (`mceq3d_db.dep_path`), and their machine-precision gates (`G = 1` limit
+equals the table, rtol 1e-9) pass against the rebuilt tables. CPU: G_s chunks for 12 more
+(primary, cos Z) pairs 96 chunks about 15 core-h of process time, four `m3b` engine runs about 1
+core-h, tables 0.7 core-h, level offset 0.2 core-h, test suite 0.5 h.
+

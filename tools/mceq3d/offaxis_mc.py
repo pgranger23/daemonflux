@@ -112,6 +112,16 @@ H_TOP_CM = 112.8e5  # top of the CORSIKA atmosphere [cm]
 TAG = "SIBYLL23D_HillasGaisser2012-H3a"  # hadronic/primary identity of the tables
 
 
+def _db_keys():
+    """Database identity stored in every table built from MCEq: ``db`` (cache tag,
+    "" = shipped v1.4.0 file), ``db_label``, ``db_sha256`` (``mceq3d_db.DBSpec``)."""
+    import mceq3d_db
+
+    sp = mceq3d_db.resolve()
+    return {"db": np.array(sp.tag), "db_label": np.array(sp.label),
+            "db_sha256": np.array(sp.sha256)}
+
+
 def production_profile(e_lo=0.1, e_hi=100.0, n_x=80, theta_deg=0.0,
                        rc_cut_gv=None, species=None):
     """p(X, E) = dPhi_numu/dX from a depth-resolved MCEq cascade.
@@ -774,9 +784,7 @@ def build_channel(cz=None, n_alpha=44, n_beta=18, n_jobs=None, bending=False,
                     ("old", "channel"): "offaxis_excess_channel.npz",
                     ("v2", "channel"): "offaxis_excess_channel_v2.npz"}[(m, mode)]
             path = os.path.join(out_dir, name)
-            import mceq3d_db
-
-            d["db"] = np.array(mceq3d_db.db_tag())  # "" = shipped v1.4.0 file
+            d.update(_db_keys())
             np.savez(path, **d)
             out[(m, mode)] = path
             if verbose:
@@ -864,7 +872,7 @@ def build(out="offaxis_excess.npz", cone_kernel="moments", moments=None):
         print(f"      cosZ={c:.2f}  E_off(0.3GeV)={E_off[i, j]:.3f}")
     np.savez(
         out, e=ep_grid, cz=cz, E_off=E_off, E_off_hi=E_hi, E_off_lo=E_lo,
-        E_off_mu=E_mu, tag=TAG, db=np.array(__import__("mceq3d_db").db_tag()),
+        E_off_mu=E_mu, tag=TAG, **_db_keys(),
     )
     print(f"saved -> {out}")
     return ep_grid, cz, E_off

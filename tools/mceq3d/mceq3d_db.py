@@ -210,7 +210,7 @@ def indep_path(requested, name):
 _WARNED = set()
 
 
-def check_static_table(name, built_with=""):
+def check_static_table(name, built_with="", sha256=None):
     """Warn (once) when a checked-in MCEq-derived table is used with another database.
 
     ``built_with`` is the database tag recorded in the table ("" = the shipped
@@ -219,6 +219,8 @@ def check_static_table(name, built_with=""):
     memos; they are not rebuilt automatically.
     """
     cur = db_tag()
+    if sha256 and sha256 != resolve().sha256 and cur == built_with:
+        cur = cur + "(sha256 differs)"
     if cur != built_with and (name, cur) not in _WARNED:
         import warnings
 
@@ -230,3 +232,20 @@ def check_static_table(name, built_with=""):
             "(MCEQ_DB_HOLE.md section 10).",
             stacklevel=3,
         )
+
+
+def dep_path(requested, name):
+    """Path of a yield-/cross-section-DEPENDENT cache file (G_s, production profile,
+    channel fractions, ...).
+
+    Reading: for the legacy (shipped v1.4.0) database an existing
+    ``requested/name`` is used as it is (the old ``.cache3d`` entries stay valid).
+    Writing: everything else -- including every *new* file of the legacy database --
+    goes to :data:`CACHE_ROOT` (``$MCEQ3D_CACHE``, never the repository / AFS).
+    """
+    if requested is not None and resolve().legacy:
+        p = os.path.join(requested, name)
+        if os.path.exists(p):
+            return p
+    os.makedirs(CACHE_ROOT, exist_ok=True)
+    return os.path.join(CACHE_ROOT, name)

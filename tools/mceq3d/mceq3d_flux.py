@@ -951,9 +951,8 @@ class MCEq3DFlux:
         if cache_dir is not None:
             # db-dependent: key carries the database (self._gs_tag) and, for a
             # non-legacy database, the file lives in mceq3d_db.cache_dir()
-            fpath = os.path.join(
-                _db.cache_dir(cache_dir),
-                gs_cache_name(self._gs_tag, cz_ref, rc_grid, sigma_lnr),
+            fpath = _db.dep_path(
+                cache_dir, gs_cache_name(self._gs_tag, cz_ref, rc_grid, sigma_lnr)
             )
             if os.path.exists(fpath):
                 d = np.load(fpath)
@@ -1161,7 +1160,8 @@ class MCEq3DFlux:
         # Static MCEq-derived table: built with the db recorded under ``db`` (the
         # tables checked in before 2026-11 have no such key = shipped v1.4.0 file).
         _db.check_static_table(os.path.basename(path),
-                               str(d["db"]) if "db" in d else "")
+                               str(d["db"]) if "db" in d else "",
+                               str(d["db_sha256"]) if "db_sha256" in d else None)
         if "tag" in d:
             tag = str(d["tag"])
             if not self._tag.startswith(tag):
@@ -1880,9 +1880,8 @@ class MCEq3DFlux:
 
         # depth-resolved MCEq production profile: depends on the database
         # (legacy file name unchanged for the shipped v1.4.0 file)
-        cdir = _db.cache_dir(cache_dir or _CACHE_DIR)
-        os.makedirs(cdir, exist_ok=True)
-        path = os.path.join(cdir, f"jointprod_chan_{ox.TAG}{self._db.tag}.npz")
+        path = _db.dep_path(cache_dir or _CACHE_DIR,
+                            f"jointprod_chan_{ox.TAG}{self._db.tag}.npz")
         got = self._joint_prod = jc.load_production(
             cache=path, species=ox.CHANNEL_SPECIES)
         return got

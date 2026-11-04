@@ -264,10 +264,19 @@ def _joint_gate_inputs():
 
     here = os.path.dirname(os.path.abspath(__file__))
     cache = None
+    import mceq3d_db
+
+    # the production profile must be the one of the ACTIVE database (the E_off table
+    # is built with it): database-keyed name, in $MCEQ3D_CACHE unless legacy
+    own = mceq3d_db.dep_path(os.path.join(here, ".cache3d"),
+                             f"jointprod_chan_{ox.TAG}{mceq3d_db.db_tag()}.npz")
     for d in (os.environ.get("MCEQ3D_CACHE_DIR", ""), ".cache3d", "flux_cache"):
         if not d:
             continue
-        c = os.path.join(here, d, f"jointprod_chan_{ox.TAG}.npz")
+        c = own if d == ".cache3d" else os.path.join(
+            here, d, f"jointprod_chan_{ox.TAG}.npz")
+        if d == "flux_cache" and not mceq3d_db.resolve().legacy:
+            continue
         if os.path.exists(c):
             cache = c
             break

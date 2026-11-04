@@ -418,10 +418,15 @@ def _chan_prod_cache():
     """First existing channel-split production cache (engine or explicit)."""
     import offaxis_mc as _ox
 
+    import mceq3d_db
+
     here = os.path.dirname(os.path.abspath(__file__))
-    cands = [os.environ.get("JOINT_CONE_PROD_CHAN_CACHE", ""),
-             os.path.join(here, ".cache3d", f"jointprod_chan_{_ox.TAG}.npz"),
-             os.path.join(here, "flux_cache", f"jointprod_chan_{_ox.TAG}.npz")]
+    # database-keyed profile of the ACTIVE database (the tables are built with it)
+    own = mceq3d_db.dep_path(os.path.join(here, ".cache3d"),
+                             f"jointprod_chan_{_ox.TAG}{mceq3d_db.db_tag()}.npz")
+    cands = [os.environ.get("JOINT_CONE_PROD_CHAN_CACHE", ""), own]
+    if mceq3d_db.resolve().legacy:
+        cands.append(os.path.join(here, "flux_cache", f"jointprod_chan_{_ox.TAG}.npz"))
     for c in cands:
         if c and os.path.exists(c):
             return c

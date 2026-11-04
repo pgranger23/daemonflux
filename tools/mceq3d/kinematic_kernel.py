@@ -383,18 +383,26 @@ def pion_alpha_pdf(e_grid, alpha_deg, n=3_000_000, seed=4, scale=1.0,
 def channel_fractions_cache():
     """Default cache file of :func:`channel_fractions` for the selected database.
 
-    The fractions are MCEq-derived, hence database-dependent: the historical
-    ``channel_fractions.npz`` (built with the shipped v1.4.0 file) for that file,
-    ``<mceq3d_db.cache_dir()>/channel_fractions<db tag>.npz`` for any other
-    database, so a cache built with another database is never read.
+    The fractions are MCEq-derived, hence database-dependent.  The tracked
+    ``channel_fractions.npz`` is used when its stored database identity (``db``,
+    with ``db_label``/``db_sha256``; no key = the shipped v1.4.0 file) is the selected
+    one; otherwise ``<mceq3d_db.cache_dir()>/channel_fractions<db tag>.npz``
+    (``_dbv140`` for the shipped file), built on first use and never in the
+    repository.  A cache built with another database is never read.
     """
     import os
     import mceq3d_db as _db
 
     sp = _db.resolve()
-    if sp.legacy:
-        return "channel_fractions.npz"
-    return os.path.join(_db.cache_dir(), f"channel_fractions{sp.tag}.npz")
+    tracked = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                           "channel_fractions.npz")
+    if os.path.exists(tracked):
+        d = np.load(tracked)
+        built = str(d["db"]) if "db" in d else ""
+        sha = str(d["db_sha256"]) if "db_sha256" in d else None
+        if built == sp.tag and (sha is None or sha == sp.sha256):
+            return tracked
+    return os.path.join(_db.cache_dir(), f"channel_fractions{sp.tag or '_dbv140'}.npz")
 
 
 def channel_fractions(e_query, flavour="numu", cache=None, zenith_deg=0.0):

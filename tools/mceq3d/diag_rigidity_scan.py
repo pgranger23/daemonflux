@@ -143,12 +143,13 @@ def cmd_m3b(prim, mb):
     eng = make_engine(prim)
     e, F, az = fz.model_flux(muon_bending=mb, cz_sub=3, cache_dir=CACHE_REQ, engine=eng)
     order = [2, 1, 0]
-    p = out(f"out/m3b_engine_{prim}_mb{int(mb)}.npz")
+    nm = {"ghn": "ghnative"}.get(prim, prim)
+    p = out(f"out/m3b_engine_{nm}_mb{int(mb)}.npz")
     np.savez(p, e=e, az=az, **{s: F[s][order] for s in F})
     ax = fz.geomagnetic_ew_axis()
     eo = M.table_obs(M.engine_patterns(p), ax)
     ho = M.table_obs(M.honda_patterns(), ax)
-    np.savez(out(f"out/m3b_obs_{prim}_mb{int(mb)}.npz"), engine=eo, honda=ho,
+    np.savez(out(f"out/m3b_obs_{nm}_mb{int(mb)}.npz"), engine=eo, honda=ho,
              obs=np.array(M.OBS), species=np.array(M.SP_NAMES))
     print("m3b done", prim, mb)
 
@@ -250,8 +251,36 @@ def cmd_tables():
     print(txt)
 
 
+def cmd_level(prim="gsf"):
+    """Level offset N/S model/Honda split: 1D engine base vs Honda azimuth average, and
+    full engine azimuth average over the 1D base (G_s + cone + E_off)."""
+    import diag_ew_charge_fourier as fz
+    warnings.simplefilter("ignore")
+    eng = make_engine(prim)
+    h = dict(np.load(os.path.join(HERE, "honda_kam.npz")))
+    e, F, az = fz.model_flux(muon_bending=True, cz_sub=1, cache_dir=CACHE_REQ, engine=eng)
+    base = eng.base(np.array(CZ_BANDS))
+    L = ["| species | cos Z | E [GeV] | 1D base / Honda az-avg | engine az-avg / 1D base | engine az-avg / Honda az-avg |",
+         "|---|---|---|---|---|---|"]
+    res = {}
+    for sp in SPEC:
+        for icz, czc in enumerate(CZ_BANDS):
+            ih = int(np.argmin(np.abs(h["czlo"] - round(czc - 0.05, 2))))
+            for E in E_PTS:
+                b = float(np.exp(np.interp(np.log(E), np.log(e), np.log(base[sp][icz]))))
+                full = float(np.mean([fz._log_at(F[sp][icz, j], e, E) for j in range(12)]))
+                ho = float(np.mean([fz._log_at(h[fz.HKEY[sp]][ih][j], h["E"], E) for j in range(12)]))
+                res[f"{sp}|{czc}|{E}"] = [b / ho, full / b, full / ho]
+                L.append(f"| {sp[6:]} | {czc} | {E} | {b / ho:.3f} | {full / b:.3f} | {full / ho:.3f} |")
+    open(out("out/level_offset.md"), "w").write("\n".join(L))
+    json.dump(res, open(out("out/level_offset.json"), "w"))
+    print("\n".join(L))
+
+
 def main():
     c, a = sys.argv[1], sys.argv[2:]
+    if c == "level":
+        return cmd_level(*a)
     if c == "tables":
         return cmd_tables()
     {"chunk": cmd_chunk, "assemble": cmd_assemble, "scan": cmd_scan, "m3b": cmd_m3b}[c](*a)
