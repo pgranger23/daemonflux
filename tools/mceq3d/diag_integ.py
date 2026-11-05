@@ -84,11 +84,39 @@ AZ_EDGES = np.linspace(0.0, 360.0, 7)
 MC_SPECIES = ("nue", "antinue", "numu", "antinumu")  # order of the MC arrays
 
 
+MIRROR_CZMAX = 0.35  # rows beyond are left as the single far-side cutoff (U/D validated to here)
+MIRROR = False  # apply the up-going cone correction (INTEGRATION.md 11); set by `table`/`validate mirror`
+
+
+def mirror_ratio(sp):
+    """Cone correction F_cone/F_single of the mirrored down-going directions for the 10
+    up-going rows (cos Z -0.95 ... -0.05) x 12 azimuths x nE (``diag_upgoing_fix.py modes``).
+    Rows 0.05-0.25: computed at 12 azimuths; rows 0.35-0.95: at 6 azimuths (cached maps),
+    interpolated periodically in azimuth."""
+    m = np.load(os.path.join(RUN, "out", "updiag_modes.npz"))
+    m6 = np.load(os.path.join(RUN, "out", "updiag_modes_dn6.npz"))
+    with np.errstate(invalid="ignore", divide="ignore"):
+        r_h = np.where(m[f"single_{sp}"] > 0, m[f"cone_{sp}"] / m[f"single_{sp}"], 1.0)  # (3, 12, nE)
+        r_6 = np.where(m6[f"dn6_single_{sp}"] > 0, m6[f"dn6_cone_{sp}"] / m6[f"dn6_single_{sp}"], 1.0)
+    az6 = m6["dn6_az"]
+    r_6_12 = np.zeros((r_6.shape[0], 12, r_6.shape[2]))
+    for i in range(r_6.shape[0]):
+        for ie in range(r_6.shape[2]):
+            ext_a = np.concatenate([[az6[-1] - 360.0], az6, [az6[0] + 360.0]])
+            ext_v = np.concatenate([[r_6[i, -1, ie]], r_6[i, :, ie], [r_6[i, 0, ie]]])
+            r_6_12[i, :, ie] = np.interp(AZ12, ext_a, ext_v)
+    down = np.concatenate([r_h, r_6_12])  # |cos Z| = 0.05 ... 0.95
+    down[np.arange(10) * 0.1 + 0.05 > MIRROR_CZMAX + 1e-9] = 1.0  # validated range only
+    return down[::-1]  # up-going rows -0.95 ... -0.05
+
+
 def _fz(fine, name, sp):
     """(F[ncz, 6 az, nE], base[ncz, nE]) of one entry; 12-azimuth entries are
     pair-averaged to the 60-degree bins, 6-azimuth ones are used as they are."""
     base = fine[f"base_{name}_{sp}"]
     fl = fine[f"flux_{name}_{sp}"] / base[:, None, :]
+    if name == "up" and MIRROR:
+        fl = fl * mirror_ratio(sp)
     if fl.shape[1] == 12:
         fl = 0.5 * (fl[:, 0::2] + fl[:, 1::2])
     return fl, base
@@ -210,8 +238,11 @@ def _honda_cell(h, key, cz_c, az_idx=None):
     return rows if az_idx is None else rows[az_idx]
 
 
-def cmd_validate():
-    """Engine up-going vs Honda solmin/solmax -> out/validate_up.md."""
+def cmd_validate(flag=""):
+    """Engine up-going vs Honda solmin/solmax -> out/validate_up.md (``mirror``: with the
+    up-going cone correction -> out/validate_up_mirror.md)."""
+    global MIRROR
+    MIRROR = flag == "mirror"
     import analyse_m3b as M
     from diag_rigidity_scan import _honda_pattern
     import diag_ew_charge_fourier as fz
@@ -223,7 +254,10 @@ def cmd_validate():
     L = []
 
     def F(name, sp, icz):  # F pattern (naz, nE)
-        return fine[f"flux_{name}_total_{sp}"][icz] / fine[f"base_{name}_total_{sp}"][icz][None, :]
+        out = fine[f"flux_{name}_total_{sp}"][icz] / fine[f"base_{name}_total_{sp}"][icz][None, :]
+        if name == "up" and MIRROR:
+            out = out * mirror_ratio(f"total_{sp}")[icz]
+        return out
 
     # A. up/down ratio, azimuth averaged
     L += ["**A. up/down ratio at equal |cos Z|, azimuth-averaged; engine F_up/F_dn (muon_bending off) "
@@ -269,15 +303,35 @@ def cmd_validate():
                         vals.append(M.observables(fh, ax)[names.index(o)])
                     cells.append(" / ".join(f"{v:.3f}" for v in vals))
                 L.append(f"| {sp} | {c} | {E} | " + " | ".join(cells) + " |")
-    open(os.path.join(RUN, "out", "validate_up.md"), "w").write("\n".join(L))
+    open(os.path.join(RUN, "out", "validate_up_mirror.md" if MIRROR else "validate_up.md"), "w").write(
+        "\n".join(L)
+    )
     print("\n".join(L))
 
-ENGINE_REL_ERR = 0.05  # nominal engine uncertainty placeholder (see INTEGRATION.md)
+ENGINE_REL_ERR = 0.05  # floor of the engine relative error (see INTEGRATION.md 11.5)
+E_BANDS = ((0.0, 0.3), (0.3, 1.0), (1.0, 3.0), (3.0, 10.0))  # GeV, by coarse-bin centre
+
+
+def engine_rel_err():
+    """Relative error array (4 species, 10 E, 10 cos Z) of the engine-filled bins:
+    max(5%, |median shape residual vs Honda solmax|) per species x E band x coarse
+    cos Z bin (``cmd_residual``); plain 5% while ``out/engine_sigma.npz`` does not exist."""
+    p = os.path.join(RUN, "out", "engine_sigma.npz")
+    out = np.full((4, 10, 10), ENGINE_REL_ERR)
+    if os.path.exists(p):
+        res = np.load(p)["sigma"]  # (4, 4 bands, 10 cz)
+        ec = np.sqrt(E_EDGES[:-1] * E_EDGES[1:])
+        for ie, e in enumerate(ec):
+            ib = [i for i, (lo, hi) in enumerate(E_BANDS) if lo <= e < hi][0]
+            out[:, ie, :] = np.maximum(ENGINE_REL_ERR, res[:, ib, :])
+    return out
 E_MC_MAX = 7  # MC (pilot-2) down-going bins 0..6 (< 2.5 GeV); engine above
 
 
 def cmd_table():
     """PROVISIONAL Kamioka table in the format of ``Tabulated3DModel``."""
+    global MIRROR
+    MIRROR = True
     fine = np.load(os.path.join(RUN, "out", "engine_F_fine.npz"))
     g0, err, kap, dk, chi2, slope, nprim = pilot_common()
     eu, ed = engine_coarse(fine, "up"), engine_coarse(fine, "down")
@@ -285,12 +339,13 @@ def cmd_table():
     dfac = np.zeros_like(fac)
     source = np.zeros((10, 10), dtype=int)  # 0 MC down-going, 1 engine
     fac[:, :, :5] = eu
-    dfac[:, :, :5] = ENGINE_REL_ERR * np.abs(eu)
+    rel = engine_rel_err()
+    dfac[:, :, :5] = rel[:, :, :5, None] * np.abs(eu)
     source[:, :5] = 1
     fac[:, :, 5:] = g0[:, :, 5:]
     dfac[:, :, 5:] = err[:, :, 5:]
     fac[:, E_MC_MAX:, 5:] = ed[:, E_MC_MAX:]
-    dfac[:, E_MC_MAX:, 5:] = ENGINE_REL_ERR * np.abs(ed[:, E_MC_MAX:])
+    dfac[:, E_MC_MAX:, 5:] = rel[:, E_MC_MAX:, 5:, None] * np.abs(ed[:, E_MC_MAX:])
     source[E_MC_MAX:, 5:] = 1
     assert np.all(np.isfinite(fac)) and np.all(np.isfinite(dfac))
     prov = (
@@ -300,8 +355,10 @@ def cmd_table():
         "Common 1D reference for both hemispheres: G = s / (kappa B), B = mceq3d engine base(|cos Z|) "
         "(base1d_kamioka.npz), kappa_s(E) = MC/MCEq yield ratio from t/B over cos Z 0.35-1. "
         "Down-going E >= 2.5 GeV and all up-going bins: mceq3d engine (GSF, v142p, muon_bending "
-        "off, rigidity fixed) F = 3D/1D no-cutoff, factor_error = %.0f%% of F (nominal placeholder). "
-        "Honda/solmax epoch matches GSF. Replace by the production table." % (nprim, 100 * ENGINE_REL_ERR)
+        "off, rigidity fixed, up-going rows with the cone correction of the mirrored down-going "
+        "direction) F = 3D/1D no-cutoff, factor_error = max(5%%, |shape residual vs Honda solmax|) of F per species/E band/cos Z bin "
+        "(a cross-model systematic, Honda is a comparison model). "
+        "Honda/solmax epoch matches GSF. Replace by the production table." % nprim
     )
     np.savez(
         os.path.join(RUN, "kamioka_3D_provisional.npz"),
@@ -326,7 +383,8 @@ def cmd_table():
     print("wrote", os.path.join(RUN, "kamioka_3D_provisional.npz"))
     # variant: the engine on both hemispheres (one definition of the 1D reference throughout)
     fac3, dfac3 = fac.copy(), dfac.copy()
-    fac3[:, :, 5:], dfac3[:, :, 5:] = ed, ENGINE_REL_ERR * np.abs(ed)
+    fac3[:, :, 5:], dfac3[:, :, 5:] = ed, rel[:, :, 5:, None] * np.abs(ed)
+    dfac3[:, :, :5] = rel[:, :, :5, None] * np.abs(eu)
     np.savez(
         os.path.join(RUN, "kamioka_3D_provisional_engine.npz"),
         species=np.array(MC_SPECIES), e_edges=E_EDGES, cosz_edges=CZ_EDGES, az_edges=AZ_EDGES,
@@ -449,14 +507,59 @@ def cmd_demo():
     plt.close(fig)
     print("\n".join(L))
 
+def cmd_residual():
+    """Shape residual of the engine table vs Honda solmax -> out/engine_sigma.npz.
+
+    model = daemonflux(kamioka) x ``kamioka_3D_provisional_engine.npz``; per species and coarse
+    energy bin the ratio model/Honda is normalised to its median over the down-going cos Z > 0.5
+    cells (removes daemonflux's absolute level), then |median - 1| over azimuth, the two Honda
+    cos Z bins of a coarse bin and the energy bins of the band (E_BANDS)."""
+    from daemonflux import Flux
+    from daemonflux.geomagnetic import Tabulated3DModel
+    import diag_ew_charge_fourier as fz
+
+    h = dict(np.load(HONDA["solmax"]))
+    az_c = fz.honda_azimuth_to_compass(h["azlo"].astype(float) + 15.0)
+    czc = h["czlo"] + 0.05
+    flux = Flux(location="kamioka", debug=0)
+    flux.set_geomagnetic_model(Tabulated3DModel(os.path.join(RUN, "kamioka_3D_provisional_engine.npz")))
+    ec = np.sqrt(E_EDGES[:-1] * E_EDGES[1:])
+    ratio = np.zeros((4, 10, 20, 12))
+    for k, sp in enumerate(MC_SPECIES):
+        for ie, E in enumerate(ec):
+            for i, c in enumerate(czc):
+                zen = float(np.degrees(np.arccos(c)))
+                for j, a in enumerate(az_c):
+                    v = float(np.squeeze(flux.flux(np.array([E]), zen, sp, azimuth_deg=float(a)))) / E**3 * 1e4
+                    ratio[k, ie, i, j] = v / _lat(h[HKEY[sp]][i][j], h["E"], E)
+            ratio[k, ie] /= np.median(ratio[k, ie][czc > 0.5])
+    sigma = np.zeros((4, 4, 10))
+    for k in range(4):
+        for ib, (lo, hi) in enumerate(E_BANDS):
+            ies = [ie for ie, e in enumerate(ec) if lo <= e < hi]
+            for ic in range(10):
+                r = ratio[k][ies][:, 2 * ic : 2 * ic + 2, :]
+                sigma[k, ib, ic] = abs(np.median(r) - 1.0)
+    np.savez(os.path.join(RUN, "out", "engine_sigma.npz"), sigma=sigma, ratio=ratio, species=np.array(MC_SPECIES))
+    L = ["| species | E band [GeV] | " + " | ".join(f"cos Z {-1 + 0.2 * i:+.1f}..{-0.8 + 0.2 * i:+.1f}" for i in range(10)) + " |",
+         "|---|---|" + "---|" * 10]
+    for k, sp in enumerate(MC_SPECIES):
+        for ib, (lo, hi) in enumerate(E_BANDS):
+            L.append(f"| {sp} | {lo:g}-{hi:g} | " + " | ".join(f"{100 * x:.0f}%" for x in sigma[k, ib]) + " |")
+    open(os.path.join(RUN, "out", "engine_sigma.md"), "w").write("\n".join(L))
+    print("\n".join(L))
+
+
 def main():
     c, a = sys.argv[1], sys.argv[2:]
     if c == "validate":
-        return cmd_validate()
+        return cmd_validate(*a)
     if c == "table":
         return cmd_table()
     if c == "demo":
         return cmd_demo()
+    if c == "residual":
+        return cmd_residual()
     {"maps-dn": cmd_maps_dn, "engine": cmd_engine}[c](*[int(x) for x in a])
 
 

@@ -349,7 +349,7 @@ def cmd_engine(args):
         cz, az = np.array(js.CZ), np.array(js.AZ)
         ie, iw = int(np.argmin(abs(az - 90.0))), int(np.argmin(abs(az - 270.0)))
         r = eng.solve(js.LAT, js.LON, cz, az, use_cache=True, cache_dir=cache,
-                      date=js.DATE, n_jobs=8, **js.STAGES["S4"])
+                      date=js.DATE, n_jobs=None, **js.STAGES["S4"])
         print(f"S4 solve done {time.time() - t0:.0f} s", flush=True)
         ee = r["e"]
         for fl, sp in js.FLAV:

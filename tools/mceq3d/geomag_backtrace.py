@@ -283,6 +283,16 @@ def _states_worker(args):
     )
 
 
+def default_n_jobs():
+    """Worker count used when ``n_jobs`` is ``None``: ``$MCEQ3D_NJOBS`` (default 4),
+    capped at ``os.cpu_count()//2``. Explicit ``n_jobs`` values are honoured as given."""
+    try:
+        want = int(os.environ.get("MCEQ3D_NJOBS", 4))
+    except ValueError:
+        want = 4
+    return max(1, min(want, (os.cpu_count() or 2) // 2))
+
+
 def cutoff_from_states(
     r0_m,
     u0,
@@ -306,7 +316,8 @@ def cutoff_from_states(
     its parallelism.
 
     Directions are split over ``n_jobs`` forked workers (default
-    ``os.cpu_count()//2``).  Each worker keeps its own large rigidity batch, which
+    :func:`default_n_jobs`: ``$MCEQ3D_NJOBS`` or 4, at most ``os.cpu_count()//2``;
+    the node is shared, so the default never takes half the machine).  Each worker keeps its own large rigidity batch, which
     matters: the IGRF field call has a ~16 ms fixed overhead and only ~45 us per
     point, so batches of a few hundred trajectories are ~100x more efficient per
     trajectory than single traces.
@@ -322,7 +333,7 @@ def cutoff_from_states(
         empty = (np.zeros(0), np.zeros(0, bool))
         return empty + (np.zeros(0), np.zeros((0, 0))) if return_admittance else empty
     if n_jobs is None:
-        n_jobs = max(1, (os.cpu_count() or 2) // 2)
+        n_jobs = default_n_jobs()
     n_jobs = max(1, min(int(n_jobs), n))
 
     chunks = np.array_split(np.arange(n), n_jobs)

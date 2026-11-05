@@ -222,7 +222,7 @@ def test_backtrace_launch_state_is_the_reversed_trajectory(monkeypatch):
 MZ_DATE = "2020-01-01"
 
 
-def _pure_dipole_cutoff(lat, zeniths, azimuths, n_jobs=8):
+def _pure_dipole_cutoff(lat, zeniths, azimuths, n_jobs=None):
     """Cutoff map in a centred ALIGNED dipole (``r_switch=0`` -> no IGRF)."""
     import geomag_backtrace as gb
 

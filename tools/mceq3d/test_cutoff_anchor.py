@@ -174,7 +174,7 @@ def test_interp_site_rc_at_zero_displacement_is_the_centre_map():
 # the back-traced family (cheap: r_hi = 15 GV, 2 x 4 grid)
 # ---------------------------------------------------------------------------
 CHEAP = dict(zeniths=[0.0, 40.0], azimuths=[0.0, 90.0, 180.0, 270.0],
-             n_side=3, d_max_km=400.0, r_hi=15.0, n_jobs=8, warn_saturated=False)
+             n_side=3, d_max_km=400.0, r_hi=15.0, n_jobs=None, warn_saturated=False)
 
 
 @pytest.fixture(scope="module")
@@ -192,7 +192,7 @@ def test_family_centre_node_is_the_ordinary_detector_map(cheap_family):
     """The centre of the family IS ``geomag_backtrace.cutoff_map`` at the site,
     which is what makes ``cutoff_anchor`` a pure displacement A/B."""
     ref = gb.cutoff_map(LAT, LON, DATE, CHEAP["zeniths"], CHEAP["azimuths"],
-                        r_hi=CHEAP["r_hi"], n_jobs=8, warn_saturated=False)
+                        r_hi=CHEAP["r_hi"], n_jobs=None, warn_saturated=False)
     assert np.allclose(cheap_family["rc"][1, 1], ref, atol=1e-9)
 
 
@@ -228,7 +228,7 @@ def test_family_interpolation_matches_a_direct_back_trace(cheap_family):
     got = mf.interp_site_rc(fam, dn, de)
     la, lo = mf.prod_site_latlon(LAT, LON, dn, de)
     ref = gb.cutoff_map(la, lo, DATE, CHEAP["zeniths"], CHEAP["azimuths"],
-                        r_hi=CHEAP["r_hi"], n_jobs=8, warn_saturated=False)
+                        r_hi=CHEAP["r_hi"], n_jobs=None, warn_saturated=False)
     ok = ref < CHEAP["r_hi"] - 1e-9  # ignore cells clamped at the test ceiling
     assert ok.any()
     err = np.abs(got[ok] / ref[ok] - 1.0)
@@ -355,7 +355,7 @@ def test_delivered_family_agrees_with_direct_prod_point_backtraces():
     rc_site = mf.interp_site_rc(fam, dn, de)
     probe_z = [20.0, 60.0, 85.0]
     probe_a = [0.0, 90.0, 180.0, 270.0]
-    ref = gb.cutoff_map(la, lo, DATE, probe_z, probe_a, n_jobs=8,
+    ref = gb.cutoff_map(la, lo, DATE, probe_z, probe_a, n_jobs=None,
                         warn_saturated=False)
     got = jc.rc_bilinear(
         np.asarray(fam["zen"], float), np.asarray(fam["az"], float), rc_site,

@@ -335,3 +335,161 @@ $PY diag_integ.py table ; $PY diag_integ.py demo
 ```
 
 CPU: base1d 30 MCEq solves on 4 processes about 0.6 core-h; table/demo ~0.3: about 0.9 core-h in this step (cumulative about 11 core-h of 20).
+
+## 11. The engine's up-going near-horizon bin: mechanism and fix (2026-11-05, later)
+
+### 11.1 Mechanism
+
+* **(a) Where the production point is, which map is used.** `farside_production` (h = 20 km) puts the production point Q on the chord exit,
+  **8.2 deg = 915 km** from Kamioka at cos Z = -0.05, 5.1 deg (572 km) at -0.01, 13 deg (1451 km) at -0.10, 18 deg (2042 km) at -0.15 and 30 deg
+  (3295 km) at -0.25; the local zenith of the primary at Q is cos = 0.093 / 0.127 / 0.169 / 0.261 (less grazing than |cos Z|: the chord
+  is asymmetric because production is at 20 km altitude). There is **no threshold and no fallback**: `cutoff_grid` selects the far-side
+  map purely by the sign of cos Z, and `farside_cutoff_map` launches the back-trace from Q at 20 km along the primary direction -d. This map
+  already carries the production-point anchoring that the down-going path gets from `cutoff_anchor="prod_point"` (the primary's entry is
+  displaced, here by 570-2000 km).
+* **The actual defect: no production cone.** In `solve`, `cone_geff` (line "up-going: single far-side cutoff (no cone yet)") and
+  `joint_cone_factor` ("up-going rows come back as the unchanged product") skip every cos Z < 0 row, so an up-going cell is
+  `base x E_off(|cos Z|) x G_s(single far-side R_c)`. The cone average over the production angle is what compresses the East-West
+  pattern and rotates it (PHASE1_RESULTS 6.1/6.2, 8.2). Experiment (`diag_upgoing_fix.py modes/report`, down-going rows 0.05/0.15/0.25 solved three
+  ways, nu_mu 0.5 GeV, a1/a0 | dphi [deg] | N/S | W/E):
+
+  | cos Z 0.05 | single (E_off x one detector cutoff) | + cone (detector anchor) | + cone + production-point anchor (delivered) | up-going engine (far-side single) | Honda up-going, solmax |
+  |---|---|---|---|---|---|
+  | a1/a0 | 0.71 | 0.49 | 0.48 | 0.66 | 0.45 |
+  | dphi | -22.1 | -10.8 | +2.7 | +3.1 | +29.9 |
+  | N/S | 0.44 | 0.70 | 0.87 | 0.76 | 1.32 |
+  | W/E | 4.62 | 2.97 | 2.87 | 4.33 | 2.30 |
+
+  The up-going engine has the anchor (dphi +3 instead of -22: Q is far from the site) but not the cone (a1/a0 0.66 vs 0.49; W/E 4.3 vs 3.0). The
+  cone also rotates the pattern further (the +12 deg step from `single` to `cone`), which is why the delivered *down-going* dphi of +2.7
+  deg is right for the down-going Honda pattern but the up-going pattern, whose Honda phase is +30 deg, needs the cone on top of the anchor.
+* **(b) Azimuth frame.** No frame mapping is involved in the cutoff: the back-trace takes the 3D direction vector, and the table is indexed by the
+  detector's arrival azimuth. The meridian rotation between Q and Kamioka is small in the near-horizon bins: the local azimuth at Q differs from the detector azimuth by 3.8 /
+  6.0 / 9.5 / 13 / 20 deg (at detector azimuth 90 or 270) for cos Z -0.01 / -0.05 / -0.10 / -0.15 / -0.25 (N/S: 0 or 180 unchanged), so
+  it is not a frame error. Not the cause.
+* **(c) cos Z weighting.** `B` uses 3 Gauss nodes per MC bin (lowest node cos Z = 0.011) but the engine up-going `F` is a single row at
+  the bin centre (-0.05, -0.15, ...), two rows averaged per 0.2 coarse bin. The row-to-row change of the (uncorrected) `F` is <= 10%
+  (nu_mu 0.3 GeV: 0.62 at -0.1, 0.56 at -0.3), so the centre-row sampling is a few-percent effect at most; the node at cos Z = 0.011 was not
+  computed for `F` (it needs a G_s family there, ~7 core-h), so a residual horizon-edge effect is not excluded but cannot be the -15..-21%.
+
+### 11.2 Fix: `solve(upgoing_cone="mirror")`
+
+New option (default `UPGOING_CONE = "none"`: legacy behaviour, no existing number changes; nothing in the G_s / production / map caches
+depends on it): up-going rows with `|cos Z| <= upgoing_cone_czmax` (default 0.35) are multiplied by `F_cone / F_single` of the *mirrored down-going*
+direction (same |cos Z| and azimuth; both **detector-anchored**, so only the cone effect is transferred, the production-point anchoring already
+being in the far-side map; `F_cone` with the caller's cone/joint options, `F_single` = `cone_cutoff=False, joint_cone=False`). The
+down-going maps and G_s of those directions are cached like for any down-going solve. Assumption (tested below): the cone correction of an
+up-going direction at the far-side point Q is that of the down-going direction with the same |cos Z| and azimuth at the site. The returned dict
+has `upgoing_cone_ratio`. Tests: `test_upgoing_cone.py` (3: row selection, the two extra solves' options, validation, default).
+
+Honda validation (solmax; `out/validate_up_mirror.md`). **Caveat on what is independent**: the cut `czmax = 0.35` was chosen by looking at
+this very comparison (beyond it the all-rows correction made U/D worse at |cos Z| 0.55, -4.6% to -11%), so only the rows **-0.05 and -0.15** are a test that does
+not depend on that choice; the rows -0.25 and -0.35 are within the fitted range and are not independent evidence. The sign change of the correction
+between |cos Z| 0.35 (about +5%) and 0.55 (-5..-11%) means the mirror is unreliable beyond the horizon region, not merely "least good" there
+(11.5):
+
+| | before | after |
+|---|---|---|
+| U/D engine/Honda - 1, |cos Z| 0.05 (0.3 / 0.5 / 1 GeV) | -21 / -14 / -7% | **-2.8 / -0.4 / +1.5%** |
+| U/D, 0.15 | -17 / -10 / -3% | **-2.7 / -0.6 / +1.3%** |
+| U/D, 0.25 | -7 / -3 / +1% | +6.6 / +5.0 / +4.1% |
+| U/D, 0.35 | -6.6 / -4.2 / -0.6% | +1.0 / +0.6 / +1.3% |
+| mean(engine - Honda) dphi at cos Z -0.05 / -0.15 / -0.25 | -22.8 / -17.1 / -4.9 deg | **+0.3 / +0.2 / +5.9 deg** |
+| mean ln W/E (engine/Honda) at -0.05 / -0.15 / -0.25 | +0.44 / +0.31 / +0.25 | **-0.10 / +0.07 / -0.06** |
+| mean ln N/S at -0.05 / -0.15 / -0.25 | +0.19 / +0.05 / -0.06 | +0.04 / -0.09 / -0.16 |
+| mean a1/a0 (engine - Honda) at -0.05 / -0.15 / -0.25 | +0.143 / +0.103 / +0.081 | **-0.011** / +0.068 / +0.100 |
+
+(mean over four species and E = 0.3, 0.5, 1 GeV; the rms spread of a1/a0 stays 0.10-0.13 and of dphi ~10 deg: the species-dependent
+fan-out of the muon bend is not in the engine, as before.) Example, nu_mu, cos Z -0.05, 0.3 / 0.5 / 1 GeV, a1/a0 | dphi | N/S | W/E:
+engine 0.74/0.66/0.52 | 3.9/3.1/2.0 | 0.73/0.76/0.81 | 5.8/4.3/3.1 -> corrected 0.53/0.50/0.42 | 35/26/16 | 1.41/1.20/1.02 | 2.5/2.6/2.4;
+Honda solmax 0.45/0.45/0.34 | 40/30/19 | 1.54/1.32/1.09 | 2.1/2.3/2.0. Remaining: the +5..+7% U/D overshoot at |cos Z| = 0.25 and a1/a0
+too high by 0.07-0.10 at -0.15/-0.25 (the mirror assumption is least good where the far-side point is far from Kamioka: Q is 18-30 deg away).
+
+### 11.3 Provisional table rebuilt with the correction (rows <= 0.35)
+
+Shape against Honda solmax (daemonflux x table, normalised at down-going cos Z > 0.5; medians over azimuth; before the correction in brackets):
+
+| species | E | up .5-1 | up .2-.5 | up 0-.2 | down 0-.2 | down .2-.5 |
+|---|---|---|---|---|---|---|
+| nu_mu | 0.3 | 0.99 (0.99) | 1.07 (0.98) | **0.92 (0.81)** | 0.99 | 1.00 |
+| nu_mu | 0.5 | 0.99 | 1.03 (1.00) | 0.93 (0.86) | 0.97 | 1.00 |
+| nu_mu | 1.0 | 1.03 | 1.03 (1.01) | 0.97 (0.91) | 0.95 | 0.96 |
+| nu_e | 0.3 | 1.00 | 1.14 (1.05) | **1.00 (0.82)** | 0.96 | 1.00 |
+| nu_e | 0.5 | 1.02 | 1.11 (1.04) | 1.06 (0.85) | 1.01 | 0.98 |
+| nu_e | 1.0 | 1.02 | 1.03 (1.01) | 1.01 (0.94) | 1.01 | 0.97 |
+| nubar_mu | 0.3 | 1.00 | 1.12 | 1.02 | 1.03 | 1.02 |
+| nubar_e | 0.3 | 1.01 | 1.10 | 0.99 | 0.98 | 1.01 |
+
+The up-going 0-0.2 bin is now within -8% .. +6% (was -6 .. -19%), and the whole hemisphere is within about 10% of Honda's shape; the
+cost is an +7..+13% overshoot of the 0.2-0.5 bin at 0.3-0.5 GeV (rows -0.25 and -0.35). `kamioka_3D_provisional.npz` and
+`kamioka_3D_provisional_engine.npz` are rebuilt (`diag_integ.py table`; `MIRROR_CZMAX = 0.35`); `figs/` regenerated.
+
+### 11.4 Reproduction, CPU, tests
+
+```bash
+$PY diag_upgoing_fix.py modes ; $PY diag_upgoing_fix.py modes dn6 ; $PY diag_upgoing_fix.py report   # mechanism experiment
+$PY diag_integ.py validate ; $PY diag_integ.py validate mirror ; $PY diag_integ.py table ; $PY diag_integ.py demo
+```
+CPU: 4 solve passes (down-going cone / single, 12 and 6 azimuths) about 0.3 core-h; nothing needed new maps (all cached). Cumulative: about 11.5 of 20 core-h.
+Tests (`tools/mceq3d`, full suite, workers capped at 4 through the pytest plugin `$W/runs/integ/capjobs.py`, which wraps `geomag_backtrace.cutoff_from_states`; no test file edited): **285 passed, 2 skipped** (282 + the 3 new `test_upgoing_cone.py`; the run was done in two parts, 280 passed + 5 failed from a bug of the first version of the plugin, then the two files with those 5 tests rerun: 34 passed). The first attempt ran the `n_jobs=8` back-trace tests with 8 workers (core-cap breach, killed after about 5 min and rerun capped).
+
+**n_jobs.** `geomag_backtrace.cutoff_from_states` defaults to `os.cpu_count()//2` workers (24 on this node) when `n_jobs=None`, and `solve`/`cutoff_grid`/`finemap_rc`/`prod_family_rc` pass `None` through. In this work every back-trace call passed `n_jobs <= 5` (`mkmaps_up.py` 4, `diag_integ maps-dn/engine` 4, `diag_upgoing_fix` 1, the earlier `mkmaps` of the rigidity task 5, one-off over by 1); `_solve_upgoing_mirror` forwards the caller's `n_jobs` unchanged, so `n_jobs=None` with uncached maps would use 24. Proposal (not applied): in `cutoff_from_states` use `n_jobs = min(int(os.environ.get("MCEQ3D_NJOBS", 4)), cpu_count()//2)` when `None`, so the library default is 4 and the environment can raise it; explicit larger values in tests (8) would still be honoured unless capped by the same variable.
+
+### 11.5 Step check at the cut (|cos Z| = 0.35 / 0.45)
+
+`F_cone/F_single` of the down-going mirror directions (`updiag_modes*.npz`), median over azimuth, E = 0.3 / 0.5 / 1 GeV:
+
+| species | 0.35: 0.3 | 0.5 | 1.0 | 0.45: 0.3 | 0.5 | 1.0 |
+|---|---|---|---|---|---|---|
+| nue | 1.073 | 1.044 | 1.015 | 1.002 | 1.007 | 1.008 |
+| antinue | 1.067 | 1.038 | 1.011 | 0.999 | 1.006 | 1.006 |
+| numu | 1.066 | 1.037 | 1.012 | 1.000 | 1.007 | 1.006 |
+| antinumu | 1.067 | 1.037 | 1.011 | 1.000 | 1.007 | 1.006 |
+
+The azimuth-mean ratio (nu_mu, 0.3 GeV) vs |cos Z| 0.05 ... 0.95 is 1.43, 1.25, 1.15, 1.09, 1.04, **0.976**, 1.02, 1.02, 1.02, 1.00: a smooth decline through 1 at
+about 0.5, then a dip below 1 at 0.55 and a plateau at +2% that is not a cone effect I can interpret (noise or an interaction with the 6-azimuth sampling and the
+zenith nodes of the map); so the cut removes a tail of +4% (0.45) and replaces the unreliable 0.55+ values by 1. The cut itself therefore creates a step of
+at most the +4% at 0.3 GeV (+0.7% at 1 GeV) between the rows 0.35 and 0.45.
+
+Up-going coarse-bin flux ratio (0.2-0.4)/(0.4-0.6) (engine flux, azimuth mean, nu_mu; rows -0.35,-0.25 over -0.55,-0.45), engine before | after the correction | Honda solmax | solmin:
+
+| species | 0.3 GeV | 0.5 GeV | 1 GeV |
+|---|---|---|---|
+| nue | 1.004 / 1.133 / 1.044 / 1.041 | 0.980 / 1.055 / 1.013 / 1.010 | 1.023 / 1.051 / 1.041 / 1.038 |
+| antinue | 1.010 / 1.130 / 1.036 / 1.035 | 0.987 / 1.055 / 1.008 / 1.006 | 1.033 / 1.058 / 1.042 / 1.040 |
+| numu | 0.973 / 1.087 / 1.012 / 1.010 | 0.945 / 1.008 / 0.971 / 0.968 | 0.962 / 0.985 / 0.977 / 0.974 |
+| antinumu | 0.979 / 1.094 / 1.017 / 1.016 | 0.949 / 1.013 / 0.977 / 0.975 | 0.973 / 0.994 / 0.992 / 0.990 |
+
+Relative to Honda solmax the step is -3.9 / -2.7 / -1.5% (nu_mu, 0.3 / 0.5 / 1 GeV) before and **+7.4 / +3.8 / +0.8% after** (nu_e: -3.8 -> +8.5% at 0.3 GeV, -3.3 -> +4.2% at 0.5 GeV), i.e. beyond
+Honda's by more than 3% at 0.3 and 0.5 GeV. Where it comes from: not the cut (the cut contributes at most the +4% tail of 0.45 and a 0 correction at 0.55, which acts in the
+opposite direction on the bin 0.4-0.6), but the correction itself: the mirrored ratio at the rows 0.25/0.35 (about +15% / +9% mean at 0.3 GeV) is larger than the
+cone effect that Honda's up-going flux shows there (U/D +6.6% at 0.25 after the correction). The mirror assumption (cone effect of the up-going direction = that of the
+down-going direction at the same |cos Z| at the site) degrades with the distance of the far-side point Q (30 deg at |cos Z| 0.25, 40+ deg at 0.35).
+**Proposal (not applied, nothing tuned against Honda):** taper the correction with the distance of Q, `r_eff = r^w`, `w = clip(1 - d_Q/d_max, 0, 1)`, with `d_Q` the
+Kamioka-Q angle (8.2 / 18 / 30 deg for |cos Z| 0.05 / 0.15 / 0.25) and `d_max` fixed a priori by the scale over which the geomagnetic cutoff map changes (a few tens of
+degrees; e.g. 45 deg), which replaces the hard cut at 0.35 by a continuous weight; or the local-zenith variant of 11.7.
+
+### 11.6 Error of the engine-filled bins (replaces the 5% placeholder)
+
+`sigma_rel = max(5%, |median shape residual vs Honda solmax|)` per species x E band (0.1-0.3, 0.3-1, 1-3, 3-10 GeV by coarse-bin centre) x coarse cos Z bin
+(`diag_integ.py residual` -> `out/engine_sigma.md/.npz`): model = daemonflux(kamioka) x the engine table, ratio to Honda solmax per species and coarse energy bin normalised to its median over
+the down-going cos Z > 0.5 cells (removes daemonflux's absolute level), then median over azimuth, the two Honda cos Z bins of a coarse bin and the E bins of the band. It is set on the
+**engine-filled bins only** (all up-going bins, down-going E >= 2.5 GeV; 65 of the 100 (E, cos Z) bins of the main table; every bin of the engine-only variant); the MC bins keep their jackknife
+errors. Result: sigma_rel 5% almost everywhere, 6-15% in the up-going bins -0.6..0 at 0.1-1 GeV (largest: nubar_mu 0.1-0.3 GeV, cos Z -0.4..-0.2: 15%; nu_e 13%; nu_mu 12%), median 5%, maximum 14.8%.
+**This is a cross-model systematic**: Honda is a comparison model with its own ~5-10% shape uncertainty and is not the truth; the number measures the engine-Honda disagreement, not the engine's error.
+Both provisional npz (`kamioka_3D_provisional.npz`, `..._engine.npz`) are rebuilt with it.
+
+### 11.7 Cost of a principled up-going cone at the far-side point Q (estimate, not run)
+
+* **Needed**: for each up-going row |cos Z| <= 0.35 and azimuth, the cutoff of the cone of primary directions `n'` at angle alpha, beta around the axis, **launched from Q** (not from the detector or the
+  chord exit of `n'`), i.e. a site-Q map R_c(zenith', azimuth') of the neighbourhood of the axis, plus the production weights `q(alpha, beta)` of the mirrored geometry
+  (these are the existing down-going `cone_production_multi` values for the local zenith at Q, but the correspondence beta <-> detector frame must be derived; a
+  reflection error would flip the sign of the rotation). The delivered cone has 44 x 18 = 792 directions per cell.
+* **Cost** (measured: 120 up-going cells took 5193 s on 4 cores = 2.9 core-min per cutoff scan): a coarse cone of 6 alpha x 8 beta + axis = 49 directions, 4 rows x 12 azimuths = 48 cells: 2352 back-traces =
+  **~114 core-h = 28 h at 4 cores**. With 24 cells (6 azimuth bins of 60 deg) and a 4 x 6 + 1 = 25-direction cone: 600 scans = **~29 core-h = 7 h at 4 cores**. The delivered 792-direction cone would be ~1900 core-h. The band
+  trick of `prod_family_rc` (seeding the rigidity scan from the neighbouring direction, ~4x) could bring the 25-direction variant to ~7 core-h (2 h at 4 cores). All of these exceed the 3 core-h of this step and need new
+  code in `farside_cutoff_map` (arbitrary launch point and direction list), a site-Q interpolation or direct lookup in `joint_cone`, and the frame derivation.
+* **Cheaper variants**: (i) *matched local zenith* (no new back-traces): read the mirror ratio at the down-going |cos Z'| equal to the local zenith cosine at Q (0.093 / 0.169 / 0.261 for |cos Z| 0.05 / 0.15 / 0.25)
+  by interpolating the cached rows (0.05, 0.15, 0.25, 0.35) -- the geometry at the production point is then the right one; costs minutes. (ii) The distance taper of 11.5. (iii) Down-going maps at the three or four exact |cos Z'| values
+  (12 azimuths each = 48 cells, ~2.3 core-h) plus their G_s families (the 0.09 one is the slow one, ~2 core-h) for variant (i) without interpolation. None of these is applied or tuned.
+

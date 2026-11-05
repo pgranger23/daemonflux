@@ -467,6 +467,11 @@ def farside_cutoff_map(
 #: The default was flipped to "prod_point" on 2026-09-05 (project decision): the
 #: anchor is the physically correct treatment and the family build is a one-time
 #: per-site precompute like the map itself; "detector" remains the fast A/B path.
+#: Up-going (cos Z < 0) handling: ``"none"`` (legacy, default) = one far-side cutoff, no
+#: production cone; ``"mirror"`` = multiply the up-going rows with the cone correction
+#: ``F_cone / F_single`` of the mirrored down-going direction (see ``solve(upgoing_cone=...)``).
+UPGOING_CONE = "none"
+
 CUTOFF_ANCHOR = "prod_point"  # flipped 2026-09-05: physically correct; the Kamioka family is cached
 #: Scheme tag of the displaced-site map family; part of every cache key, so a
 #: family built with a different node layout / launch altitude is never reused.
@@ -1235,7 +1240,7 @@ class MCEq3DFlux:
 
         The rigidity scan is the coarse-ladder + bisection scheme of
         :func:`geomag_backtrace.scan_upper_cutoff` (~0.05 GV), parallelised over
-        ``n_jobs`` forked workers (default ``os.cpu_count()//2``); ``n_scan`` is
+        ``n_jobs`` forked workers (default ``geomag_backtrace.default_n_jobs()``, 4); ``n_scan`` is
         kept only as a backward-compatible way to *refine* the coarse step."""
         import geomag_backtrace as gb
 
@@ -2126,6 +2131,31 @@ class MCEq3DFlux:
             np.savez(fpath, rc=rc)
         return rc
 
+    def _solve_upgoing_mirror(self, args):
+        """``solve(upgoing_cone='mirror')``: see the ``solve`` docstring."""
+        czmax = args.pop("upgoing_cone_czmax")
+        args["upgoing_cone"] = "none"
+        res = self.solve(**args)
+        cz = np.asarray(res["cos_zeniths"], float)
+        sel = np.where((cz < 0) & (np.abs(cz) <= czmax))[0]
+        if len(sel) == 0:
+            return res
+        mir = np.abs(cz[sel])
+        a_cone = dict(args, cos_zeniths=mir, cutoff_anchor="detector",
+                      with_calib_error=False, with_calib_jacobian=False)
+        a_single = dict(a_cone, cone_cutoff=False, joint_cone=False)
+        fc = self.solve(**a_cone)["flux"]
+        fs = self.solve(**a_single)["flux"]
+        res["upgoing_cone_ratio"] = {}
+        for s_ in SPECIES:
+            with np.errstate(invalid="ignore", divide="ignore"):
+                r = np.where(fs[s_] > 0, fc[s_] / fs[s_], 1.0)  # (n_mir, n_az, nE)
+            res["flux"][s_][sel] = res["flux"][s_][sel] * r
+            if "flux_err" in res:  # absolute error = flux x relerr: scale with the flux
+                res["flux_err"][s_][sel] = res["flux_err"][s_][sel] * r
+            res["upgoing_cone_ratio"][s_] = r
+        return res
+
     def solve(
         self,
         lat,
@@ -2163,6 +2193,8 @@ class MCEq3DFlux:
         sigma_lnr=None,
         cutoff_anchor=None,
         n_jobs=None,
+        upgoing_cone=None,
+        upgoing_cone_czmax=0.35,
     ):
         """Absolute Phi[species, cosZ, az, E] for a site (full sky).
 
@@ -2189,6 +2221,17 @@ class MCEq3DFlux:
         primary (`solar_factor`), rescaling the flux toward low energy; 0 (default) =
         H3a baseline. The physical solar-cycle span is the *difference* between two
         potentials (~0.4 GV solar-min vs ~1.0 GV solar-max).
+
+        ``upgoing_cone`` (default ``UPGOING_CONE`` = ``"none"``): for ``cos Z < 0`` the
+        engine uses ONE far-side cutoff (production point + direction of the neutrino
+        chord, ``farside_production``) and no production cone, so the E-W amplitude is
+        too large and the pattern is not rotated (``INTEGRATION.md`` sec. 11).
+        ``"mirror"`` multiplies each up-going row (``|cos Z| <= upgoing_cone_czmax``)
+        with ``F_cone/F_single`` of the *mirrored down-going* direction (same ``|cos Z|``
+        and azimuth; both detector-anchored, so only the cone effect is transferred;
+        ``F_cone`` with the delivered cone/joint options, ``F_single`` =
+        ``cone_cutoff=False, joint_cone=False``). The down-going maps/G_s of those
+        directions are needed (and cached) as for any down-going solve.
 
         ``with_calib_error`` (daemonflux base only): also return the propagated
         muon-**calibration** 1-sigma uncertainty from daemonflux's nuisance-parameter
@@ -2314,8 +2357,18 @@ class MCEq3DFlux:
         map; ``cutoff_anchor="detector"`` never builds it.
 
         ``n_jobs``: forked workers for the one-off cutoff back-traces (default
-        ``os.cpu_count()//2``); ignored once the maps are cached.
+        ``geomag_backtrace.default_n_jobs()``: ``$MCEQ3D_NJOBS`` or 4); ignored once the
+        maps are cached.
         """
+        upgoing_cone = UPGOING_CONE if upgoing_cone is None else upgoing_cone
+        if upgoing_cone not in ("none", "mirror", False):
+            raise ValueError("upgoing_cone must be 'none' or 'mirror'")
+        cz_in = np.atleast_1d(np.asarray(cos_zeniths, float))
+        if upgoing_cone == "mirror" and np.any(cz_in < 0):
+            args = dict(locals())
+            args.pop("self")
+            args.pop("cz_in")
+            return self._solve_upgoing_mirror(args)
         if cutoff_anchor is None:
             cutoff_anchor = CUTOFF_ANCHOR
         if cutoff_anchor not in ("detector", "prod_point"):
