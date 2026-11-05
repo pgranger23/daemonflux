@@ -1,0 +1,27 @@
+obs: ('a1_rel', 'dphi', 'a2_rel', 'WE', 'maxmin', 'fN', 'fS', 'NS', 'c1_rel', 's1_rel')
+a1_rel   solmin mean +0.4505  solmax +0.4366  shift -0.0139
+dphi     solmin mean -0.6048  solmax -0.8076  shift -0.2028
+a2_rel   solmin mean +0.0494  solmax +0.0501  shift +0.0007
+WE       solmin mean +2.9296  solmax +2.8193  shift -0.1103
+maxmin   solmin mean +2.7884  solmax +2.7042  shift -0.0842
+fN       solmin mean +0.9315  solmax +0.9367  shift +0.0052
+fS       solmin mean +1.1080  solmax +1.1102  shift +0.0022
+NS       solmin mean +0.8431  solmax +0.8460  shift +0.0029
+c1_rel   solmin mean +0.4489  solmax +0.4351  shift -0.0138
+s1_rel   solmin mean -0.0080  solmax -0.0094  shift -0.0013
+per species a1/a0 shift (mean over E band, cz): ['-0.0134', '-0.0141', '-0.0147', '-0.0136'] ('nue', 'antinue', 'numu', 'antinumu')
+per E band a1/a0 shift: ['-0.0135', '-0.0147', '-0.0136'] [0.3, 0.5, 1.0]
+flux ratio solmax/solmin (az-mean, all species) per E band: ['0.9660', '0.9690', '0.9764']
+E 0.316: numu solmax/solmin vertical 0.9686, horizon(0-0.3) 0.9667
+E 0.501: numu solmax/solmin vertical 0.9706, horizon(0-0.3) 0.9695
+E 1: numu solmax/solmin vertical 0.9763, horizon(0-0.3) 0.9774
+E 3.16: numu solmax/solmin vertical 0.9906, horizon(0-0.3) 0.9925
+E 10: numu solmax/solmin vertical 1.0000, horizon(0-0.3) 1.0000
+Honda d<a1/a0> solmin->solmax = -0.0139; at our slope -0.054/GV this is dphi = +0.26 GV
+sanity: saved Honda (solmin) vs recomputed, max |diff|: 0.0
+pilot-2 vs Honda solmin: <a1/a0> MC 0.4417 Honda 0.4538 diff -0.0120; chi2/12 a1/a0 3.65  dphi 0.64  fN 2.29  fS 3.33  N/S 0.94
+   fan-out antinumu-numu Honda +0.125 +0.158 +0.186  nue-antinue +0.268 +0.333 +0.389
+   per species a1/a0 (mean of 3 bands): MC 0.621 0.247 0.350 0.548  Honda 0.614 0.284 0.381 0.537
+pilot-2 vs Honda solmax: <a1/a0> MC 0.4417 Honda 0.4398 diff +0.0019; chi2/12 a1/a0 2.62  dphi 0.64  fN 2.66  fS 3.89  N/S 0.92
+   fan-out antinumu-numu Honda +0.126 +0.160 +0.187  nue-antinue +0.269 +0.335 +0.389
+   per species a1/a0 (mean of 3 bands): MC 0.621 0.247 0.350 0.548  Honda 0.601 0.269 0.366 0.523

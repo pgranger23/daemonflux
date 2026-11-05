@@ -1,0 +1,21 @@
+# Honda table noise (relative, log flux)
+species  cosZ_lo   sigma(E-roughness)  sigma(az-harmonics 5-6)
+nue       +0.0      0.0129              0.0115
+nue       +0.1      0.0075              0.0062
+nue       +0.2      0.0059              0.0037
+antinue   +0.0      0.0136              0.0093
+antinue   +0.1      0.0079              0.0058
+antinue   +0.2      0.0054              0.0040
+numu      +0.0      0.0084              0.0084
+numu      +0.1      0.0050              0.0047
+numu      +0.2      0.0040              0.0029
+antinumu  +0.0      0.0104              0.0078
+antinumu  +0.1      0.0054              0.0046
+antinumu  +0.2      0.0041              0.0032
+E-roughness sigma: median 0.0067, range 0.0040-0.0136
+honda noise on a1/a0 : median 0.0009, max 0.0011   (cells: 0.001 0.001 0.001 0.001 0.001 0.001 0.001 0.001 0.001 0.001 0.001 0.001)
+honda noise on dphi  : median 0.1070, max 0.2982   (cells: 0.115 0.102 0.100 0.221 0.241 0.298 0.107 0.107 0.121 0.093 0.094 0.095)
+honda noise on fN    : median 0.0014, max 0.0019   (cells: 0.002 0.001 0.001 0.002 0.002 0.002 0.001 0.001 0.001 0.001 0.001 0.001)
+honda noise on fS    : median 0.0018, max 0.0021   (cells: 0.002 0.002 0.002 0.002 0.002 0.002 0.001 0.001 0.001 0.001 0.002 0.002)
+honda noise on N/S   : median 0.0018, max 0.0029   (cells: 0.002 0.002 0.002 0.003 0.003 0.003 0.002 0.002 0.001 0.002 0.002 0.002)
+mean a1/a0 noise over 12 cells (independent bins): 0.0003
