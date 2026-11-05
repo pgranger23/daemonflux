@@ -114,6 +114,49 @@ location is supplied via `daemonflux.geomagnetic.GeomagneticSite`. See
 > rest of the package. See `src/daemonflux/geomagnetic.py` for the documented
 > assumptions.
 
+### Tabulated per-species 3D factor (Monte Carlo / engine tables, experimental)
+
+For a first-principles treatment, `Tabulated3DModel` loads a per-species factor
+`F_s(E, cos Z, azimuth)` from an `.npz` table and replaces the analytic admittance. The
+factor is the 3D flux with cutoff and bending (Monte Carlo or engine) divided by a common
+1D reference without cutoff (MCEq, curved atmosphere, the same primary model), so that
+`daemonflux_1D x F_s` is the 3D flux. Unlike the analytic model the factor is **not limited to [0, 1]** (the 3D production
+geometry adds flux near the horizon) and **differs between species** (nue, antinue, numu, antinumu: the charge/flavour fan-out of the
+East-West effect).
+
+```python
+from daemonflux import Flux
+from daemonflux.geomagnetic import Tabulated3DModel
+
+flux = Flux(location="kamioka")
+flux.set_geomagnetic_model(Tabulated3DModel("kamioka_3D_provisional.npz"))
+# (or flux.set_geomagnetic_model("kamioka_3D_provisional.npz"))
+f = flux.flux(egrid, 80.0, "numu", azimuth_deg=90.0)       # down-going, from the East
+f_up = flux.flux(egrid, 100.0, "numu", azimuth_deg=90.0)    # up-going (cos Z < 0)
+rel = flux.geomagnetic_factor_error(egrid, 80.0, "numu", azimuth_deg=90.0)
+```
+
+* Species fluxes get their own factor; **sums** (`numuflux`, `nueflux`, `muflux`) are recombined
+  with the 1D component fluxes as weights; **ratios** (`numuratio`, `nueratio`, `muratio`,
+  `flavorratio`) are recomputed from the corrected components (so, unlike with the
+  analytic model, they change when the species factors differ). Quantities not in
+  the table (muons for a neutrino table) have factor 1 and zero table error; the factor is
+  also applied to the `total_` quantities, i.e. to their prompt part (negligible below ~10 GeV).
+* Up-going zeniths (90 < zenith <= 180) are served by the 1D flux of the complementary
+  direction (the 1D production is up/down symmetric) times the table's up-going factor.
+* The 1D error is scaled by the same factor as the flux; the table's own statistical
+  uncertainty is **not** folded in but exposed by `Flux.geomagnetic_factor_error`
+  (relative) and `Tabulated3DModel.factor_error` (absolute, per species).
+* Interpolation: linear in `ln E` and in cos Z between bin centres, linear and periodic in
+  azimuth. Above the table's highest energy edge the factor is blended to 1 over one decade
+  (`blend_decades`); below the lowest edge a warning is issued (or `ValueError`,
+  `below_emin="raise"`).
+* Table format and the provisional Kamioka table: see `tools/mceq3d/INTEGRATION.md`.
+  **The provisional Kamioka table (not shipped with the package) is PROVISIONAL**; the production table replaces it in the same
+  format.
+* With no model attached the output is bit-identical to the 1D model; the analytic
+  `GeomagneticModel` is unchanged.
+
 ## Using parameter correlations represented by the covariance matrix
 
 The parameters of the model are correlated. These correlations are drdetermined from the data we have used for the fit. The errors are already computed taking the covariance matrix into account when using the `error` method. If daemonflux is used in a fit with free floating parameters, one can include these correlations by adding the chi2 as additional penalty term. The chi2 for the current combination of parameters can be obtained by calling `flux.chi2({dictionary of modified parameters})`.

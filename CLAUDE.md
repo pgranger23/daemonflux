@@ -46,6 +46,14 @@ When no model is attached (default), behaviour is identical to the published 1D 
 The model is the single plug-point for replacing the analytic cutoff with admittance
 ratios from a full 3D Monte-Carlo. See README "3D / geomagnetic corrections".
 
+`geomagnetic.py` also holds `Tabulated3DModel`, a per-species tabulated 3D factor
+`F_s(E, cos Z, azimuth)` loaded from an npz (Monte-Carlo or engine ratio s/t; not limited to
+[0, 1]; up-going zeniths allowed). `_FluxEntry` routes it through `_apply_geomag(...,
+component_flux=...)`: single species get their own factor, sums and flavour/charge ratios are
+recombined from the corrected components, the 1D error is scaled like the flux and the
+table's own uncertainty is exposed separately (`Flux.geomagnetic_factor_error`). No model:
+bit-identical 1D output. See `tools/mceq3d/INTEGRATION.md`.
+
 Data files (`src/daemonflux/data/`) are pickled scipy spline objects for different detector locations (generic, Kamioka) and calibration sets (default, with_deis). They are downloaded from GitHub on first use and cached locally.
 
 ## Key Conventions

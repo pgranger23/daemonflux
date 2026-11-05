@@ -298,3 +298,339 @@ class GeomagneticModel:
         if scalar_az:
             return adm[0]  # (nE,)
         return adm  # (naz, nE)
+
+
+# ----------------------------------------------------------------------
+# Tabulated, per-species 3D factor (e.g. from a Monte Carlo or the engine)
+# ----------------------------------------------------------------------
+#: species a table may carry; the first four are the neutrino species of daemonflux
+TABLE_SPECIES = ("numu", "antinumu", "nue", "antinue", "mu+", "mu-")
+_SUM_COMPONENTS = {
+    "numuflux": ("numu", "antinumu"),
+    "nueflux": ("nue", "antinue"),
+    "muflux": ("mu+", "mu-"),
+}
+_SPECIES_QUANTITY = set(TABLE_SPECIES)
+#: ratio quantity -> (numerator species, denominator species); a species *tuple*
+#: stands for the flux-weighted combination of the components
+_RATIOS = {
+    "numuratio": (("numu",), ("antinumu",)),
+    "nueratio": (("nue",), ("antinue",)),
+    "muratio": (("mu+",), ("mu-",)),
+    "flavorratio": (("numu", "antinumu"), ("nue", "antinue")),
+}
+
+
+def _split_quantity(quantity: str):
+    """``('total_' or '', core)`` of a daemonflux quantity name."""
+    if quantity.startswith("total_"):
+        return "total_", quantity[len("total_") :]
+    return "", quantity
+
+
+class Tabulated3DModel:
+    """Per-species, tabulated 3D factor ``F_s(E, cos Z, azimuth)`` for daemonflux.
+
+    ``flux_3D_s = flux_1D_s * F_s``.  Unlike the analytic
+    :class:`GeomagneticModel`, ``F`` is **not** confined to [0, 1] (the 3D
+    production geometry raises the near-horizon flux, so ``F`` can exceed 1) and it
+    differs between species (the charge/flavour fan-out of the East-West effect).
+    The factor is the 3D flux with cutoff and bending (Monte Carlo or engine) divided
+    by a common 1D no-cutoff reference (MCEq, curved atmosphere, same primary model),
+    so that ``daemonflux_1D * F`` is the 3D flux.
+
+    Parameters
+    ----------
+    table : str, pathlib.Path or dict
+        An ``.npz`` file (or the dict of its arrays) with
+
+        ``species``      (S,)   names from :data:`TABLE_SPECIES`
+        ``e_edges``      (nE+1,) energy bin edges [GeV], ascending
+        ``cosz_edges``   (nC+1,) cos Z bin edges, ascending in (-1, 1); cos Z < 0 is
+                         up-going
+        ``az_edges``     (nA+1,) azimuth bin edges [deg, N=0, E=90], spanning 360
+        ``factor``       (S, nE, nC, nA)  the factor, finite
+        ``factor_error`` (S, nE, nC, nA)  its 1-sigma statistical uncertainty
+                         (absolute, same units as ``factor``)
+
+        and optionally ``label``, ``status`` (a string such as ``"PROVISIONAL"``,
+        shown in ``repr``), ``site`` and ``provenance``.
+    below_emin : {"warn", "raise"}
+        Behaviour for energies below ``e_edges[0]``: warn (default) and use the
+        lowest bin, or raise ``ValueError``.
+    blend_decades : float
+        Above ``E_max = e_edges[-1]`` the factor is blended **linearly in log10 E** to 1
+        over this many decades (default 1): ``F = (1 - w) F(E_max) + w``,
+        ``w = clip(log10(E / E_max) / blend_decades, 0, 1)``; the factor error is
+        blended to 0 the same way.
+
+    Interpolation
+    -------------
+    Linear in ``ln E`` between bin centres (geometric means of the edges), linear in
+    cos Z between bin centres, linear and **periodic** in azimuth between bin centres.
+    Outside the outermost centres (but inside the edges) the outermost value is used.
+    Requests outside the table's cos Z coverage raise ``ValueError``.
+
+    Quantities
+    ----------
+    * a single species (``numu`` ... , also with the ``total_`` prefix) is multiplied
+      by its own factor;
+    * sums (``numuflux``, ``nueflux``, ``muflux``) by the flux-weighted factor of
+      their components, ``(F_a Phi_a + F_b Phi_b) / (Phi_a + Phi_b)``, with the 1D
+      component fluxes as weights;
+    * ratios (``numuratio``, ``nueratio``, ``muratio``, ``flavorratio``) by the
+      quotient of the
+      numerator and denominator factors (the same weighted factor for the sums in
+      ``flavorratio``), i.e. they are recomputed from the corrected components;
+    * quantities the table does not cover (e.g. ``muflux``, ``mu+``, ``muratio`` for a
+      neutrino table) pass through with factor 1 and zero table error (no warning, no
+      zenith-coverage check); a sum or ratio with only one of its species in the table
+      uses 1 for the missing one;
+    * the factor is applied to the ``total_`` quantities as well, i.e. also to their
+      prompt component (the table is a conventional-flux ratio); the prompt flux is
+      negligible below ~10 GeV, and above the table's last energy edge the factor
+      blends to 1.
+
+    Errors: the 1D error is multiplied by the same scale as the flux (relative error of
+    the 1D model preserved).  The table's own uncertainty is **not** folded in; see
+    :meth:`factor_error` and :meth:`scale_error`.
+    """
+
+    #: marker used by daemonflux to route per-species handling and up-going zeniths
+    per_species = True
+
+    def __init__(self, table, below_emin: str = "warn", blend_decades: float = 1.0):
+        if below_emin not in ("warn", "raise"):
+            raise ValueError("below_emin must be 'warn' or 'raise'")
+        if isinstance(table, (str, bytes)) or hasattr(table, "__fspath__"):
+            with np.load(table, allow_pickle=False) as d:
+                table = {k: d[k] for k in d.files}
+        t = dict(table)
+        self.species = tuple(str(s) for s in np.atleast_1d(t["species"]))
+        for s in self.species:
+            if s not in TABLE_SPECIES:
+                raise ValueError(f"unknown species {s!r}; allowed: {TABLE_SPECIES}")
+        self.e_edges = np.asarray(t["e_edges"], float)
+        self.cosz_edges = np.asarray(t["cosz_edges"], float)
+        self.az_edges = np.asarray(t["az_edges"], float)
+        self._f = np.asarray(t["factor"], float)
+        self._df = np.asarray(t["factor_error"], float)
+        shape = (
+            len(self.species),
+            len(self.e_edges) - 1,
+            len(self.cosz_edges) - 1,
+            len(self.az_edges) - 1,
+        )
+        if self._f.shape != shape or self._df.shape != shape:
+            raise ValueError(f"factor/factor_error must have shape {shape}")
+        if not (np.all(np.isfinite(self._f)) and np.all(np.isfinite(self._df))):
+            raise ValueError("factor and factor_error must be finite (fill empty bins)")
+        for name, ax in (
+            ("e_edges", self.e_edges),
+            ("cosz_edges", self.cosz_edges),
+            ("az_edges", self.az_edges),
+        ):
+            if np.any(np.diff(ax) <= 0):
+                raise ValueError(f"{name} must be strictly increasing")
+        if self.e_edges[0] <= 0:
+            raise ValueError("e_edges must be positive")
+        if not np.isclose(self.az_edges[-1] - self.az_edges[0], 360.0):
+            raise ValueError("az_edges must span 360 degrees")
+        self.below_emin = below_emin
+        self.blend_decades = float(blend_decades)
+        self.label = str(t.get("label", ""))
+        self.status = str(t.get("status", ""))
+        self.site = str(t.get("site", ""))
+        self.provenance = str(t.get("provenance", ""))
+        self._lne = np.log(np.sqrt(self.e_edges[:-1] * self.e_edges[1:]))
+        self._cz = 0.5 * (self.cosz_edges[:-1] + self.cosz_edges[1:])
+        self._az = 0.5 * (self.az_edges[:-1] + self.az_edges[1:])
+
+    def __repr__(self) -> str:
+        return (
+            f"Tabulated3DModel(label={self.label!r}, status={self.status!r}, "
+            f"site={self.site!r}, species={self.species}, "
+            f"E=[{self.e_edges[0]:g}, {self.e_edges[-1]:g}] GeV, "
+            f"cosZ=[{self.cosz_edges[0]:g}, {self.cosz_edges[-1]:g}], "
+            f"n_az={len(self._az)})"
+        )
+
+    @property
+    def e_min(self) -> float:
+        return float(self.e_edges[0])
+
+    @property
+    def e_max(self) -> float:
+        return float(self.e_edges[-1])
+
+    # ------------------------------------------------------------------
+    def _interp(self, arr, species, energy, zenith_deg, azimuth_deg, blend_to):
+        """Interpolate one (S, nE, nC, nA) array for one species.
+
+        Returns shape (nE,) for ``azimuth_deg`` None/scalar, (naz, nE) for an array.
+        """
+        energy = np.atleast_1d(np.asarray(energy, float))
+        if species not in self.species:
+            return np.full(
+                (
+                    energy.shape
+                    if (azimuth_deg is None or np.ndim(azimuth_deg) == 0)
+                    else (len(np.atleast_1d(azimuth_deg)),) + energy.shape
+                ),
+                blend_to,
+            )
+        cz = float(np.cos(np.deg2rad(float(zenith_deg))))
+        tol = 1e-12
+        if cz < self.cosz_edges[0] - tol or cz > self.cosz_edges[-1] + tol:
+            raise ValueError(
+                f"cos Z = {cz:.4f} (zenith {float(zenith_deg):g} deg) is outside the "
+                f"table's coverage [{self.cosz_edges[0]:g}, {self.cosz_edges[-1]:g}]"
+            )
+        k = self.species.index(species)
+        a = arr[k]  # (nE, nC, nA)
+        # cos Z (linear, flat outside the outermost centres)
+        j = np.arange(a.shape[1])
+        w1 = np.interp(cz, self._cz, j)  # fractional index
+        j0 = int(np.floor(w1))
+        j1 = min(j0 + 1, a.shape[1] - 1)
+        fr = w1 - j0
+        a2 = (1.0 - fr) * a[:, j0, :] + fr * a[:, j1, :]  # (nE, nA)
+        # azimuth (linear, periodic)
+        if azimuth_deg is None:
+            a3 = a2.mean(axis=1)[None, :]  # (1, nE)
+            scalar = True
+        else:
+            scalar = np.ndim(azimuth_deg) == 0
+            az = np.atleast_1d(np.asarray(azimuth_deg, float))
+            c = self._az
+            ext_c = np.concatenate([[c[-1] - 360.0], c, [c[0] + 360.0]])
+            ext = np.concatenate([a2[:, -1:], a2, a2[:, :1]], axis=1)  # (nE, nA+2)
+            azw = (az - c[0]) % 360.0 + c[0]
+            idx = np.interp(azw, ext_c, np.arange(len(ext_c)))
+            i0 = np.floor(idx).astype(int)
+            i1 = np.minimum(i0 + 1, len(ext_c) - 1)
+            f = idx - i0
+            a3 = (1.0 - f)[:, None] * ext[:, i0].T + f[:, None] * ext[
+                :, i1
+            ].T  # (naz, nE)
+        # energy: linear in ln E, flat in the half bins, blend to ``blend_to``
+        # (1 for the factor, 0 for its error) above E_max
+        if np.any(energy < self.e_edges[0]):
+            msg = (
+                f"energy {energy.min():g} GeV is below the table's lowest edge "
+                f"{self.e_edges[0]:g} GeV"
+            )
+            if self.below_emin == "raise":
+                raise ValueError(msg)
+            import warnings
+
+            warnings.warn(msg + "; the lowest bin is used", stacklevel=4)
+        le = np.log(energy)
+        out = np.empty((a3.shape[0], len(energy)))
+        for i in range(a3.shape[0]):
+            out[i] = np.interp(le, self._lne, a3[i])
+        w = np.clip(np.log10(energy / self.e_max) / self.blend_decades, 0.0, 1.0)
+        out = (1.0 - w) * out + w * blend_to
+        return out[0] if scalar else out
+
+    def factor(self, species, energy, zenith_deg, azimuth_deg=None):
+        """The factor ``F_s`` (broadcast like :meth:`GeomagneticModel.admittance`)."""
+        return self._interp(self._f, species, energy, zenith_deg, azimuth_deg, 1.0)
+
+    def factor_error(self, species, energy, zenith_deg, azimuth_deg=None):
+        """Interpolated 1-sigma statistical uncertainty of ``F_s`` (absolute)."""
+        return self._interp(self._df, species, energy, zenith_deg, azimuth_deg, 0.0)
+
+    # ------------------------------------------------------------------
+    def _combo(self, species, weights, which, energy, zenith_deg, azimuth_deg):
+        """Flux-weighted factor (``which`` = factor or factor_error) of components."""
+        fn = self.factor if which == "factor" else self.factor_error
+        num = 0.0
+        den = 0.0
+        for s, w in zip(species, weights):
+            num = num + fn(s, energy, zenith_deg, azimuth_deg) * w
+            den = den + w
+        return num / den
+
+    def covers(self, quantity: str) -> bool:
+        """True if any species behind ``quantity`` is in the table; quantities that are
+        not (muons for a neutrino table) pass through with factor 1."""
+        _, core = _split_quantity(quantity)
+        if core in _SPECIES_QUANTITY:
+            sp = (core,)
+        elif core in _SUM_COMPONENTS:
+            sp = _SUM_COMPONENTS[core]
+        elif core in _RATIOS:
+            sp = _RATIOS[core][0] + _RATIOS[core][1]
+        else:
+            return False
+        return any(s in self.species for s in sp)
+
+    def _ones(self, energy, azimuth_deg, value):
+        energy = np.atleast_1d(np.asarray(energy, float))
+        if azimuth_deg is None or np.ndim(azimuth_deg) == 0:
+            return np.full(energy.shape, value)
+        return np.full((len(np.atleast_1d(azimuth_deg)),) + energy.shape, value)
+
+    def scale(self, quantity, energy, zenith_deg, azimuth_deg, component_flux):
+        """Multiplier of a daemonflux quantity (see the class docstring).
+
+        ``component_flux(name)`` must return the 1D flux of species ``name`` (with the
+        ``total_`` prefix of ``quantity`` where relevant) at the requested energy and
+        zenith (used as weights for sums and flavour ratios only).
+        """
+        if not self.covers(quantity):
+            return self._ones(energy, azimuth_deg, 1.0)
+        pre, core = _split_quantity(quantity)
+        if core in _SPECIES_QUANTITY:
+            return self.factor(core, energy, zenith_deg, azimuth_deg)
+        if core in _SUM_COMPONENTS:
+            sp = _SUM_COMPONENTS[core]
+            wts = [np.asarray(component_flux(pre + s), float) for s in sp]
+            return self._combo(sp, wts, "factor", energy, zenith_deg, azimuth_deg)
+        if core in _RATIOS:
+            (nsp, dsp) = _RATIOS[core]
+            out = []
+            for sp in (nsp, dsp):
+                wts = [np.asarray(component_flux(pre + s), float) for s in sp]
+                out.append(
+                    self._combo(sp, wts, "factor", energy, zenith_deg, azimuth_deg)
+                )
+            return out[0] / out[1]
+        raise ValueError(f"quantity {quantity!r} is not known to the 3D table")
+
+    def scale_error(self, quantity, energy, zenith_deg, azimuth_deg, component_flux):
+        """Statistical uncertainty of :meth:`scale` from the table (components
+        combined in quadrature with the flux weights, ratios by relative errors;
+        the components' errors are treated as uncorrelated, which neglects the
+        correlation through the common 1D reference of the Monte Carlo)."""
+        if not self.covers(quantity):
+            return self._ones(energy, azimuth_deg, 0.0)
+        pre, core = _split_quantity(quantity)
+        if core in _SPECIES_QUANTITY:
+            return self.factor_error(core, energy, zenith_deg, azimuth_deg)
+
+        def comb_err(sp):
+            wts = [np.asarray(component_flux(pre + s), float) for s in sp]
+            tot = sum(wts)
+            v = 0.0
+            for s, w in zip(sp, wts):
+                v = (
+                    v
+                    + (self.factor_error(s, energy, zenith_deg, azimuth_deg) * w / tot)
+                    ** 2
+                )
+            return np.sqrt(v)
+
+        def comb_val(sp):
+            wts = [np.asarray(component_flux(pre + s), float) for s in sp]
+            return self._combo(sp, wts, "factor", energy, zenith_deg, azimuth_deg)
+
+        if core in _SUM_COMPONENTS:
+            return comb_err(_SUM_COMPONENTS[core])
+        if core in _RATIOS:
+            nsp, dsp = _RATIOS[core]
+            n, d = comb_val(nsp), comb_val(dsp)
+            r = n / d
+            return r * np.sqrt((comb_err(nsp) / n) ** 2 + (comb_err(dsp) / d) ** 2)
+        raise ValueError(f"quantity {quantity!r} is not known to the 3D table")

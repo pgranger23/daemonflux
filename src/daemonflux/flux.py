@@ -189,23 +189,34 @@ class Flux:
 
         Parameters
         ----------
-        model : str, GeomagneticSite, GeomagneticModel or None
+        model : str, GeomagneticSite, GeomagneticModel, Tabulated3DModel, path or None
             A known site name (see ``daemonflux.geomagnetic.KNOWN_SITES``), a
-            ``GeomagneticSite``/``GeomagneticModel`` instance, or ``None`` to
-            restore the unmodified 1D behaviour.
+            ``GeomagneticSite``/``GeomagneticModel`` instance, a
+            :class:`~daemonflux.geomagnetic.Tabulated3DModel` (or the path of its
+            ``.npz`` table: a ``pathlib.Path`` or a string ending in ``.npz``), or
+            ``None`` to restore the unmodified 1D behaviour.  A tabulated model
+            applies a per-species factor (not limited to [0, 1]), recombines sums and
+            ratios from the corrected components and accepts up-going zeniths
+            (90 < zenith <= 180).
         exp : str or None, optional
             Apply the model only to this location/experiment. By default the
             model is applied to every location in the file.
         """
-        from .geomagnetic import GeomagneticModel, GeomagneticSite
+        from .geomagnetic import GeomagneticModel, GeomagneticSite, Tabulated3DModel
 
-        if model is not None and not isinstance(model, GeomagneticModel):
+        if isinstance(model, pathlib.Path) or (
+            isinstance(model, str) and model.endswith(".npz")
+        ):
+            model = Tabulated3DModel(model)
+        if model is not None and not isinstance(
+            model, (GeomagneticModel, Tabulated3DModel)
+        ):
             if isinstance(model, (str, GeomagneticSite)):
                 model = GeomagneticModel(model)
             else:
                 raise TypeError(
                     "geomagnetic model must be a str, GeomagneticSite, "
-                    "GeomagneticModel or None"
+                    "GeomagneticModel, Tabulated3DModel or None"
                 )
 
         targets = self.supported_fluxes if exp is None else [exp]
@@ -457,6 +468,21 @@ class Flux:
             energy, zenith_deg, quantity, params, azimuth_deg=azimuth_deg
         )
 
+    def geomagnetic_factor_error(
+        self, energy, zenith_deg, quantity, exp="", azimuth_deg=None
+    ):
+        """Relative uncertainty of the flux from the *tabulated 3D factor*.
+
+        Only defined with a :class:`~daemonflux.geomagnetic.Tabulated3DModel`
+        attached. Returns ``sigma(scale) / scale`` (dimensionless), the statistical
+        uncertainty of the table propagated to ``quantity`` (see
+        :meth:`Tabulated3DModel.scale_error`). It is **not** included in
+        :meth:`error`, which scales the 1D error only.
+        """
+        return self._get_flux_instance(exp).geomagnetic_factor_error(
+            energy, zenith_deg, quantity, azimuth_deg=azimuth_deg
+        )
+
     def error(
         self,
         energy,
@@ -588,6 +614,41 @@ class _FluxEntry(Flux):
         """Attach (or clear, with ``None``) a geomagnetic model to this entry."""
         self._geomag = model
 
+    def geomagnetic_factor_error(
+        self, energy, zenith_deg, quantity, azimuth_deg=None
+    ) -> np.ndarray:
+        """Relative uncertainty of the flux from the tabulated factor (see
+        :meth:`Flux.geomagnetic_factor_error`)."""
+        if not self._tabulated():
+            raise RuntimeError("a Tabulated3DModel must be attached")
+        self._check_input(energy, quantity)
+        z1d = self._zenith_1d(zenith_deg)
+        comp = lambda q: self._flux_1d(energy, z1d, q, {})  # noqa: E731
+        zen = float(zenith_deg)
+        sc = self._geomag.scale(quantity, energy, zen, azimuth_deg, comp)
+        err = self._geomag.scale_error(quantity, energy, zen, azimuth_deg, comp)
+        return np.squeeze(err / sc)
+
+    def _tabulated(self) -> bool:
+        """True when a per-species tabulated 3D model is attached."""
+        return getattr(self._geomag, "per_species", False)
+
+    def _zenith_1d(self, zenith_deg):
+        """Zenith used for the 1D flux. With a tabulated model the up-going
+        hemisphere (90 < zenith <= 180) is served by the 1D flux of the
+        complementary down-going direction (the 1D production is up/down symmetric);
+        everything else is unchanged."""
+        if self._tabulated() and not isinstance(zenith_deg, str):
+            if is_iterable(zenith_deg):
+                raise NotImplementedError(
+                    "A tabulated 3D model supports a single zenith angle per call "
+                    "(up-going zeniths included); loop over the zenith angles, or "
+                    "disable the model with set_geomagnetic_model(None)."
+                )
+            if 90.0 < float(zenith_deg) <= 180.0:
+                return 180.0 - float(zenith_deg)
+        return zenith_deg
+
     def _apply_geomag(
         self,
         base: np.ndarray,
@@ -595,13 +656,18 @@ class _FluxEntry(Flux):
         zenith_deg: Union[float, str, np.ndarray],
         quantity: str,
         azimuth_deg,
+        component_flux=None,
+        params=None,
     ) -> np.ndarray:
-        """Multiply a 1D flux/error by the geomagnetic admittance.
+        """Multiply a 1D flux/error by the geomagnetic factor.
 
         No-op (returns ``base`` unchanged) when no geomagnetic model is
         attached, preserving the published 1D behaviour. When a model is
         attached but ``azimuth_deg`` is ``None``, the azimuth-averaged
         admittance is applied (still captures the latitude/low-energy cutoff).
+        For a tabulated per-species model the multiplier is built from the
+        corrected components (``component_flux(name)`` = 1D flux of species
+        ``name`` at the requested energy/zenith).
         """
         if self._geomag is None:
             return base
@@ -622,7 +688,12 @@ class _FluxEntry(Flux):
             )
         else:
             zenith_val = float(zenith_deg)
-        adm = self._geomag.admittance(quantity, energy, zenith_val, azimuth_deg)
+        if self._tabulated():
+            adm = self._geomag.scale(
+                quantity, energy, zenith_val, azimuth_deg, component_flux
+            )
+        else:
+            adm = self._geomag.admittance(quantity, energy, zenith_val, azimuth_deg)
         return np.squeeze(np.asarray(base) * adm)
 
     @contextmanager
@@ -877,20 +948,30 @@ class _FluxEntry(Flux):
             If `zenith_deg` is "average" but splines do not contain average flux.
         """
         self._check_input(energy, quantity)
+        z1d = self._zenith_1d(zenith_deg)
+        base = self._flux_1d(energy, z1d, quantity, params)
+        return self._apply_geomag(
+            base,
+            energy,
+            zenith_deg,
+            quantity,
+            azimuth_deg,
+            component_flux=lambda q: self._flux_1d(energy, z1d, q, params),
+        )
+
+    def _flux_1d(self, energy, zenith_deg, quantity, params):
+        """The 1D flux (no geomagnetic model) of ``quantity``."""
         # handle the case where the zenith angle is "average"
         if isinstance(zenith_deg, str) and zenith_deg == "average":
             if not self._spl_contains_average:
                 raise Exception("Splines do not contain average flux")
-            base = self._flux_from_spl(energy, zenith_deg, quantity, params)
+            return self._flux_from_spl(energy, zenith_deg, quantity, params)
         # handle the case where the zenith angle is a single value or an array
-        elif not is_iterable(zenith_deg) and float(zenith_deg) in self._zenith_deg_arr:
-            base = self._flux_from_spl(
+        if not is_iterable(zenith_deg) and float(zenith_deg) in self._zenith_deg_arr:
+            return self._flux_from_spl(
                 energy, format_angle(float(zenith_deg)), quantity, params
             )
-        else:
-            base = self._flux_from_interp(energy, zenith_deg, quantity, params)
-
-        return self._apply_geomag(base, energy, zenith_deg, quantity, azimuth_deg)
+        return self._flux_from_interp(energy, zenith_deg, quantity, params)
 
     def error(
         self,
@@ -933,21 +1014,31 @@ class _FluxEntry(Flux):
             If `zenith_deg` is "average" but splines do not contain average flux.
         """
         self._check_input(energy, quantity)
+        z1d = self._zenith_1d(zenith_deg)
 
         # handle the case where the zenith angle is "average"
-        if isinstance(zenith_deg, str) and zenith_deg == "average":
+        if isinstance(z1d, str) and z1d == "average":
             if not self._spl_contains_average:
                 raise Exception("Splines do not contain average flux")
-            base = self._error_from_spl(energy, zenith_deg, quantity, only_hadronic)
+            base = self._error_from_spl(energy, z1d, quantity, only_hadronic)
         # handle the case where the zenith angle is a single value or an array
-        elif not is_iterable(zenith_deg) and float(zenith_deg) in self._zenith_deg_arr:
+        elif not is_iterable(z1d) and float(z1d) in self._zenith_deg_arr:
             base = self._error_from_spl(
-                energy, format_angle(zenith_deg), quantity, only_hadronic
+                energy, format_angle(z1d), quantity, only_hadronic
             )
         else:
-            base = self._error_from_interp(energy, zenith_deg, quantity, only_hadronic)
+            base = self._error_from_interp(energy, z1d, quantity, only_hadronic)
 
-        return self._apply_geomag(base, energy, zenith_deg, quantity, azimuth_deg)
+        # the error scales with the same factor as the flux (relative error of the 1D
+        # model preserved); the factor's own uncertainty is NOT folded in
+        return self._apply_geomag(
+            base,
+            energy,
+            zenith_deg,
+            quantity,
+            azimuth_deg,
+            component_flux=lambda q: self._flux_1d(energy, z1d, q, {}),
+        )
 
     def chi2(self, params={}):
         """
