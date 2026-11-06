@@ -223,3 +223,47 @@ errors with the species taken together replicate by replicate, so the shared sho
 cos Z 0.2-0.4 and 0.5-0.9% above (0.1-3 GeV).  err(c) scales as 1/sqrt(N): for err(c) <= 1% everywhere at cos Z >= 0.2 about x1.5 the present add-on,
 **~33 core-h (6.5e6 primaries)**; for err(c) <= 1% also at cos Z 0-0.2 about x(2.8)^2 = 7.8, **~170 core-h (3.4e7 primaries)** with the present allocation (less with an
 allocation tuned to the horizon low-energy strata; not computed); at 2.5-10 GeV (5.5%) x30, ~650 core-h, not worth it.
+
+## 11. Table v1b: E 5/dec x cos Z 0.1 x az 12 (PM follow-up 2026-11-06)
+`$W/runs/m4/out/kamioka_G_down_v1b.npz` (`make_v1b.py`, from the stored per-(group, stratum) sums `work/B_design.npz`, no re-read of the production): E 5/dec
+0.1-10 GeV (10 bins; 0-7 deliverable, 8-9 blend check) x cos Z 0.1 (10 down-going bins) x az 12 x 30 deg, per species.  Keys as v1 without the `_fine/_coarse`
+suffix: `G`, `G_err` (jackknife, kappa re-fitted in every replicate), `G_err_total`, `kappa`, `kappa_err`, `s`, `n`, `t`, `v`, `B`, `sigma_ref` (each 0.1 bin inherits its 0.2
+parent), axes and the v1 metadata.  Same definition as v1 (G = s/(kappa B), kappa over cos Z 0.6-1, not clipped).
+
+**(a) median relative error of G (statistical -> total), per species and bin**
+
+| region | 0.1-0.25 GeV | 0.25-1 | 1-2.5 | 2.5-4 | 4-10 (blend) |
+|---|---|---|---|---|---|
+| horizon cos Z 0-0.4 | 1.6 -> 2.9% | 2.2 -> 3.0% | 3.6 -> 4.1% | 5.5 -> 7.1% | 10.4 -> 11.4% |
+| mid 0.4-0.8 | 1.1 -> 1.3% | 1.3 -> 1.8% | 2.2 -> 2.4% | 3.7 -> 4.3% | 6.9 -> 7.2% |
+| vertical 0.8-1 | 1.0 -> 1.1% | 1.1 -> 1.2% | 2.0 -> 2.1% | 3.1 -> 3.3% | 6.1 -> 6.2% |
+
+(1.2-1.4x the v1 coarse errors: 0.1-wide x 30-deg bins carry 4x fewer events per bin; the horizon bins up to 2.5 GeV stay <= 4%.)
+
+**(b) azimuth observables from the 12-bin G pattern** (a1/a0, dphi, N/S = fN/fS as `analyse_m3b.observables`; W/E = bin at 270 / bin at 90 of the 12-bin pattern),
+MC vs Honda solmax (solmin in `v1b.txt`) on the same E bin and the same 0.1-wide cos Z bin (cos Z 0-0.1 / 0.1-0.2 / 0.2-0.3 = |cos Z| 0.05 / 0.15 / 0.25;
+E 5/dec bins 0.25-0.40 / 0.40-0.63 / 0.63-1.0 GeV for "0.3 / 0.5 / 1").  All 36 cells (3 cos Z x 3 E x 4 species), with jackknife errors of the MC
+quantities, are in `results/m4/v1b.txt`.  Means over species and energies:
+
+| cos Z | a1/a0 MC | a1/a0 Honda solmax (solmin) | N/S MC / Honda | W/E MC / Honda |
+|---|---|---|---|---|
+| 0.05 | 0.477 | 0.485 (0.500) | 0.882 / 0.867 | 2.77 / 2.90 |
+| 0.15 | 0.453 | 0.453 (0.467) | 0.806 / 0.821 | 2.65 / 2.76 |
+| 0.25 | 0.397 | 0.407 (0.421) | 0.828 / 0.843 | 2.35 / 2.48 |
+
+**The MC pattern agrees with Honda solmax as in M3f**: mean a1/a0 MC - solmax -0.006 (the amplitude was -0.012 against solmin in M3e/M3f), chi2/36 (MC errors only)
+**3.16** for a1/a0 (7.00 against solmin), 1.73 for N/S (1.24 solmin), 2.72 for dphi; W/E is 4-5% low on average (MC 2.35-2.77 vs 2.48-2.90).  By
+species the cell values scatter within 1-2 sigma (a1/a0 errors 0.02-0.08 per cell); the cells that deviate by more than 2 sigma: nue 0.5 GeV at |cos Z| 0.05
+(0.608 +- 0.077 vs 0.686, W/E 2.10 vs 4.41: one noisy horizon cell, the same species/energy at 0.15 and 0.25 agree: 0.631 vs 0.631, 0.551 vs 0.548)
+and antinue 1 GeV at 0.05 (0.187 vs 0.238).  The flattening of v1 is gone in the near-horizon bin (a1/a0 0.477 vs 0.485 at 0.05), as expected from 0.1-wide x 30-degree bins.
+
+**(c) antinue 2.5-4 GeV, vertical bin 0.8-1.**  MC G / engine F (azimuth-averaged over cos Z 0.8-1, engine `engine_F_fine.npz`, `flux_dn6/base_dn6`
+integrated over the E bin): 1-2.5 GeV: nue 1.007 +- 0.004, **antinue 1.032 +- 0.004**, numu 1.000 +- 0.002, antinumu 0.994 +- 0.002; 2.5-4 GeV: nue 1.013 +- 0.009,
+**antinue 0.943 +- 0.009** (the PM's 0.940 +- 0.012), numu 1.003 +- 0.005, antinumu 1.006 +- 0.005; at cos Z 0.4-0.8 all species are 0.999-1.013 (antinue 1.013 +- 0.003
+at 1-2.5 GeV, 1.003 +- 0.007 at 2.5-4).  **It is s, not t/kappa or B**: B cancels in G/F (G = s/(kappa B), F = flux_3D/B), so B cannot produce it; t/(kappa B) over 0.8-1 at
+2.5-4 GeV is 1.009 (nue 1.016, numu 0.991, antinumu 1.002) and kappa(antinue) = 0.949 +- 0.018 is the same as the other species (0.939-0.955); the 3D/1D ratio s/t over 0.8-1
+is 0.900 for antinue against 0.934 / 0.967 / 0.972 for nue / numu / antinumu.  Antinue also deviates the other way at 1-2.5 GeV (+3.2%, 8 sigma): the vertical antinue
+3D yield differs from the engine's in an energy-dependent way (a +3% / -6% pair), one untested hypothesis is the charge-asymmetric hadronic input of the MC's pools or of the engine's tables (antinue comes from
+pi-/K- -> mu-, then mu- -> e- antinue numu; and from the Ke3 decays of K0L and K-), not the normalisation; I did not establish which.
+*(PM correction 2026-11-06: an earlier wording attributed antinue to mu+ decay; antinue is a mu- daughter. Carried into the v1c table as the
+model systematic sigma_mod, INTEGRATION.md 12.y.)*

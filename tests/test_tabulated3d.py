@@ -428,7 +428,8 @@ def test_kamioka_v1_table_if_available(flux_factory):
     ):
         assert k in d.files
     m = Tabulated3DModel(path)
-    assert m.label == "kamioka_3D_v1" and m.status.startswith("v1")
+    assert m.label in ("kamioka_3D_v1", "kamioka_3D_v1b", "kamioka_3D_v1c")
+    assert m.status.startswith("v1")
     assert np.all(m._df > 0) and np.all(np.isfinite(m._f))
     geo = flux_factory()
     geo.set_geomagnetic_model(m)

@@ -493,3 +493,214 @@ Both provisional npz (`kamioka_3D_provisional.npz`, `..._engine.npz`) are rebuil
   by interpolating the cached rows (0.05, 0.15, 0.25, 0.35) -- the geometry at the production point is then the right one; costs minutes. (ii) The distance taper of 11.5. (iii) Down-going maps at the three or four exact |cos Z'| values
   (12 azimuths each = 48 cells, ~2.3 core-h) plus their G_s families (the 0.09 one is the slow one, ~2 core-h) for variant (i) without interpolation. None of these is applied or tuned.
 
+
+## 12. Final Kamioka table v1 (2026-11-06)
+
+File: `$W/runs/integ/out/kamioka_3D_v1.npz` (`Tabulated3DModel` format, label `kamioka_3D_v1`, v142p database, IGRF14).
+Build/validation tables: `out/v1_build_tables.md`, `out/v1_validation.md`. Reproduce with
+`python tools/mceq3d/diag_v1.py fit`, `... build`, `... validate` (well under 1 core-h in total; no new engine or MC runs).
+
+* **Sources per cell** (`source` key): 0 = MC down-going (E < 2.5 GeV), 1 = engine down-going (E >= 2.5 GeV),
+  3 = engine mirror cone (up-going) multiplied by R_up. Common 1D reference B = engine `base(|cosZ|)` (section 10).
+* **R_up route (a')**: the muon-bend response R = F_on/F_off is measured only down-going at Kamioka. The literal
+  B_perp test failed (correlation 0.00). A projection model, R-1 = delta_s(E, cosZ) q_s [beta . grad ln F_off] with
+  beta = d x B in the detector tangent basis, explains the Kamioka R table (chi2 689 for 840 points, 140 parameters).
+  Route a' transfers delta_s to the up-going production point Q (field from ppigrf at 20 km). The transfer to Q is
+  untested. sigma_R = stat + 32% closure systematic on (R_a - 1) + |R_a - R_b|, where R_b is the plain mirror of the
+  down-going R. R_up is set to 1 above the R-table range (2.5 GeV); this leaves a step there.
+* **Caveat seen in the last check**: at the up-going horizon bin (-0.2..0) the azimuth-mean (R-1) of route a' differs
+  from the plain mirror (route b), which tracks the measured down-going row. E.g. nue at 0.5-1.3 GeV: a' -3.5 to -6.2%,
+  b +0.2 to +2.2%, down +0.5 to +2.3%; antinue sign is opposite in places. The envelope term in sigma_R covers this
+  by construction but the choice a' versus b is a model decision, not validated.
+* **MC/engine at 2.5-4 GeV**: consistent except antinue in the vertical band (0.940 +- 0.012, about 5 sigma low).
+* **Errors**: `factor_error` = MC total (stat + reference shape) or engine sigma, and for up-going also sigma_R.
+  Max relative error 0.59, 282 of 2400 bins above 10%. Up-going near-horizon medians are 11-19% at 0.3-3 GeV.
+* **Honda comparison** (shape only, nothing tuned): numu horizon up/down ratio is 2-5% above Honda at 0.3 and 0.5 GeV;
+  azimuth phases differ in places (nue, 0.5 GeV, -0.05 in cos Z: 49.7 vs 15.8 deg).
+* **API check**: `Flux` with the table loads (test `test_kamioka_v1_table_if_available`, skips if the file is absent);
+  daemonflux suite 55 passed, black and flake8 clean. The `tools/mceq3d` suite was not rerun (nothing changed there).
+* **Not validated**: R_up transfer beyond Kamioka; up-going patterns beyond the horizon rows; neglect of R for
+  E >= 2.5 GeV; the engine-based E >= 2.5 GeV down-going bins.
+
+### 12.x v1b (2026-11-06, after PM review): what changed and why
+
+`kamioka_3D_v1.npz` is superseded by `$W/runs/integ/out/kamioka_3D_v1b.npz` (E 5/dec x cos Z 0.1 x az 12; label `kamioka_3D_v1b`).
+Build: `diag_v1.py fit` (unchanged), `build_v1b`, `validate_v1b` -> `out/v1b_build_tables.md`, `out/v1b_validation.md`.
+
+* **Bug in R_up (route a'): reflection of the theta gradient.** The muon bends at the production point Q, where the muon
+  direction is the reflection of the detector direction (theta_Q = 180 - theta_det along the chord family, azimuth unchanged).
+  A rotation of the ray by alpha changes both theta_Q and theta_det by +alpha, but the flux depends on the muon direction at
+  Q, so d ln F / d theta_Q = - d ln F / d theta_det. v1 used the detector-frame gradient for both terms, which flipped the
+  sign of the theta term for up-going rows (R-1 had the opposite azimuth pattern to the measured down-going R, hence the
+  reversed mu+/mu- ordering of a1/a0). Fixed in `r_up_fine`: P = q (-b_theta d_theta + b_phi d_phi / sin theta). The
+  azimuth term is unchanged. The sign was derived, not fitted; the ordering was checked afterwards (table C).
+* **Route decision: a'** (the fix reproduces the measured mu+/mu- ordering at the horizon), sigma_R = stat (+) 32% closure
+  (+) |a' - mirror|, with the mirror now the measured down-going R interpolated in cos Z and by harmonics 0-2 in azimuth.
+  R_up is evaluated from the fitted model on the 12-azimuth grid (no linear interpolation of the 6 R bins).
+* **Grid and sources**: up-going = engine rows -0.05 ... -0.95 x 12 az (mirror cone, |cos Z| <= 0.35) x R_up; down-going
+  E < 3.98 GeV = MC (`kamioka_G_down_v1b.npz`), E >= 3.98 GeV = engine (rows 0.05-0.25 native 12 az, rows 0.35-0.95
+  extended from 6 to 12 az by harmonics 0-2). R_up = 1 above 2.5 GeV (end of the R table).
+* **Package**: validated with the patched `Tabulated3DModel` (separate hemispheres at the cos Z = 0 edge). B1 now reads the
+  table up/down ratio and the model ratio at the bin values; they agree (the model no longer mixes hemispheres).
+  Tests: 55 passed, 1 skipped (`DAEMONFLUX_3D_TABLE_V1` accepts v1 and v1b).
+
+Validation of v1b (see `v1b_validation.md`):
+* Table C, -0.05, 0.5 GeV, a1/a0 v1b vs Honda solmax: nue 0.700/0.685, antinumu 0.610/0.606, numu 0.397/0.447, antinue 0.300/0.360
+  (ordering as in Honda and in the measured down-going pattern; v1: reversed). dphi at -0.05 agrees to 1-7 deg except nue
+  1.0 GeV (21 vs 6 deg). At -0.25 a1/a0 and N/S are 5-25% above Honda (nue 0.3 GeV a1/a0 0.89/0.77, N/S 6.0/3.6).
+* Closure test of the projection model with the cutoff gradient (down-going, engine F_off gradient vs the pattern of MC G /
+  engine F, azimuth part only): correlation 0.6-0.9 and slope ~1 at |cos Z| < 0.2 and E < 1 GeV (numu, antinumu good,
+  nue/antinue weaker), but no correlation (negative) at |cos Z| >= 0.25. So the cutoff-gradient part of R_up is supported
+  only near the horizon; at |cos Z| 0.4-0.8 and 0.3-1 GeV R_up rms is 10-16% against 1.5-4% for the plain mirror, and
+  sigma_R (median 6-10%) is dominated by that difference. NOT validated there.
+* Az-mean bias of a': the az-mean of R_up at -0.05 is +4..+10% for mu+ daughters (nue, antinumu) and -2..-10% for mu-
+  daughters, versus ~0 for the mirror. Consequently the table up/down ratio at |cos Z| 0.05, 0.5 GeV is nue 1.14, antinumu
+  1.08 (Honda 1.00), antinue 0.99, numu 0.99 (Honda 1.02, 1.00). Not corrected; the choice (normalise R_up to the az-mean of
+  the mirror, or use the mirror beyond |cos Z| ~ 0.3) is left to the PM.
+* Continuity at 2.5 / 3.98 GeV: F(2.4)/F(2.6) = 0.97-1.00 (up and down), F(3.8)/F(4.2) = 0.975-0.997, i.e. the E falloff plus
+  steps below 3%. MC/engine in the overlap bins (az mean): 2.5-4 GeV within 0.94-1.03; 4-6.3 GeV 0.89-1.05 (horizon band
+  0.89-0.96 low); 6.3-10 GeV 0.86-1.13 (noisy).
+* Error map: max relative error 0.73; 1276 of 9600 bins above 10%. Medians: up |cos Z|<0.2: 10% / 9% / 14% (0.1-0.3 / 0.3-1 / 1-3
+  GeV); up -0.2..-0.5: 12% / 10% / 6%; up < -0.5: 8% / 5.5% / 5%; down 0-0.2: 4% / 4% / 6%; down 0.2-0.5: 2% / 2.5% / 3%;
+  down > 0.5: 1% / 1.4% / 2.2%; all E 3-10 GeV engine bins 5%.
+* Not validated: R_up transfer beyond Kamioka and beyond |cos Z| ~ 0.2; up-going patterns beyond the horizon rows; R for
+  E >= 2.5 GeV (neglected); the engine-based E >= 3.98 GeV down-going bins.
+* CPU: well under 0.2 core-h (no engine or MC runs).
+
+### 12.y v1c (2026-11-06, PM decision on R_up): hybrid azimuth pattern
+
+`$W/runs/integ/out/kamioka_3D_v1c.npz` supersedes v1b; everything else is as in v1b (grid, sources, sigma_R, errors).
+Build: `diag_v1.py build_v1c`, `validate_v1c` -> `out/v1c_build_tables.md`, `out/v1c_validation.md`.
+
+* **Central R_up**: R_up = R_m + w(E, |cos Z|) [(R_a' - <R_a'>_az) - (R_m - <R_m>_az)], R_m = measured down-going R mirrored
+  (cos Z linear, azimuth harmonics 0-2, log E), <.>_az = mean over the 12 azimuths at fixed (row, E). The azimuth mean always
+  comes from the measured R (the a' mean term is not validated). The azimuth-odd a' pattern enters with w = w_cz w_E:
+  w_cz = 1 at |cos Z| <= 0.15, linear to 0 at 0.25; w_E = 1 at E <= 0.8 GeV, linear to 0 at 1.25 GeV.
+* **Thresholds from the closure test** (down-going, engine F_off gradient with cutoff vs azimuth pattern of MC G / engine F;
+  median over species of the correlation, slope in brackets):
+
+  | E [GeV] | cos Z 0.05 | 0.15 | 0.25 | 0.55 |
+  |---|---|---|---|---|
+  | 0.20 | 0.68 (1.13) | 0.65 (0.97) | 0.46 (1.29) | -0.08 |
+  | 0.32 | 0.70 (0.73) | 0.79 (0.86) | 0.59 (0.98) | -0.32 |
+  | 0.50 | 0.77 (0.61) | 0.73 (0.84) | 0.20 (0.60) | -0.29 |
+  | 0.79 | 0.75 (1.11) | 0.66 (0.85) | -0.21 | -0.20 |
+  | 1.26 | 0.58 (0.72) | 0.23 (0.31) | -0.51 | -0.10 |
+  | 2.00 | -0.02 | -0.19 | -0.53 | -0.16 |
+
+  Correlation >= 0.65 up to 0.79 GeV at |cos Z| <= 0.15; it drops to 0.2 at 0.25 (0.5 GeV) and below 0 beyond, and at 1.26 GeV
+  holds only at 0.05. The PM thresholds are consistent with this and were kept; none was taken from Honda.
+* **Error**: sigma_R = stat (+) 32% closure (+) |a' - mirror| unchanged (full envelope everywhere), so the error map is the
+  same as v1b (medians: up |cos Z| < 0.2 10% / 9% / 14% at 0.1-0.3 / 0.3-1 / 1-3 GeV; up -0.2..-0.5 12 / 10 / 6%; up < -0.5
+  8 / 5.5 / 5%; down 0-0.2 4 / 4 / 6%; down > 0.5 1 / 1.4 / 2%; 3-10 GeV engine bins 5%; max 0.73; 1276 of 9600 above 10%).
+* **Checks** (`v1c_validation.md`): a1/a0 at -0.05, 0.5 GeV (v1c / Honda solmax): nue 0.707/0.685, antinumu 0.614/0.606, numu
+  0.398/0.447, antinue 0.308/0.360; at -0.15: nue 0.731/0.683, antinumu 0.671/0.617, numu 0.610/0.528, antinue 0.567/0.482.
+  The Honda ordering nue > antinumu > numu > antinue is reproduced at both rows; at -0.15 the values are 5-18% above Honda
+  (antinue +18%, numu +16%).
+  Table up/down at |cos Z| 0.05, 0.5 GeV: nue 1.096, antinue 1.033, numu 1.002, antinumu 1.042 (Honda 1.003, 1.016, 0.999,
+  1.003); v1b was 1.138 / 0.989 / 0.990 / 1.078. The nue +9% remains (it comes from the measured mean and the engine, not a').
+  B2: F(2.4)/F(2.6) 0.976-1.005, F(3.8)/F(4.2) 0.975-0.996. Tests 55 passed, 1 skipped.
+* **MC / engine z-values** (z = (ratio - 1)/sigma; sigma = G_err_total over the 24 cells in quadrature / 24 plus the engine
+  relative error; correlated MC systematics make z optimistic), 4-6.3 GeV, horizon band cos Z 0-0.2: nue -1.5, antinue -1.7,
+  numu -0.8, antinumu +0.1; other cos Z bands in this E bin |z| <= 1.0. 2.5-4 GeV |z| <= 1.2; 6.3-10 GeV |z| up to 2.3 (noisy).
+  So the 0.89-0.96 horizon deficit is within about 1.7 sigma.
+* Not validated: as in v1b (R_up beyond the horizon rows, R above 2.5 GeV, engine E >= 3.98 GeV bins). CPU well under 0.2 core-h.
+
+### 12.z v1c model systematic sigma_model (2026-11-06, PM addition)
+
+Reason: the MC agent's vertical antinue MC G / engine F is 1.032 +- 0.004 at 1-2.5 GeV and 0.943 +- 0.009 at 2.5-4 GeV (cause in the
+MC's s, unexplained; MILESTONE4_RESULTS 11(c)). Rule (metadata `sigma_model`, array `sigma_model_rel`): in MC-filled down-going bins
+(E < 3.98 GeV) at cos Z >= 0.6 (R - 1 ~ 0.5%, MC and engine should agree), r = <G>_az / <F>_az per species x E bin x cos Z 0.2 band;
+if |r - 1| > 2 sigma_r (sigma_r = MC G_err_total of the 24 cells in quadrature / 24 / <F>, no engine error), sigma_mod = |r - 1| is added
+in quadrature (relative) on all azimuths of the band. Not applied at cos Z < 0.6 (muon bend). Applied to 47 species x E x band bins
+(file `out/v1c_sigma_model_bins.txt`, with r and sigma_r); max sigma_mod 0.149:
+* 0.1-0.16 GeV, both bands, all species: r = 0.85-0.93 (nue 0.851/0.861, antinue 0.875/0.878, numu 0.925/0.925, antinumu 0.912/0.904);
+* 0.16-0.25 GeV, both bands, all species: r = 0.95-0.99;
+* 0.25-0.4 GeV: nue 0.985/0.990, antinue (0.8-1) 1.009, antinumu 1.009/1.015, numu 1.007/1.015;
+* 0.4-1.0 GeV: r = 1.008-1.038 (antinue 1.015-1.033, antinumu 1.009-1.021, numu 1.008-1.038, nue 1.016-1.030 in part of the bins);
+* 1-1.58 GeV: antinue 1.026 (0.6-0.8), 1.018 (0.8-1), antinumu 1.012 (0.6-0.8), nue 0.991 (0.8-1);
+* 1.58-2.51 GeV: antinue 1.040 (0.8-1), antinumu 0.991 / 0.980, nue 1.017 (0.8-1);
+* 2.51-3.98 GeV: antinue 0.940 (0.8-1) only.
+Effect on the error-map medians (before -> after): down cos Z > 0.6: 0.1-0.3 GeV 1.10 -> 6.2%, 0.3-1 GeV 1.26 -> 1.9%, 1-3 GeV 2.05 ->
+2.35%, 3-10 GeV unchanged (5%); down 0.5-1: 1.15 -> 3.7%, 1.38 -> 1.9%, 2.17 -> 2.4%; cos Z < 0.6 and up-going unchanged. Max relative
+error unchanged (0.73); bins above 10%: 1276 -> 1372. The 0.1-0.25 GeV entries show that the MC/engine mismatch of 5-15% below
+0.25 GeV is general (all species), not only antinue.
+
+#### 12.z.1 Low-E MC/engine level, diagnosis and extended sigma_model (2026-11-06, PM 12:10)
+
+Why it matters: the Honda checks normalise at down-going cos Z > 0.5, so a common level offset was invisible; the table has MC
+down-going and engine up-going, so a MC/engine level disagreement at low E is an up/down level inconsistency (B1 up/down at |cos Z|
+0.05: E 0.1-0.16 GeV nue 1.093, antinue 1.066, numu 1.055, antinumu 1.054; 0.16-0.25 GeV 1.107, 1.118, 0.991, 1.101).
+
+**Diagnosis from cached cells only** (script `$W/runs/integ/lowE_diag.py`). r = <G_MC>_az / <F_engine>_az, all azimuths, sigma_r = MC
+G_err_total only (no engine error). (a) GSF engine (`engine_F_fine.npz`, as in the table):
+
+| E [GeV] | species | 0-0.2 | 0.2-0.4 | 0.4-0.6 | 0.6-0.8 | 0.8-1 |
+|---|---|---|---|---|---|---|
+| 0.10-0.16 | nue | 0.933 | 0.886 | 0.868 | 0.851 | 0.861 |
+| | antinue | 0.941 | 0.896 | 0.876 | 0.875 | 0.878 |
+| | numu | 0.926 | 0.932 | 0.925 | 0.925 | 0.925 |
+| | antinumu | 0.941 | 0.932 | 0.911 | 0.912 | 0.904 |
+| 0.16-0.25 | nue | 0.930 | 0.942 | 0.951 | 0.954 | 0.962 |
+| | antinue | 0.907 | 0.930 | 0.966 | 0.972 | 0.991 |
+| | numu | 0.950 | 0.972 | 0.980 | 0.981 | 0.980 |
+| | antinumu | 0.943 | 0.969 | 0.969 | 0.978 | 0.981 |
+| 0.25-0.40 | nue | 0.934 | 0.969 | 0.979 | 0.985 | 0.990 |
+| | antinue | 0.882 | 0.950 | 0.984 | 1.000 | 1.009 |
+| | numu | 0.963 | 0.990 | 1.001 | 1.007 | 1.015 |
+| | antinumu | 0.963 | 0.997 | 1.000 | 1.009 | 1.015 |
+
+(sigma_r is 0.002-0.013.) The mismatch is general, 7-15% at 0.1-0.16 GeV in every species and band, falling to a few % at 0.25-0.4 GeV
+(except near the horizon, where antinue is 0.88). The nue/antinue deficit is deepest at large cos Z (0.85-0.88), numu/antinumu are flat in
+cos Z (0.91-0.93).
+
+(b) GH-native engine (`rigfix/out/m3b_engine_ghnative_mb0.npz`, v142p after the rigidity fix, hybrid base, no muon bend). These cells
+cover only cos Z rows 0.05, 0.15, 0.25, so only the band 0-0.2 and the row 0.25 (cos Z 0.2-0.3) can be compared; nothing at cos Z >= 0.3.
+r with GSF (same file) | with GH-native (cos Z 0-0.2, then the 0.25 row):
+
+| E [GeV] | nue | antinue | numu | antinumu |
+|---|---|---|---|---|
+| 0.10-0.16 (0-0.2) | 0.928 \| 0.954 | 0.937 \| 0.966 | 0.921 \| 0.949 | 0.936 \| 0.965 |
+| 0.10-0.16 (0.25 row) | 0.892 \| 0.916 | 0.901 \| 0.929 | 0.927 \| 0.955 | 0.930 \| 0.958 |
+| 0.16-0.25 (0-0.2) | 0.924 \| 0.947 | 0.902 \| 0.927 | 0.946 \| 0.970 | 0.939 \| 0.963 |
+| 0.25-0.40 (0-0.2) | 0.929 \| 0.944 | 0.878 \| 0.895 | 0.958 \| 0.974 | 0.959 \| 0.975 |
+
+F_GHn/F_GSF = 0.970-0.984, i.e. (b) - (a) = +0.015 to +0.03 in r: the composition/primary change closes only 1/5 to 1/3 of the gap at
+0.1-0.16 GeV, and less above. It does not explain the effect (nor does it reorder species).
+**Composition of the engine GSF run**: it uses GSF's own nucleon-level p and n fluxes only (crflux's GSF file holds proton fraction, proton
+and neutron nucleon fluxes; no group splines): free protons = p - n (A/Z = 1), bound = n (A/Z <~ 2, <A/Z> nucleon-flux weighted). The MC
+primaries are GSFG:GH, i.e. the same GSF all-nucleon flux split into groups with the GH composition (own A/Z mix per group, Fe 2.08), so the
+A/Z mix near the cutoff differs between the two. The GH-native engine changes both the spectrum and the composition, so (b) - (a) is only a
+first, joint test of that hypothesis.
+
+**<R - 1>_az of the measured muon-bend response** (R table, E < 0.4 GeV): median 0.003; max over species and E: 0.012 at cos Z 0.2-1; at cos Z
+0-0.2 up to 0.095 (antinue, 0.25-0.4 GeV) and 0.048 at 0.4-2.5 GeV. So the az-mean comparison is clean for cos Z >= 0.2 and carries up to 5-10%
+bend contribution in the horizon band; |r - 1| there is therefore partly physics, which the (conservative) sigma_mod covers.
+
+**Extended sigma_model** (metadata `sigma_model`, array `sigma_model_rel`, bins in `out/v1c_sigma_model_bins.txt`; sigma_r is the MC error
+only):
+* down-going, MC-filled (E < 3.98 GeV), all cos Z 0.2 bands: sigma_mod = |r - 1| where |r - 1| > 2 sigma_r, in quadrature, all azimuths of
+  the band: 98 of 160 species x E x band bins;
+* up-going (engine-filled): sigma_level(species, E) = |r_vert - 1| with r_vert over cos Z 0.6-1 (48 cells), on all up-going bins at that E
+  where |r_vert - 1| > 2 sigma: 26 of 32 species x E bins (E < 3.98 GeV; r_vert = 0.856 / 0.877 / 0.925 / 0.908 for nue / antinue / numu /
+  antinumu at 0.1-0.16 GeV, 0.96-0.98 at 0.16-0.25, 0.99-1.01 at 0.25-0.4, 1.01-1.03 at 0.4-1 GeV, antinue 1.022 and 1.018 at 1-2.5 GeV, 0.979 at
+  2.5-4 GeV). Not applied to E >= 3.98 GeV (engine-filled both hemispheres, no MC level there).
+
+Error-map medians (no sigma_model -> first sigma_model (cos Z >= 0.6) -> extended), in %; bins above 10%: 1276 -> 1372 -> 1743; max 0.73:
+
+| region | 0.1-0.16 | 0.16-0.25 | 0.25-0.4 | 0.4-1 | 1-3 | 3-10 |
+|---|---|---|---|---|---|---|
+| up \|cos Z\| < 0.2 | 9.8 -> 9.8 -> 14.4 | 10.2 -> 10.2 -> 10.4 | 8.8 -> 8.8 -> 8.8 | 9.8 -> 9.8 -> 10.0 | 13.6 | 5 |
+| up -0.2..-0.6 | 12.3 -> 12.3 -> 15.7 | 12.4 -> 12.4 -> 12.6 | 9.7 | 10.0 -> 10.0 -> 10.1 | 5.8 -> 5.9 | 5 |
+| up < -0.6 | 6.8 -> 6.8 -> 13.7 | 6.9 -> 6.9 -> 7.7 | 5.9 -> 5.9 -> 6.1 | 5.1 -> 5.1 -> 5.7 | 5.0 -> 5.2 | 5 |
+| down 0-0.2 | 3.6 -> 3.6 -> 7.6 | 3.7 -> 3.7 -> 7.6 | 3.5 -> 3.5 -> 7.2 | 4.0 -> 4.0 -> 4.6 | 6.1 -> 6.3 | 5 |
+| down 0.2-0.6 | 1.6 -> 1.6 -> 9.8 | 1.7 -> 1.7 -> 3.6 | 2.3 -> 2.3 -> 2.6 | 2.5 -> 2.5 -> 2.6 | 2.9 -> 3.1 | 5 |
+| down > 0.6 | 1.1 -> 11.0 -> 11.0 | 1.1 -> 2.3 -> 2.3 | 1.2 -> 1.7 -> 1.7 | 1.3 -> 2.3 -> 2.3 | 2.0 -> 2.3 | 5 |
+
+**Hypotheses not yet tested** (the cause is open): (1) composition (A/Z mix, GSF-own vs GH groups; the GH-native cells test it only jointly with
+the spectrum and only at cos Z < 0.3); (2) phi_0 / solar-modulation treatment: both sides nominally use GSF as shipped (phi_0 = 0.55 GV is the epoch label in the MC
+metadata); to check that the production applied no `w_solar` reweighting (phi_1 = phi_0) and that the engine applies no modulation -- a
+modulation difference would act mostly below ~1 GeV, i.e. with this E dependence *(PM wording, 2026-11-06)*; (3) low-E hadronic yields (kappa_s
+absorbs the MC/MCEq yield ratio over cos Z 0.6-1 in the M4 production (0.35-1 was the provisional pilot-2 window of sec. 10), so a cos Z-dependent yield difference at 0.1-0.3 GeV survives in G); (4) the engine
+cone/cutoff treatment at 0.1 GeV (grid edge, min of the E range, the up-going mirror cone) and the MC's own lowest bins. Nothing here was tuned.
+CPU: negligible (cached cells only).
