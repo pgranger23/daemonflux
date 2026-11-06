@@ -1,0 +1,6 @@
+gate 5: s per coarse bin, B vs pilot-2 (E 0.1-2.5, down-going): bins 840, chi2/ndf 1.20, mean (B/pilot2 - 1) +0.0023 (+-0.0013); median |z| 0.72
+     horizon 0-0.4: chi2/ndf 1.03  mean ratio-1 +0.0134
+     mid 0.4-0.8: chi2/ndf 1.47  mean ratio-1 -0.0085
+     vertical: chi2/ndf 1.01  mean ratio-1 +0.0019
+gate 6: mean G per cos Z (fine, down-going bins 0-1 by 0.1) at E 3.2-10 GeV (fine E bins 15-19), all species/az: 0.893 0.970 0.987 1.026 1.028 0.990 1.008 0.978 1.005 1.040   (mean error per bin 0.117)
+gate 7: split halves (groups 0-9 vs 10-19) G coarse, E 0.1-2.5 GeV: bins 840, chi2/ndf of (G1-G2) with sqrt(2)*sqrt(2)*err: 0.67; mean (G1-G2)/G -0.0008

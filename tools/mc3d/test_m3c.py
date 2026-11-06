@@ -257,6 +257,9 @@ def test_mu_cf_counterfactual_is_exact_without_bend(tmp_path,
     assert m[0].sum() > 0
     assert np.allclose(m[0], m[1], rtol=1e-12, atol=0)
     assert m[:, 1:].sum() == 0
+    mf = out["cn"]["mucf_full"]                  # milestone 4: the full-grid version
+    assert np.allclose(mf[0], mf[1], rtol=1e-12, atol=0)
+    assert mf[0].sum() >= m[0].sum() * (1 - 1e-12) > 0
     for key in ("s1", "s0", "n1", "t1", "mub_m"):
         assert np.array_equal(out["cf"][key], out["c0"][key]), key
     assert out["c0"]["mucf"].sum() == pytest.approx(

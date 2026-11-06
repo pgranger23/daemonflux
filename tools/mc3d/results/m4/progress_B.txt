@@ -1,0 +1,46 @@
+2026-11-05 15:18:37 block 1 start: nproc 14, tasks done 0/41336, CPU so far 0.00 core-h, free disk 1153 GB, RSS 2.3 GB
+2026-11-05 15:28:38   running: tasks done 0/41336, CPU(finished tasks) 0.00 core-h, free disk 1150 GB, RSS 10.1 GB
+2026-11-05 15:38:38   running: tasks done 0/41336, CPU(finished tasks) 0.00 core-h, free disk 1147 GB, RSS 6.7 GB
+2026-11-05 15:48:39   running: tasks done 0/41336, CPU(finished tasks) 0.00 core-h, free disk 1143 GB, RSS 17.5 GB
+2026-11-05 15:58:39   running: tasks done 0/41336, CPU(finished tasks) 0.00 core-h, free disk 1142 GB, RSS 9.7 GB
+2026-11-05 16:08:40   running: tasks done 0/41336, CPU(finished tasks) 0.00 core-h, free disk 1140 GB, RSS 7.2 GB
+2026-11-05 16:18:40   running: tasks done 0/41336, CPU(finished tasks) 0.00 core-h, free disk 1138 GB, RSS 6.8 GB
+2026-11-05 16:28:41   running: tasks done 0/41336, CPU(finished tasks) 0.00 core-h, free disk 1136 GB, RSS 6.8 GB
+2026-11-05 16:38:41   running: tasks done 0/41336, CPU(finished tasks) 0.00 core-h, free disk 1133 GB, RSS 7.1 GB
+2026-11-05 16:48:42   running: tasks done 0/41336, CPU(finished tasks) 0.00 core-h, free disk 1131 GB, RSS 8.9 GB
+2026-11-05 16:58:43   running: tasks done 0/41336, CPU(finished tasks) 0.00 core-h, free disk 1127 GB, RSS 8.1 GB
+2026-11-05 17:08:44   running: tasks done 0/41336, CPU(finished tasks) 0.00 core-h, free disk 1122 GB, RSS 6.8 GB
+2026-11-05 17:18:44   running: tasks done 0/41336, CPU(finished tasks) 0.00 core-h, free disk 1117 GB, RSS 6.9 GB
+2026-11-05 17:28:45   running: tasks done 0/41336, CPU(finished tasks) 0.00 core-h, free disk 1113 GB, RSS 6.9 GB
+2026-11-05 17:38:46   running: tasks done 0/41336, CPU(finished tasks) 0.00 core-h, free disk 1108 GB, RSS 8.7 GB
+2026-11-05 17:48:47   running: tasks done 0/41336, CPU(finished tasks) 0.00 core-h, free disk 1103 GB, RSS 7.2 GB
+2026-11-05 17:58:48   running: tasks done 0/41336, CPU(finished tasks) 0.00 core-h, free disk 1098 GB, RSS 6.4 GB
+2026-11-05 18:08:49   running: tasks done 0/41336, CPU(finished tasks) 0.00 core-h, free disk 1095 GB, RSS 20.1 GB
+2026-11-05 18:15:50   stopping the block: RSS 55.0 GB
+2026-11-05 18:16:10 block 1 end (exit -15, RSS 55.0 GB): wall 2.96 h, tasks done 0/41336, CPU 0.00 core-h
+2026-11-05 18:16:10 HALTED for the reason above; not relaunching
+2026-11-05 18:16:54 block 1 start: nproc 14, tasks done 0/41336, CPU so far 41.50 core-h, free disk 1093 GB, RSS 0.0 GB
+2026-11-05 18:26:56   running: tasks done 0/41336, CPU(finished tasks) 44.82 core-h, free disk 1089 GB, RSS 2.1 GB
+2026-11-05 18:36:58   running: tasks done 0/41336, CPU(finished tasks) 48.14 core-h, free disk 1084 GB, RSS 2.1 GB
+2026-11-05 18:46:59   running: tasks done 0/41336, CPU(finished tasks) 51.47 core-h, free disk 1080 GB, RSS 2.2 GB
+2026-11-05 18:51:53 block 1 start: nproc 14, tasks done 0/41336, CPU so far 49.50 core-h, free disk 1078 GB, RSS 0.0 GB
+2026-11-05 19:01:55   running: tasks done 0/41336, CPU(finished tasks) 51.83 core-h, free disk 1074 GB, RSS 1.4 GB
+2026-11-05 19:11:56   running: tasks done 0/41336, CPU(finished tasks) 54.15 core-h, free disk 1078 GB, RSS 1.5 GB
+2026-11-05 19:21:58   running: tasks done 0/41336, CPU(finished tasks) 56.48 core-h, free disk 1092 GB, RSS 1.5 GB
+2026-11-05 19:31:59   running: tasks done 0/41336, CPU(finished tasks) 58.81 core-h, free disk 1091 GB, RSS 1.5 GB
+2026-11-05 19:42:01   running: tasks done 0/41336, CPU(finished tasks) 61.14 core-h, free disk 1089 GB, RSS 1.6 GB
+2026-11-05 19:52:03   running: tasks done 0/41336, CPU(finished tasks) 63.47 core-h, free disk 1085 GB, RSS 1.6 GB
+2026-11-05 20:02:04   running: tasks done 0/41336, CPU(finished tasks) 65.80 core-h, free disk 1080 GB, RSS 1.6 GB
+2026-11-05 20:12:07   running: tasks done 1/41336, CPU(finished tasks) 66.90 core-h, free disk 1078 GB, RSS 2.6 GB
+2026-11-05 20:12:42 block 1 start: nproc 20, tasks done 58/41336, CPU so far 66.90 core-h, free disk 1078 GB, RSS 0.0 GB
+2026-11-05 20:12:46 block 1 start: nproc 20, tasks done 58/41336, CPU so far 66.90 core-h, free disk 1078 GB, RSS 0.8 GB
+2026-11-05 20:14:24 block 1 start: nproc 20, tasks done 58/41336, CPU so far 67.50 core-h, free disk 1078 GB, RSS 0.0 GB
+2026-11-05 20:24:30   running: tasks done 2369/41336, CPU(finished tasks) 70.68 core-h, free disk 1077 GB, RSS 3.1 GB
+2026-11-05 20:34:45   running: tasks done 13032/41336, CPU(finished tasks) 73.89 core-h, free disk 1075 GB, RSS 4.3 GB
+2026-11-05 20:45:00   running: tasks done 30667/41336, CPU(finished tasks) 76.75 core-h, free disk 1069 GB, RSS 4.6 GB
+2026-11-05 20:55:15   running: tasks done 41271/41336, CPU(finished tasks) 79.64 core-h, free disk 1064 GB, RSS 4.1 GB
+2026-11-05 21:05:19   running: tasks done 41336/41336, CPU(finished tasks) 79.79 core-h, free disk 1064 GB, RSS 0.2 GB
+2026-11-05 21:15:21   running: tasks done 41336/41336, CPU(finished tasks) 79.96 core-h, free disk 1064 GB, RSS 0.2 GB
+2026-11-05 21:25:23   running: tasks done 41336/41336, CPU(finished tasks) 80.12 core-h, free disk 1064 GB, RSS 0.2 GB
+2026-11-05 21:34:25   running: tasks done 41336/41336, CPU(finished tasks) 80.27 core-h, free disk 1064 GB, RSS 0.2 GB
+2026-11-05 21:44:26   running: tasks done 41336/41336, CPU(finished tasks) 80.44 core-h, free disk 1064 GB, RSS 0.2 GB

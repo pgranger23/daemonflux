@@ -96,7 +96,7 @@ SUFFIX = ("0", "0sq", "1", "1sq")
 SUMMED = tuple(t + s for t in TAGS for s in SUFFIX) + ("hinj", "cone_h",
                                                        "cone_h2", "cone_m",
                                                        "mub_m", "mub_h",
-                                                       "mucf")
+                                                       "mucf", "mucf_full")
 #: muon-bend modes (``Options.mu_bend``): the full bend, or a diagnostic
 #: decomposition keeping only its vertical or only its horizontal component,
 #: or ``"none"``: the muon-field pipeline (per-copy re-transport and Michel
@@ -672,6 +672,10 @@ class Tally:
         # zero-field counterfactual [1] (``Options.mu_cf``): (2, class, sp,
         # E band, cos Z bin, az bin), measure 1, the s weight
         self.mucf = np.zeros((2, 3) + nb)
+        #: the same muon-born entries on the FULL grid (milestone 4, the
+        #: muon-bend response table): (view, species, E, cos Z, az), measure-1
+        #: weight, all classes, every cap (smallest-cap index folded in)
+        self.mucf_full = np.zeros((2, len(SPECIES), grid.ne, grid.ncz, grid.naz))
 
     def accumulate(self, tag, flat, w0, w1, prim):
         """Entries (smallest-cap flat index, weights in both measures, owning
@@ -758,6 +762,9 @@ class Tally:
         ib = np.full(len(flat), -1)
         for b, (i0, i1) in enumerate(MUB_EBANDS):
             ib[(ie >= i0) & (ie < i1)] = b
+        okf = (ie >= 0) & (ie < g.ne)
+        np.add.at(self.mucf_full, (np.full(okf.sum(), view), k[okf], ie[okf],
+                                   iz[okf], ia[okf]), w[okf])
         sel = (ib >= 0) & (iz >= MUB_CZ[0]) & (iz < MUB_CZ[1])
         np.add.at(self.mucf, (np.full(sel.sum(), view), cls[sel], k[sel],
                               ib[sel], iz[sel] - MUB_CZ[0], ia[sel]), w[sel])
@@ -770,7 +777,8 @@ class Tally:
                  cap_area=np.array(g.caps.areas),
                  site=np.array([g.caps.lat, g.caps.lon]),
                  hinj=self.hinj, hinj_cz=np.array(self.HINJ_CZ),
-                 mub_m=self.mub_m, mub_h=self.mub_h, mucf=self.mucf)
+                 mub_m=self.mub_m, mub_h=self.mub_h, mucf=self.mucf,
+                 mucf_full=self.mucf_full)
         return d
 
 
@@ -1337,6 +1345,8 @@ def run(nshower, nproc, groups, theta_inj, caps, cache, opts, n_pool=2000,
     todo = [t + (i, cfile(outdir, tag, i)) for i, t in enumerate(tasks)
             if not (os.path.exists(cfile(outdir, tag, i))
                     or os.path.exists(tfile(outdir, tag, i)))]
+    if os.environ.get("SKY3D_TAIL_FIRST"):      # long-tail strata (high energy per nucleon) first
+        todo.sort(key=lambda t: -t[1])
     counts = {}
     with ctx.Pool(nproc, initializer=_init,
                   initargs=(cache, n_pool, e_nu_min, lat, lon, caps, model,
@@ -1449,6 +1459,8 @@ def main(argv=None):
     ap.add_argument("--mu-cf", action="store_true",
                     help="diagnostic: zero-field counterfactual of every "
                          "re-transported muon, fate classes (Tally.mucf)")
+    ap.add_argument("--no-keep-cfiles", action="store_true",
+                    help="delete each c-file after its t-file is written")
     ap.add_argument("--merge-only", action="store_true")
     a = ap.parse_args(argv)
     if a.merge_only:
@@ -1460,7 +1472,7 @@ def main(argv=None):
                    margin_extra_deg=a.margin_extra, trace_batch=a.trace_batch,
                    reanchor=a.reanchor, mu_bend=a.mu_bend, crn=a.crn,
                    primary_energy=a.primary_energy, mu_cf=a.mu_cf,
-                   primary_model=a.model, resim_rmin=a.resim_rmin,
+                   primary_model=a.model, resim_rmin=a.resim_rmin, keep_cfiles=not a.no_keep_cfiles,
                    resim_groups=a.resim_groups)
     alloc = None
     if a.alloc:
