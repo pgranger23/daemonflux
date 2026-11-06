@@ -704,3 +704,11 @@ modulation difference would act mostly below ~1 GeV, i.e. with this E dependence
 absorbs the MC/MCEq yield ratio over cos Z 0.6-1 in the M4 production (0.35-1 was the provisional pilot-2 window of sec. 10), so a cos Z-dependent yield difference at 0.1-0.3 GeV survives in G); (4) the engine
 cone/cutoff treatment at 0.1 GeV (grid edge, min of the E range, the up-going mirror cone) and the MC's own lowest bins. Nothing here was tuned.
 CPU: negligible (cached cells only).
+
+### 12.h Table checksums (PM, 2026-11-06)
+
+The v1c table and its inputs as committed in 1716a8d (sha256):
+`kamioka_3D_v1c.npz` ffa41e0c4edb26f9b1a00bf0e1a250a68a227c86f03310dbabc085eab280d511;
+`kamioka_G_down_v1b.npz` 43ec21fb88031491699a57e9ed3863cb67a27dcfb17208c063d67064aea238aa;
+`kamioka_Rmu_v1.npz` 27ffb4b20386331e297709f1e1e4b414b64a39088923ceca66e66010ef40f9a1.
+**Erratum:** the commit message of 1716a8d quotes the prefixes 74b4d8a9 / 47e3dc47; they are wrong (typed before the hashes were computed). The values above are the correct ones.
