@@ -371,6 +371,12 @@ class Tabulated3DModel:
     Outside the outermost centres (but inside the edges) the outermost value is used.
     Requests outside the table's cos Z coverage raise ``ValueError``.
 
+    If the table has a cos Z edge at 0 with bins on both sides, the two hemispheres are
+    interpolated **separately**: the up- and down-going patterns are physically distinct
+    (different production points and cutoffs), so they are never blended across the
+    horizon; between the horizon and the first bin centre of a hemisphere that bin's
+    value is used. A request at exactly cos Z = 0 uses the down-going hemisphere.
+
     Quantities
     ----------
     * a single species (``numu`` ... , also with the ``total_`` prefix) is multiplied
@@ -445,6 +451,11 @@ class Tabulated3DModel:
         self._lne = np.log(np.sqrt(self.e_edges[:-1] * self.e_edges[1:]))
         self._cz = 0.5 * (self.cosz_edges[:-1] + self.cosz_edges[1:])
         self._az = 0.5 * (self.az_edges[:-1] + self.az_edges[1:])
+        #: interpolate the hemispheres separately (edge at cos Z = 0, bins on both sides)
+        self._split = bool(
+            self.cosz_edges[0] < 0.0 < self.cosz_edges[-1]
+            and np.any(np.isclose(self.cosz_edges, 0.0, rtol=0.0, atol=1e-12))
+        )
 
     def __repr__(self) -> str:
         return (
@@ -488,13 +499,15 @@ class Tabulated3DModel:
             )
         k = self.species.index(species)
         a = arr[k]  # (nE, nC, nA)
-        # cos Z (linear, flat outside the outermost centres)
-        j = np.arange(a.shape[1])
-        w1 = np.interp(cz, self._cz, j)  # fractional index
+        # cos Z (linear, flat outside the outermost centres; per hemisphere if split)
+        cidx = np.arange(a.shape[1])
+        if self._split:
+            cidx = cidx[self._cz > 0.0] if cz >= 0.0 else cidx[self._cz < 0.0]
+        w1 = np.interp(cz, self._cz[cidx], np.arange(len(cidx)))  # fractional index
         j0 = int(np.floor(w1))
-        j1 = min(j0 + 1, a.shape[1] - 1)
+        j1 = min(j0 + 1, len(cidx) - 1)
         fr = w1 - j0
-        a2 = (1.0 - fr) * a[:, j0, :] + fr * a[:, j1, :]  # (nE, nA)
+        a2 = (1.0 - fr) * a[:, cidx[j0], :] + fr * a[:, cidx[j1], :]  # (nE, nA)
         # azimuth (linear, periodic)
         if azimuth_deg is None:
             a3 = a2.mean(axis=1)[None, :]  # (1, nE)

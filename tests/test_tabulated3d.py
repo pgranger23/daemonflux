@@ -139,6 +139,29 @@ def test_value_at_a_bin_centre_is_the_table_value_and_flat_beyond():
     )
 
 
+def test_hemispheres_are_interpolated_separately():
+    """Up- and down-going patterns are never blended across the horizon: between the
+    horizon and the first centre of a hemisphere, that hemisphere's bin value is used.
+    """
+    t = toy_table()
+    f = np.where(_centres(CZ_EDGES)[None, None, :, None] > 0, 1.0, 2.0) * np.ones_like(
+        t["factor"]
+    )
+    m = Tabulated3DModel(dict(t, factor=f))
+    for z, want in ((89.0, 1.0), (85.0, 1.0), (90.0, 1.0), (91.0, 2.0), (95.0, 2.0)):
+        npt.assert_allclose(m.factor("numu", 5.0, z, 45.0), want, rtol=0, atol=1e-12)
+    # within a hemisphere the interpolation is unchanged (toy linear in cos Z)
+    m2 = Tabulated3DModel(toy_table())
+    for z in (60.0, 100.0, 120.0):
+        cz = np.cos(np.deg2rad(z))
+        npt.assert_allclose(
+            m2.factor("nue", 7.3, z, 45.0), toy_factor("nue", 7.3, cz), rtol=1e-12
+        )
+    # a down-going-only table (no bins below the horizon) is not split
+    dn = dict(t, cosz_edges=np.linspace(0.0, 1.0, 11))
+    assert not Tabulated3DModel(dn)._split
+
+
 def test_above_emax_blends_to_one_and_below_emin_warns_or_raises():
     m = Tabulated3DModel(toy_table(), blend_decades=1.0)
     f_top = m.factor("nue", 100.0, 60.0, 30.0)
@@ -326,12 +349,9 @@ def test_provisional_kamioka_table_if_available(flux_factory):
     full sphere and gives a finite flux for down- and up-going directions."""
     import os
 
-    path = os.environ.get(
-        "DAEMONFLUX_3D_TABLE",
-        "/home/pigrange/mc3d_work/runs/integ/kamioka_3D_provisional.npz",
-    )
-    if not os.path.exists(path):
-        pytest.skip("provisional table not present")
+    path = os.environ.get("DAEMONFLUX_3D_TABLE", "")
+    if not path or not os.path.exists(path):
+        pytest.skip("set DAEMONFLUX_3D_TABLE to the provisional table to run this")
     m = Tabulated3DModel(path)
     assert m.status == "PROVISIONAL" and "PROVISIONAL" in repr(m)
     assert m.cosz_edges[0] == -1.0 and m.cosz_edges[-1] == 1.0
@@ -388,3 +408,34 @@ def test_uncovered_quantities_pass_through_with_factor_one(flux_factory):
     sc = m.scale("flavorratio", E_IN, 10.0, 100.0, comp)
     f = m.factor("numu", E_IN, 10.0, 100.0), m.factor("antinumu", E_IN, 10.0, 100.0)
     npt.assert_allclose(sc, (2 * f[0] + f[1]) / 3.0)  # nue/antinue factors are 1
+
+
+def test_kamioka_v1_table_if_available(flux_factory):
+    """The final Kamioka table v1 (if present): loads, carries its provenance, evaluates
+    down- and up-going, no NaN, errors positive."""
+    import os
+
+    path = os.environ.get("DAEMONFLUX_3D_TABLE_V1", "")
+    if not path or not os.path.exists(path):
+        pytest.skip("set DAEMONFLUX_3D_TABLE_V1 to kamioka_3D_v1.npz to run this")
+    d = np.load(path, allow_pickle=False)
+    for k in (
+        "input_sha256_G_down",
+        "input_sha256_Rmu",
+        "db_label",
+        "route_R_up",
+        "field",
+    ):
+        assert k in d.files
+    m = Tabulated3DModel(path)
+    assert m.label == "kamioka_3D_v1" and m.status.startswith("v1")
+    assert np.all(m._df > 0) and np.all(np.isfinite(m._f))
+    geo = flux_factory()
+    geo.set_geomagnetic_model(m)
+    for z in (10.0, 170.0):
+        f = geo.flux(np.array([1.5, 5.0]), z, "numuflux", azimuth_deg=100.0)
+        assert np.all(np.isfinite(f)) and np.all(f > 0)
+        assert np.all(
+            geo.geomagnetic_factor_error(np.array([1.5]), z, "numu", azimuth_deg=10.0)
+            > 0
+        )

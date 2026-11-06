@@ -148,7 +148,9 @@ rel = flux.geomagnetic_factor_error(egrid, 80.0, "numu", azimuth_deg=90.0)
   uncertainty is **not** folded in but exposed by `Flux.geomagnetic_factor_error`
   (relative) and `Tabulated3DModel.factor_error` (absolute, per species).
 * Interpolation: linear in `ln E` and in cos Z between bin centres, linear and periodic in
-  azimuth. Above the table's highest energy edge the factor is blended to 1 over one decade
+  azimuth. The up- and down-going hemispheres are interpolated separately (never blended
+  across the horizon); between the horizon and a hemisphere's first bin centre that bin's
+  value is used. Above the table's highest energy edge the factor is blended to 1 over one decade
   (`blend_decades`); below the lowest edge a warning is issued (or `ValueError`,
   `below_emin="raise"`).
 * Table format and the provisional Kamioka table: see `tools/mceq3d/INTEGRATION.md`.
