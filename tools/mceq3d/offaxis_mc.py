@@ -123,7 +123,9 @@ def _db_keys():
 
 
 def production_profile(e_lo=0.1, e_hi=100.0, n_x=80, theta_deg=0.0,
-                       rc_cut_gv=None, species=None):
+                       rc_cut_gv=None, species=None, interaction_model="SIBYLL23D",
+                       primary_model=None, primary_floor=None, atmosphere=None,
+                       phi0_hook=None):
     """p(X, E) = dPhi_numu/dX from a depth-resolved MCEq cascade.
 
     Returns (x_grid [g/cm2], e_grid [GeV], p[n_x, nE], density_model).
@@ -132,6 +134,16 @@ def production_profile(e_lo=0.1, e_hi=100.0, n_x=80, theta_deg=0.0,
     decay competition is checked by `verify_offaxis.py` via ``theta_deg``).
     ``rc_cut_gv`` optionally applies a rigidity cutoff to the primaries (A/Z=1
     upper bound) to check the site-independence of the E_off ratio.
+
+    Population (2026-11-08; defaults = the historical profile, :data:`TAG`):
+    ``interaction_model``, ``primary_model`` (an ``(crflux class, tag)`` pair;
+    ``None`` = H3a), ``primary_floor`` (MCEq ``minimal_primary_energy`` [GeV total
+    per nucleon] set only while the run is built; ``None`` = the current config,
+    normally 3.0), ``atmosphere`` (MCEq density-model tuple; ``None`` = MCEq's
+    CORSIKA US-Std) and ``e_lo`` (the grid floor ``e_min``: the default 0.1
+    drops every neutrino of a muon that decays below 0.1 GeV, which is most of
+    the muon-decay production at 0.1-0.16 GeV).  ``phi0_hook(mc)`` may modify
+    ``mc._phi0`` in place before the solve (population cuts, solar modulation).
     """
     import importlib.util  # noqa: F401  (MCEq config touches importlib.util)
     import mceq_config as cfg
@@ -140,11 +152,23 @@ def production_profile(e_lo=0.1, e_hi=100.0, n_x=80, theta_deg=0.0,
     from mceq3d_db import make_run
     import crflux.models as crf
 
-    mc = make_run(
-        interaction_model="SIBYLL23D",
-        primary_model=(crf.HillasGaisser2012, "H3a"),
-        theta_deg=theta_deg,
-    )
+    pm = (crf.HillasGaisser2012, "H3a") if primary_model is None else primary_model
+    old_floor = getattr(cfg, "minimal_primary_energy", 3.0)
+    if primary_floor is not None:
+        cfg.minimal_primary_energy = float(primary_floor)
+    try:
+        mc = make_run(
+            interaction_model=interaction_model,
+            primary_model=pm,
+            theta_deg=theta_deg,
+        )
+    finally:
+        cfg.minimal_primary_energy = old_floor
+    if atmosphere is not None:
+        mc.set_density_model(atmosphere)
+        mc.set_theta_deg(theta_deg)
+    if phi0_hook is not None:
+        phi0_hook(mc)
     if rc_cut_gv is not None:
         from mceq3d_flux import _transmission
 

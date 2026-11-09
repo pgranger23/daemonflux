@@ -165,6 +165,8 @@ SPECIES = ("total_numu", "total_antinumu", "total_nue", "total_antinue")
 EOFF_TABLE = "offaxis_excess_channel_v2.npz"
 #: the original flavour-blind single-pion-cone table (A/B only)
 EOFF_TABLE_FLAT = "offaxis_excess.npz"
+#: E_off v3 table (``eoff_v3.build_table``; used only with ``eoff_model="v3"``)
+EOFF_TABLE_V3 = "offaxis_excess_channel_v3.npz"
 SP_LABEL = {
     "total_numu": "numu",
     "total_antinumu": "antinumu",
@@ -273,13 +275,84 @@ def _nucleon_transmission(e_kin, rc_gv, sigma_lnr=None, az_over_z=1.0,
     return (0.5 * (1.0 + erf(x / (np.sqrt(2) * s)))).sum(0) * wt
 
 
-def engine_tag(model, primary, e_min, atmosphere, db_tag=""):
+#: MCEq's hard-coded primary floor [GeV, TOTAL energy per nucleon]:
+#: ``config.minimal_primary_energy`` (MCEq/config.py:166; every release 1.0.3-1.4.x).
+#: ``MCEqRun.set_primary_model`` sets ``_phi0 = 0`` below the grid bin nearest to it
+#: (core.py:561-575), so the first populated nucleon bin is T = 2.239 GeV/n.
+#: daemonflux's splines were made with it, so it is the REFERENCE population.
+DEFAULT_PRIMARY_FLOOR = 3.0
+#: The physical population of the 3D numerator: floor 1.9 GeV (first populated bin
+#: T = 0.891 GeV/n) and the MCEq grid opened to E_kin >= 0.03 GeV (no neutrinos
+#: lost from muons decaying below 0.1 GeV).  See :meth:`MCEq3DFlux.solve_factor`.
+PHYS_POPULATION = {"primary_floor": 1.9, "e_min": 0.03}
+#: The reference population of the denominator B_ref = the default ``base()``.
+REF_POPULATION = {"primary_floor": DEFAULT_PRIMARY_FLOOR, "e_min": 0.1}
+
+
+def _resolve_primary_floor(primary_floor=None):
+    """``primary_floor`` as a float; ``None`` = MCEq's CURRENT
+    ``config.minimal_primary_energy`` (3.0 unless a caller changed it).
+
+    ``mceq_config`` is a deprecated alias that replaces itself in ``sys.modules``
+    with ``MCEq.config`` -- the module ``MCEq.core`` reads (``from MCEq import
+    config``) -- so there is exactly one setting, read at ``set_primary_model``
+    time.  Resolving ``None`` to the live value means an externally changed floor
+    can no longer hide from the cache key (it used to: ``engine_tag`` had no floor).
+    """
+    if primary_floor is not None:
+        return float(primary_floor)
+    import importlib.util  # noqa: F401  (MCEq.config needs it imported first)
+    from MCEq import config as _cfg
+
+    return float(getattr(_cfg, "minimal_primary_energy", DEFAULT_PRIMARY_FLOOR))
+
+
+class _primary_floor_set:
+    """Context manager: ``MCEq.config.minimal_primary_energy = floor`` while an
+    ``MCEqRun`` is constructed, restored afterwards (so it never leaks into a later,
+    unrelated ``MCEqRun`` such as the production-profile run)."""
+
+    def __init__(self, floor):
+        self.floor = float(floor)
+
+    def __enter__(self):
+        import importlib.util  # noqa: F401
+        from MCEq import config as _cfg
+
+        self._cfg = _cfg
+        self._old = getattr(_cfg, "minimal_primary_energy", DEFAULT_PRIMARY_FLOOR)
+        _cfg.minimal_primary_energy = self.floor
+        return self
+
+    def __exit__(self, *exc):
+        self._cfg.minimal_primary_energy = self._old
+        return False
+
+
+def _floor_is_default(primary_floor):
+    return primary_floor is None or abs(float(primary_floor) - DEFAULT_PRIMARY_FLOOR) < 1e-12
+
+
+def engine_tag(model, primary, e_min, atmosphere, db_tag="", primary_floor=None):
     """Identity of an engine for the disk caches: model / primary / e_min /
-    atmosphere / MCEq database (``db_tag`` = :attr:`mceq3d_db.DBSpec.tag`)."""
-    return (
+    atmosphere / MCEq database (``db_tag`` = :attr:`mceq3d_db.DBSpec.tag`) /
+    primary floor.
+
+    ``primary_floor`` [GeV, total energy per nucleon] = MCEq's
+    ``minimal_primary_energy``.  It is appended as ``_pfloor<x>`` ONLY when it
+    differs from :data:`DEFAULT_PRIMARY_FLOOR` (3.0), so every pre-existing key is
+    byte-identical, and it is appended at the END, so the tag stays a prefix
+    extension of the floor-free tag (``offaxis_factor`` compares
+    ``self._tag.startswith(table_tag)``).  Before 2026-11-08 the floor was not in
+    the key at all, so a changed floor silently reused the cached ``G_s``.
+    """
+    tag = (
         f"{model}_{primary[0]}-{primary[1]}_emin{e_min:g}"
         f"_atm{'std' if atmosphere is None else str(atmosphere)}_{RIGIDITY_TAG}{db_tag}"
     )
+    if not _floor_is_default(primary_floor):
+        tag += f"_pfloor{float(primary_floor):g}"
+    return tag
 
 
 def gs_cache_name(tag, cz_ref, rc_grid, sigma_lnr):
@@ -681,6 +754,10 @@ class MCEq3DFlux:
         hybrid_e0=1.7,
         gs_interaction_model=None,
         gs_primary=None,
+        primary_floor=None,
+        gs_primary_floor=None,
+        production=None,
+        eoff_model=None,
     ):
         """``atmosphere`` is an MCEq ``density_model`` tuple. Default ``None`` keeps
         MCEq's realistic **CORSIKA US-Standard** layered profile (NOT the isothermal
@@ -710,11 +787,60 @@ class MCEq3DFlux:
         ``interaction_model``/``primary``.  This isolates "how much of a residual
         is the cutoff response" from "how much is the base normalisation" -- the
         two are otherwise varied together.  The override has its own cache tag.
+
+        Primary population (added 2026-11-08).  ``primary_floor`` [GeV, TOTAL
+        energy per nucleon] is MCEq's ``minimal_primary_energy``: ``_phi0 = 0``
+        below the grid bin nearest to it.  ``None`` (default) = MCEq's current
+        setting, normally :data:`DEFAULT_PRIMARY_FLOOR` = 3.0 (first populated bin
+        T = 2.239 GeV/n) -- the historical behaviour, bit for bit.  It is set on
+        ``MCEq.config`` only while this engine's ``MCEqRun`` is built (restored
+        afterwards) and enters the cache tag when it differs from 3.0
+        (:func:`engine_tag`).  Together with ``e_min`` it defines the primary /
+        grid population of every MCEq-derived quantity of the engine: the base,
+        ``G_s`` and, with ``production="engine"``, the joint production profile.
+        Two populations are named in :data:`REF_POPULATION` (3.0, 0.1: what
+        daemonflux and the default ``base()`` contain) and :data:`PHYS_POPULATION`
+        (1.9, 0.03: the physical one).  The 3D factor that multiplies daemonflux is
+        ``Phi_3D^PHYS / B_ref`` -- see :meth:`solve_factor`.
+
+        ``gs_primary_floor`` (default ``None`` = the base floor) gives the optional
+        ``G_s`` override engine its own floor; a value different from the base
+        floor builds that engine even without ``gs_interaction_model`` /
+        ``gs_primary``.
+
+        ``production``: the depth-resolved production profile behind the joint
+        cone (:meth:`joint_prod`).  ``None`` (default) = the historical profile
+        (``offaxis_mc.TAG``: SIBYLL-2.3d / H3a, e_min 0.1, floor 3.0, same cache
+        file as before).  ``"engine"`` = the profile of THIS engine's own
+        population (interaction model, primary, atmosphere, ``e_min``,
+        ``primary_floor``), cached under its own name.
+
+        ``eoff_model``: ``None`` (default) / ``"v2"`` = the delivered production cone
+        (Gaussian widths, one kernel for all primaries; :data:`EOFF_TABLE`).  ``"v3"``
+        = the first-principles, primary-stratified cone of :mod:`eoff_v3`: sampled
+        single-interaction kernels from the generator pools on a full-sphere grid,
+        band-resolved depth profiles in THIS engine's population and the exact
+        band-resolved cutoff response; the joint factor is ``sum_b J_b / sum_b D_b``
+        and the up-going product ``sum_b E_off_b Phi_b G_b / sum_b Phi_b``.  It needs
+        the table :data:`EOFF_TABLE_V3` built for the same population
+        (``eoff_v3.build_table``); see ``$W/runs/fix1/REPORT.md``.
         """
         import crflux.models as crf
         from mceq3d_db import make_run
         import mceq_config as config
 
+        self._spec = dict(interaction_model=interaction_model, primary=tuple(primary),
+                          atmosphere=atmosphere, base_model=base_model,
+                          daemonflux_location=daemonflux_location,
+                          hybrid_e0=hybrid_e0)
+        self.primary_floor = _resolve_primary_floor(primary_floor)
+        self.e_min = float(e_min)
+        if production not in (None, "engine"):
+            raise ValueError("production must be None (historical profile) or 'engine'")
+        self._prod_spec = None if production is None else "engine"
+        if eoff_model not in (None, "v2", "v3"):
+            raise ValueError("eoff_model must be None/'v2' (delivered) or 'v3'")
+        self._eoff_model = None if eoff_model in (None, "v2") else "v3"
         self.base_model = base_model
         # hybrid-blend centre [GeV]. Physics window: bounded above by the
         # daemonflux muon-calibration floor mapped to neutrinos
@@ -732,7 +858,8 @@ class MCEq3DFlux:
         # a SUFFIX: offaxis_factor() compares ``self._tag.startswith(table_tag)``.
         self._db = _db.resolve()
         self._tag = engine_tag(
-            interaction_model, primary, e_min, atmosphere, self._db.tag
+            interaction_model, primary, e_min, atmosphere, self._db.tag,
+            primary_floor=self.primary_floor,
         )
         self._df = None
         if base_model in ("daemonflux", "hybrid"):
@@ -741,9 +868,11 @@ class MCEq3DFlux:
             self._df = Flux(location=daemonflux_location)
         config.e_min = e_min
         pm = (primary_class(primary[0]), primary[1])
-        self.mceq = make_run(
-            interaction_model=interaction_model, primary_model=pm, theta_deg=0.0
-        )
+        self._pm = pm
+        with _primary_floor_set(self.primary_floor):
+            self.mceq = make_run(
+                interaction_model=interaction_model, primary_model=pm, theta_deg=0.0
+            )
         if atmosphere is not None:
             self.mceq.set_density_model(atmosphere)
         self.e = self.mceq.e_grid
@@ -760,11 +889,15 @@ class MCEq3DFlux:
         self._gs_spec = None
         self._gs_cache = None
         self._gs_tag = self._tag
-        if gs_interaction_model is not None or gs_primary is not None:
+        gfl = (self.primary_floor if gs_primary_floor is None
+               else float(gs_primary_floor))
+        if (gs_interaction_model is not None or gs_primary is not None
+                or abs(gfl - self.primary_floor) > 1e-12):
             gim = gs_interaction_model or interaction_model
             gpr = tuple(gs_primary) if gs_primary is not None else tuple(primary)
-            self._gs_spec = (gim, gpr, atmosphere, float(e_min))
-            self._gs_tag = engine_tag(gim, gpr, e_min, atmosphere, self._db.tag)
+            self._gs_spec = (gim, gpr, atmosphere, float(e_min), gfl)
+            self._gs_tag = engine_tag(gim, gpr, e_min, atmosphere, self._db.tag,
+                                      primary_floor=gfl)
 
     def _gs_engine(self):
         """``(mceq, phi0_std, p_sl, n_sl, f_free, az_bound)`` behind ``G_s``.
@@ -788,12 +921,15 @@ class MCEq3DFlux:
             from mceq3d_db import make_run
             import mceq_config as config
 
-            gim, gpr, atmosphere, e_min = self._gs_spec
+            gim, gpr, atmosphere, e_min = self._gs_spec[:4]
+            gfl = (self._gs_spec[4] if len(self._gs_spec) > 4
+                   else getattr(self, "primary_floor", DEFAULT_PRIMARY_FLOOR))
             config.e_min = e_min
             pm = (primary_class(gpr[0]), gpr[1])
-            run = make_run(
-                interaction_model=gim, primary_model=pm, theta_deg=0.0
-            )
+            with _primary_floor_set(gfl):
+                run = make_run(
+                    interaction_model=gim, primary_model=pm, theta_deg=0.0
+                )
             if atmosphere is not None:
                 run.set_density_model(atmosphere)
             if run.e_grid.shape != self.e.shape or not np.allclose(
@@ -993,38 +1129,86 @@ class MCEq3DFlux:
         return G, rc_grid
 
     # -- solar modulation: force-field on the primary -> neutrino-energy factor --
+    def _floor_index(self):
+        """Index (within a nucleon slice) of MCEq's first populated primary bin:
+        ``argmin |E_tot - minimal_primary_energy|`` with ``E_tot = T + <m_N>``,
+        exactly as ``MCEqRun.set_primary_model`` (core.py:561-575)."""
+        m_nuc = 0.5 * (self.mceq.pman[(2212, 0)].mass + self.mceq.pman[(2112, 0)].mass)
+        return int(np.argmin(np.abs(np.asarray(self.e) + m_nuc - self.primary_floor)))
+
+    def _primary_unfloored(self):
+        """``(phi0_full, f_free_full)``: the primary nucleon ``_phi0`` WITHOUT
+        MCEq's floor, on the full grid, and its free-proton fraction.
+
+        Evaluated exactly as ``MCEqRun.set_primary_model`` does
+        (``1e-4 * pmodel.p_and_n_flux(T + <m_N>)``) but at every grid point; at and
+        above the floor bin the values are the engine's own ``_phi0_std`` (so the
+        two agree there bit for bit).  Below the floor they are whatever the
+        primary model returns: GSF is a spline fit valid for E_tot >~ 1 GeV/n (it
+        returns 1.0 below), so a modulation is meaningful only while
+        ``T_floor - (Z/A)|phi|`` stays above ~0.1 GeV/n.  Memoised.
+        """
+        got = getattr(self, "_phi0_full", None)
+        if got is not None:
+            return got
+        p_sl, n_sl = self._p_sl, self._n_sl
+        m_nuc = 0.5 * (self.mceq.pman[(2212, 0)].mass + self.mceq.pman[(2112, 0)].mass)
+        e_tot = np.asarray(self.e, float) + m_nuc
+        _, p_top, n_top = self.mceq.pmodel.p_and_n_flux(e_tot)
+        full = np.zeros_like(self._phi0_std)
+        full[p_sl] = 1e-4 * np.asarray(p_top, float)
+        full[n_sl] = 1e-4 * np.asarray(n_top, float)
+        k = self._floor_index()
+        full[p_sl][k:] = self._phi0_std[p_sl][k:]
+        full[n_sl][k:] = self._phi0_std[n_sl][k:]
+        pa, na = full[p_sl], full[n_sl]
+        with np.errstate(invalid="ignore", divide="ignore"):
+            f_free = np.where(pa > 0, np.clip((pa - na) / pa, 0.0, 1.0), 1.0)
+        self._phi0_full = (full, f_free)
+        return self._phi0_full
+
     def _modulate_phi0(self, phi_gv):
         """Force-field (Gleeson-Axford) modulation of the primary nucleon _phi0.
 
         Potential ``phi_gv`` [GV] shifts each nucleon by its per-nucleon energy loss
         Phi = (Z/A)*phi and applies the flux Jacobian. Free protons (Z/A=1) lose the
         full phi; bound nucleons (Z/A=1/<A/Z>~0.5) lose half -- the standard
-        rigidity-dependent modulation. ``phi_gv=0`` returns the baseline unchanged.
+        rigidity-dependent modulation. ``phi_gv=0`` returns ``_phi0_std`` exactly.
+
+        Floor (fixed 2026-11-08).  The modulation acts on the UN-floored primary
+        (:meth:`_primary_unfloored`) on the full grid, and MCEq's floor
+        (``primary_floor``, :meth:`_floor_index`) is applied AFTERWARDS.  The
+        previous version log-interpolated the already-floored ``_phi0_std``, i.e.
+        across the step from 0 to the first populated bin: at ``phi = -0.3`` GV it
+        emptied that bin (ratio 0.000) and at ``+0.3`` GV it put flux below the
+        floor, so every solar response below ~0.4 GeV was an artefact.
         """
+        if phi_gv == 0:
+            return self._phi0_std.copy()
         m_n = 0.938272
-        E = self.e
-        out = self._phi0_std.copy()
+        E = np.asarray(self.e, float)
+        full, f_free = self._primary_unfloored()
 
         def ff(f0, z_over_a):
             phi = z_over_a * phi_gv
             lo = np.log(np.maximum(f0, 1e-300))
-            # Negative phi = DE-modulation (e.g. to a solar-minimum epoch):
-            # E+phi can drop below the grid; clip to the grid floor. This is
-            # harmless for the neutrino flux: sub-threshold primaries
-            # (E_kin below the single-pion production threshold ~0.29 GeV)
-            # cannot produce the E_nu >= 0.1 GeV flux modelled here.
+            # Negative phi = DE-modulation: E+phi can drop below the grid; clip to
+            # the grid floor (never reached for the populated bins while
+            # T_floor - |phi| > E[0]).
             es = np.clip(E + phi, E[0], None)
             shifted = np.exp(np.interp(np.log(es), np.log(E), lo))
             jac = (E * (E + 2 * m_n)) / (es * (es + 2 * m_n))
             return shifted * jac
 
-        p = self._phi0_std[self._p_sl]
-        n = self._phi0_std[self._n_sl]
+        p = full[self._p_sl]
+        n = full[self._n_sl]
         zoa_bound = 1.0 / self._az_bound  # Z/A of bound nucleons (~0.5)
-        out[self._p_sl] = ff(p * self._f_free, 1.0) + ff(
-            p * (1 - self._f_free), zoa_bound
-        )
+        out = np.zeros_like(self._phi0_std)
+        out[self._p_sl] = ff(p * f_free, 1.0) + ff(p * (1 - f_free), zoa_bound)
         out[self._n_sl] = ff(n, zoa_bound)
+        k = self._floor_index()  # MCEq's floor, applied after the modulation
+        out[self._p_sl][:k] = 0.0
+        out[self._n_sl][:k] = 0.0
         return out
 
     def solar_factor(self, phi_gv, cz_ref=1.0):
@@ -1883,12 +2067,25 @@ class MCEq3DFlux:
         import joint_cone as jc
         import offaxis_mc as ox
 
-        # depth-resolved MCEq production profile: depends on the database
-        # (legacy file name unchanged for the shipped v1.4.0 file)
+        spec = getattr(self, "_prod_spec", None)
+        if spec is None:
+            # depth-resolved MCEq production profile: depends on the database
+            # (legacy file name unchanged for the shipped v1.4.0 file)
+            path = _db.dep_path(cache_dir or _CACHE_DIR,
+                                f"jointprod_chan_{ox.TAG}{self._db.tag}.npz")
+            got = self._joint_prod = jc.load_production(
+                cache=path, species=ox.CHANNEL_SPECIES)
+            return got
+        # production="engine": this engine's own population (model, primary,
+        # atmosphere, e_min, primary floor); keyed by the full engine tag.
+        s = self._spec
         path = _db.dep_path(cache_dir or _CACHE_DIR,
-                            f"jointprod_chan_{ox.TAG}{self._db.tag}.npz")
+                            f"jointprod_chan_{self._tag}.npz")
         got = self._joint_prod = jc.load_production(
-            cache=path, species=ox.CHANNEL_SPECIES)
+            cache=path, species=ox.CHANNEL_SPECIES, e_lo=self.e_min,
+            interaction_model=s["interaction_model"],
+            primary_model=self._pm, primary_floor=self.primary_floor,
+            atmosphere=s["atmosphere"])
         return got
 
     def joint_cone_widths(self, ep_grid, moments=None, cache_dir=None):
@@ -2043,6 +2240,137 @@ class MCEq3DFlux:
                     f = np.interp(np.log(self.e[inside]), np.log(ep),
                                   res["F"][s][0])
                     out[s][iz, ia, inside] = f
+        return out
+
+    # -- E_off v3: primary-stratified joint factor (eoff_model="v3") -----------
+    def _band_response(self, cz_ref, rc_grid, cache_dir=None, sigma_lnr=None):
+        """``(G_b, Phi_b, G_tot)`` at ``cz_ref`` (:func:`eoff_v3.band_G`), with the
+        per-primary-bin Green's functions memoised in memory and on disk."""
+        import eoff_v3 as _v3
+
+        memo = getattr(self, "_green_memo", None)
+        if memo is None:
+            memo = self._green_memo = {}
+        key = round(float(cz_ref), 6)
+        if key not in memo:
+            memo[key] = _v3.band_green(self, cz_ref, cache_dir)
+        return _v3.band_G(memo[key], rc_grid, sigma_lnr)
+
+    def _v3_inputs(self, cache_dir=None):
+        """Band profiles and per-band per-species kernels (memoised)."""
+        got = getattr(self, "_v3_memo", None)
+        if got is not None:
+            return got
+        import eoff_v3 as _v3
+        import joint_cone as jc
+
+        prods = _v3.band_profiles(self, cache_dir or _CACHE_DIR)
+        kern = _v3.kernels(primary=self._spec["primary"],
+                           t_floor=_v3.engine_floor_edge(self))
+        ep = prods[0]["ep_grid"]
+        alpha = np.concatenate([[0.0], np.deg2rad(_v3.ALPHA_NODES_DEG)])
+        W = []
+        for b in range(_v3.N_BANDS):
+            Wb = {}
+            for s in SPECIES:
+                ws = []
+                for c in _v3.CHANNELS:
+                    w = _v3.kernel_W(kern, b, jc.CHANNEL_SPECIES_MAP[s], c, ep)
+                    ws.append(np.concatenate([np.zeros((len(ep), 1)), w], axis=1))
+                Wb[s] = tuple(ws)
+            W.append(Wb)
+        self._v3_memo = dict(prods=prods, kern=kern, alpha=alpha, W=W, ep=ep)
+        return self._v3_memo
+
+    def _joint_cone_factor_v3(self, cos_zeniths, azimuths, rc_grid, Gb_by_z,
+                              Phib_by_z, fine, Eoff, Geff, rc_map, table,
+                              channel_cone=True, muon_bending=True, b_enu=None,
+                              h_prod_km=H_PROD_KM, prod_frame=True, n_beta=18,
+                              n_ray=260, cache_dir=None, rc_family=None,
+                              site_lat=None):
+        """Primary-stratified version of :meth:`joint_cone_factor` (E_off v3).
+
+        Down-going: ``F_s = sum_b J_{b,s} / sum_b D_{b,s}``, each band with its own
+        depth profile, sampled full-sphere kernel and cutoff response ``G_b``
+        (:func:`joint_cone.delivered_joint_factor` with ``W_by_species``).
+        Up-going (single far-side cutoff, as the v2 product):
+        ``F_s = sum_b E_off_{b,s}(|cosZ|) Phi_{b,s} G_{b,s}(R_c) / sum_b Phi_{b,s}``
+        with the band tables of ``table``.  Outside the production energy range
+        the product ``Eoff * Geff`` is returned, as in v2.
+        """
+        import eoff_v3 as _v3
+        import joint_cone as jc
+
+        inp = self._v3_inputs(cache_dir)
+        prods, W, alpha, ep = inp["prods"], inp["W"], inp["alpha"], inp["ep"]
+        here = os.path.dirname(os.path.abspath(__file__))
+        tpath = table if os.path.isabs(str(table)) else os.path.join(here, str(table))
+        tab = np.load(tpath)
+        Eb_tab, Ee, Ecz = tab["E_off_band_s"], tab["e"], tab["cz"]
+        tsp = [str(x) for x in tab["species"]]
+        MU_PLUS = ("total_antinumu", "total_nue")
+        do_bend = channel_cone and muon_bending and b_enu is not None
+        if do_bend:
+            import muon_bending as _mb
+        out = {s: np.array([[Eoff[s][iz] * Geff[s][iz, ia]
+                             for ia in range(len(azimuths))]
+                            for iz in range(len(cos_zeniths))])
+               for s in SPECIES}
+        inside = (self.e >= ep[0]) & (self.e <= ep[-1])
+        le_in = np.log(self.e[inside])
+        qc = getattr(self, "_joint_q_v3", None)
+        if qc is None:
+            qc = self._joint_q_v3 = [dict() for _ in range(_v3.N_BANDS)]
+        for iz, cz in enumerate(cos_zeniths):
+            if cz < 0:
+                # stratified product with the single far-side cutoff
+                acz = abs(cz)
+                for s in SPECIES:
+                    k = tsp.index(jc.CHANNEL_SPECIES_MAP[s])
+                    eb = []
+                    for b in range(_v3.N_BANDS):
+                        col = np.array([np.interp(le_in, np.log(Ee), Eb_tab[b, k, i])
+                                        for i in range(len(Ecz))])
+                        eb.append(np.array([np.interp(acz, Ecz, col[:, j])
+                                            for j in range(col.shape[1])]))
+                    for ia in range(len(azimuths)):
+                        num = np.zeros(inside.sum())
+                        den = np.zeros(inside.sum())
+                        for b in range(_v3.N_BANDS):
+                            ph = Phib_by_z[iz][b][s][inside]
+                            g = _interp_rc(rc_map[iz, ia], rc_grid,
+                                           Gb_by_z[iz][b][s])[inside]
+                            num += eb[b] * ph * g
+                            den += ph
+                        out[s][iz, ia, inside] = np.where(den > 0, num / np.maximum(den, 1e-300),
+                                                          out[s][iz, ia, inside])
+                continue
+            zen_deg = float(np.degrees(np.arccos(np.clip(cz, -1, 1))))
+            Gz = [{s: ox_regrid(Gb_by_z[iz][b][s], self.e, ep) for s in SPECIES}
+                  for b in range(_v3.N_BANDS)]
+            for ia, azd in enumerate(azimuths):
+                d_cone = None
+                if do_bend:
+                    v = _mb.muon_velocity_enu(zen_deg, float(azd))
+                    d0 = _mb.bending_deflection(v, b_enu, charge=+1)
+                    d_cone = np.array([d0[1], d0[0], d0[2]])
+                Jsum = {s: np.zeros(len(ep)) for s in SPECIES}
+                Dsum = {s: np.zeros(len(ep)) for s in SPECIES}
+                for b in range(_v3.N_BANDS):
+                    chan = {s: prods[b]["chan"][jc.CHANNEL_SPECIES_MAP[s]] for s in SPECIES}
+                    res = jc.delivered_joint_factor(
+                        cz, [azd], prods[b], fine, rc_grid, Gz[b],
+                        sigma_pi=None, sigma_k=None, channels_by_species=chan,
+                        sigma_mu_by_species=None, W_by_species=W[b], alpha_rad=alpha,
+                        d_cone=d_cone, mu_plus=MU_PLUS, prod_frame=prod_frame,
+                        h_prod_km=h_prod_km, n_beta=n_beta, n_ray=n_ray,
+                        q_cache=qc[b], rc_family=rc_family, site_lat=site_lat)
+                    for s in SPECIES:
+                        Jsum[s] += res["J"][s][0]
+                        Dsum[s] += res["p_axis_s"][s]
+                for s in SPECIES:
+                    F = np.where(Dsum[s] > 0, Jsum[s] / np.maximum(Dsum[s], 1e-300), 1.0)
+                    out[s][iz, ia, inside] = np.interp(le_in, np.log(ep), F)
         return out
 
     def cutoff_grid(
@@ -2417,7 +2745,24 @@ class MCEq3DFlux:
                 lo = max(0.1, float(np.min(rc_map)) * 0.9)
                 hi = max(lo + 0.5, float(np.max(rc_map)) * 1.05)
                 rc_grid = np.linspace(lo, hi, 12)
-        if zenith_dependent_geomag:
+        v3 = getattr(self, "_eoff_model", None) == "v3"
+        Gb_by_z = Phib_by_z = None
+        if v3:
+            # band-resolved cutoff response (exact, per-primary-bin Green's
+            # functions); its band sum IS geomag_response's G_s
+            if offaxis_table is None:
+                offaxis_table = EOFF_TABLE_V3
+            if cone_sigma_scale != 1.0:
+                raise ValueError("eoff_model='v3' has sampled kernels; "
+                                 "cone_sigma_scale is not defined for it")
+            G_by_z, Gb_by_z, Phib_by_z = [], [], []
+            for cz in cos_zeniths:
+                czr = max(abs(cz), 1e-3) if zenith_dependent_geomag else 1.0
+                Gb, Phb, Gt = self._band_response(czr, rc_grid, cache_dir, sigma_lnr)
+                G_by_z.append(Gt)
+                Gb_by_z.append(Gb)
+                Phib_by_z.append(Phb)
+        elif zenith_dependent_geomag:
             G_by_z = []
             for cz in cos_zeniths:
                 Gz, rc_grid = self.geomag_response(
@@ -2479,7 +2824,14 @@ class MCEq3DFlux:
         # E_off * <G>_cone (see joint_cone_factor). Down-going only; up-going
         # rows come back as the unchanged product.
         Fjoint = None
-        if joint_cone:
+        if joint_cone and v3:
+            Fjoint = self._joint_cone_factor_v3(
+                cos_zeniths, azimuths, rc_grid, Gb_by_z, Phib_by_z, fine, Eoff, Geff,
+                rc_map, offaxis_table, channel_cone=channel_cone,
+                muon_bending=muon_bending, b_enu=b_enu, cache_dir=cache_dir,
+                rc_family=rc_family, site_lat=lat,
+            )
+        elif joint_cone:
             Fjoint = self.joint_cone_factor(
                 cos_zeniths, azimuths, rc_grid, G_by_z, fine, Eoff, Geff,
                 sigma_scale=cone_sigma_scale, channel_cone=channel_cone,
@@ -2612,6 +2964,106 @@ class MCEq3DFlux:
                 s: flux[s] * result["flux_relerr"][s][:, None, :] for s in SPECIES
             }
         return result
+
+    # -- the 3D factor against the REFERENCE population -----------------------
+    def reference_engine(self, primary_floor=DEFAULT_PRIMARY_FLOOR, e_min=0.1):
+        """Twin of this engine in another primary/grid population (memoised).
+
+        Same interaction model, primary, atmosphere and base model; only
+        ``primary_floor`` / ``e_min`` differ.  Returns ``self`` when they are
+        this engine's own.  Used for the denominator of :meth:`solve_factor`.
+        """
+        if (abs(float(primary_floor) - self.primary_floor) < 1e-12
+                and abs(float(e_min) - self.e_min) < 1e-12):
+            return self
+        memo = getattr(self, "_ref_engines", None)
+        if memo is None:
+            memo = self._ref_engines = {}
+        key = (float(primary_floor), float(e_min))
+        if key not in memo:
+            import mceq_config as config
+
+            s = self._spec
+            memo[key] = MCEq3DFlux(
+                interaction_model=s["interaction_model"], primary=s["primary"],
+                e_min=float(e_min), atmosphere=s["atmosphere"],
+                base_model=s["base_model"],
+                daemonflux_location=s["daemonflux_location"],
+                hybrid_e0=s["hybrid_e0"], primary_floor=float(primary_floor))
+            config.e_min = self.e_min  # the twin set the module-wide e_min
+        return memo[key]
+
+    def solve_factor(self, lat, lon, cos_zeniths, azimuths,
+                     reference=None, **solve_kw):
+        """The 3D factor ``F = Phi_3D(this engine) / B_ref(|cos Z|)`` on the
+        reference grid.
+
+        Why two populations.  daemonflux was built with MCEq's default primary
+        floor (3.0 GeV total per nucleon) and grid floor (``e_min = 0.1``), so the
+        product ``daemonflux_1D x F`` needs ``F`` normalised to THAT population
+        (REF, :data:`REF_POPULATION`), while the 3D numerator should contain the
+        physical one (PHYS, :data:`PHYS_POPULATION`: primaries down to T = 0.89
+        GeV/n, which reach low-cutoff directions, and the neutrinos of muons that
+        decay below 0.1 GeV).  Hence
+
+            F_new(E, n) = Phi_3D^PHYS(E, n) / B_ref(E, |cos Z|)
+                        = rho_s(E, |cos Z|) * F_phys(E, n),
+            rho_s = B_phys / B_ref ,  F_phys = Phi_3D^PHYS / B_phys .
+
+        Build the numerator engine in PHYS (``MCEq3DFlux(primary_floor=1.9,
+        e_min=0.03, production="engine")``) and call this method; ``reference``
+        (default :data:`REF_POPULATION`) names the denominator population, whose
+        ``base()`` is evaluated by :meth:`reference_engine`.  The REF grid is a
+        bin-for-bin subset of the PHYS grid (MCEq truncates one database grid at
+        ``e_min``); this is checked, and the output is on the REF grid only
+        (E >= 0.1122 GeV for ``e_min = 0.1``).  Do NOT replace ``B_ref`` by
+        ``B_phys``: that would put ``daemonflux x F`` ~10% low at 0.10-0.16 GeV.
+
+        ``solve_kw`` go to :meth:`solve` unchanged.  Only ``base_model="mceq"`` is
+        supported (``B_ref`` is the MCEq base the MC table and daemonflux share).
+
+        Returns ``dict(e, F, flux, base_ref, base, rho, F_phys, cutoff, result)``;
+        ``F``/``flux``/``F_phys`` are ``{species: [n_cz, n_az, n_E_ref]}``,
+        ``base_ref``/``base``/``rho`` are ``{species: [n_cz, n_E_ref]}``.
+        """
+        if self.base_model != "mceq":
+            raise ValueError("solve_factor needs base_model='mceq'")
+        ref_pop = dict(REF_POPULATION if reference is None else reference)
+        ref = self.reference_engine(ref_pop["primary_floor"], ref_pop["e_min"])
+        cz = np.asarray(cos_zeniths, float)
+        res = self.solve(lat, lon, cz, azimuths, **solve_kw)
+        idx = grid_subset_index(self.e, ref.e)
+        bref = ref.base(np.abs(cz))
+        out = dict(e=np.asarray(ref.e), F={}, flux={}, base_ref=bref, base={},
+                   rho={}, F_phys={}, cutoff=res["cutoff"], result=res)
+        for s in SPECIES:
+            fl = res["flux"][s][..., idx]
+            bp = res["base"][s][:, idx]
+            with np.errstate(invalid="ignore", divide="ignore"):
+                out["F"][s] = np.where(bref[s][:, None, :] > 0,
+                                       fl / bref[s][:, None, :], 0.0)
+                out["rho"][s] = np.where(bref[s] > 0, bp / bref[s], 0.0)
+                out["F_phys"][s] = np.where(bp[:, None, :] > 0,
+                                            fl / bp[:, None, :], 0.0)
+            out["flux"][s] = fl
+            out["base"][s] = bp
+        return out
+
+
+def grid_subset_index(e_big, e_small, rtol=1e-12):
+    """Indices ``i`` with ``e_big[i] == e_small`` (bin-for-bin, contiguous).
+
+    MCEq's energy grid is one database grid truncated at ``e_min``/``e_max``, so a
+    grid with a higher ``e_min`` is a contiguous slice of one with a lower
+    ``e_min``.  Raises if that is not the case to ``rtol``.
+    """
+    e_big = np.asarray(e_big, float)
+    e_small = np.asarray(e_small, float)
+    k = int(np.argmin(np.abs(e_big - e_small[0])))
+    idx = np.arange(k, k + len(e_small))
+    if idx[-1] >= len(e_big) or not np.allclose(e_big[idx], e_small, rtol=rtol, atol=0):
+        raise ValueError("energy grids are not aligned bin for bin")
+    return idx
 
 
 def ox_regrid(arr, e_src, e_dst):

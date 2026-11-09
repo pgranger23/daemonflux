@@ -686,9 +686,20 @@ def delivered_joint_factor(
     site_lat=None,
     ray=None,
     renorm=None,
+    alpha_rad=None,
+    W_by_species=None,
 ):
     """``{species: F[n_az, nE]}`` with ``F_s = J_s / p_axis`` -- the single joint
     integral that replaces the delivered product ``E_off x <G_s>_cone``.
+
+    ``alpha_rad`` / ``W_by_species`` (2026-11-08, E_off v3; default ``None`` = the
+    Gaussian widths on :func:`alpha_grid`, unchanged): a custom cone polar grid
+    (any range up to pi, e.g. the full-sphere grid of ``eoff_v3``) and, per species,
+    the normalised channel weights ``(W_dir, W_k, W_mu)`` each ``[nE, len(alpha)]``
+    (sampled distributions, sin-measure included) replacing ``sigma_pi`` /
+    ``sigma_k`` / ``sigma_mu_by_species``.  Channel-resolved mode only.  The result
+    then also carries ``J`` and ``p_axis_s`` per species so that band-stratified
+    integrals can be summed (``F = sum_b J_b / sum_b p_axis_b``).
 
     This is the engine-facing entry point (``MCEq3DFlux.joint_cone_factor``); the
     diagnostic/gate entry point is :func:`joint_cone`.
@@ -772,7 +783,9 @@ def delivered_joint_factor(
     """
     ep_grid = prod["ep_grid"]
     nE = len(ep_grid)
-    alpha = alpha_grid(n_alpha)
+    alpha = alpha_grid(n_alpha) if alpha_rad is None else np.asarray(alpha_rad, float)
+    if W_by_species is not None and channels_by_species is None:
+        raise ValueError("W_by_species needs channels_by_species")
     beta = np.linspace(0.0, 2 * np.pi, n_beta, endpoint=False)
     zen_f, az_f, rc_f = fine
     if prod_frame:  # no cone sample may read the antipodal far-side cutoff
@@ -784,6 +797,8 @@ def delivered_joint_factor(
     sp_order = tuple(sorted(chan)) if chan else ()
     key = (round(float(cos_theta), 9), n_alpha, n_beta, n_ray, sp_order,
            None if ray is None else id(ray))
+    if alpha_rad is not None or W_by_species is not None:
+        key = key + (len(alpha), float(alpha.sum()), id(prod))
     got = None if q_cache is None else q_cache.get(key)
     if got is None:
         if chan is None:
@@ -798,8 +813,9 @@ def delivered_joint_factor(
             q_cache[key] = got
     qs, qas = got
 
-    W_pi = gauss_alpha_weights(np.asarray(sigma_pi, float) * sigma_scale, alpha)
-    W_k = gauss_alpha_weights(np.asarray(sigma_k, float) * sigma_scale, alpha)
+    if W_by_species is None:
+        W_pi = gauss_alpha_weights(np.asarray(sigma_pi, float) * sigma_scale, alpha)
+        W_k = gauss_alpha_weights(np.asarray(sigma_k, float) * sigma_scale, alpha)
     if chan is None:
         q_pi, q_k = qs
         qa_pi, qa_k = qas
@@ -810,10 +826,16 @@ def delivered_joint_factor(
         idx = {s: 3 * i for i, s in enumerate(sp_order)}
         p_axis_s = {s: np.maximum(qas[idx[s]] + qas[idx[s] + 1] + qas[idx[s] + 2],
                                   1e-300) for s in sp_order}
-        W_mu_s = {s: gauss_alpha_weights(
-            np.asarray(sigma_mu_by_species[s], float) * sigma_scale, alpha)
-            for s in sp_order}
+        if W_by_species is None:
+            W_mu_s = {s: gauss_alpha_weights(
+                np.asarray(sigma_mu_by_species[s], float) * sigma_scale, alpha)
+                for s in sp_order}
+        else:  # sampled per-species channel kernels (E_off v3)
+            W_pi_s = {s: np.asarray(W_by_species[s][0], float) for s in sp_order}
+            W_k_s = {s: np.asarray(W_by_species[s][1], float) for s in sp_order}
+            W_mu_s = {s: np.asarray(W_by_species[s][2], float) for s in sp_order}
         p_axis = p_axis_s[sp_order[0]]
+        J_out = {s: np.zeros((len(azimuths), nE)) for s in sp_order}
 
     out = {s: np.zeros((len(azimuths), nE)) for s in G}
     eoff_eq = np.zeros((len(azimuths), nE))
@@ -882,22 +904,30 @@ def delivered_joint_factor(
             for s in G:
                 qd, qk, qm = qs[idx[s]], qs[idx[s] + 1], qs[idx[s] + 2]
                 g_mu = Gsh[s] if Gsh is not None else Gab[s]
-                J = (np.einsum("ea,ae->e", W_pi, (qd * Gab[s]).mean(axis=1))
-                     + np.einsum("ea,ae->e", W_k, (qk * Gab[s]).mean(axis=1))
+                wpi = W_pi if W_by_species is None else W_pi_s[s]
+                wk = W_k if W_by_species is None else W_k_s[s]
+                J = (np.einsum("ea,ae->e", wpi, (qd * Gab[s]).mean(axis=1))
+                     + np.einsum("ea,ae->e", wk, (qk * Gab[s]).mean(axis=1))
                      + np.einsum("ea,ae->e", W_mu_s[s], (qm * g_mu).mean(axis=1)))
                 out[s][ia] = J / p_axis_s[s]
+                J_out[s][ia] = J
                 if renorm is not None:
                     out[s][ia] *= renorm[s]
                 eoff_eq[ia] = (
-                    np.einsum("ea,ae->e", W_pi, qd.mean(axis=1))
-                    + np.einsum("ea,ae->e", W_k, qk.mean(axis=1))
+                    np.einsum("ea,ae->e", wpi, qd.mean(axis=1))
+                    + np.einsum("ea,ae->e", wk, qk.mean(axis=1))
                     + np.einsum("ea,ae->e", W_mu_s[s], qm.mean(axis=1))
                 ) / p_axis_s[s]  # last species wins; per-species via G == 1
             s0 = sp_order[0]
-            blocked[ia] = np.einsum("ea,ae->e", W_pi,
+            blocked[ia] = np.einsum("ea,ae->e",
+                                    W_pi if W_by_species is None else W_pi_s[s0],
                                     (qs[idx[s0]] <= 0.0).mean(axis=1))
-    return dict(e=ep_grid, F=out, E_off_equiv=eoff_eq, p_axis=p_axis,
-                w_blocked=blocked)
+    res = dict(e=ep_grid, F=out, E_off_equiv=eoff_eq, p_axis=p_axis,
+               w_blocked=blocked)
+    if chan is not None and W_by_species is not None:
+        res["J"] = J_out
+        res["p_axis_s"] = p_axis_s
+    return res
 
 
 #: species order of ``offaxis_mc.CHANNEL_SPECIES`` mapped to engine species names
