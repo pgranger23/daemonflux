@@ -440,3 +440,40 @@ def test_kamioka_v1_table_if_available(flux_factory):
             geo.geomagnetic_factor_error(np.array([1.5]), z, "numu", azimuth_deg=10.0)
             > 0
         )
+
+
+def test_kamioka_v2h_table_if_available(flux_factory):
+    """The candidate Kamioka hybrid table v2h (if present): loads, carries the hybrid
+    provenance, factor = factor_3d x hybrid_correction, evaluates down- and up-going with
+    finite positive values and errors."""
+    import os
+
+    path = os.environ.get("DAEMONFLUX_3D_TABLE_V2H", "")
+    if not path or not os.path.exists(path):
+        pytest.skip("set DAEMONFLUX_3D_TABLE_V2H to kamioka_3D_v2h.npz to run this")
+    d = np.load(path, allow_pickle=False)
+    for k in (
+        "hybrid_correction",
+        "factor_3d",
+        "err_hybrid_rel",
+        "hybrid_e0",
+        "hybrid_w_formula",
+        "engine_eoff_model",
+        "input_sha256_v1c",
+        "db_label",
+    ):
+        assert k in d.files
+    npt.assert_allclose(
+        d["factor"], d["factor_3d"] * d["hybrid_correction"][..., None], rtol=1e-12
+    )
+    m = Tabulated3DModel(path)
+    assert m.label == "kamioka_3D_v2h"
+    assert m.status == "candidate"
+    assert np.all(m._df > 0) and np.all(np.isfinite(m._f))
+    geo = flux_factory()
+    geo.set_geomagnetic_model(m)
+    for z in (10.0, 170.0):  # the bundled test splines cover zenith 0-18 deg
+        f = geo.flux(np.array([1.5, 5.0]), z, "numuflux", azimuth_deg=100.0)
+        assert np.all(np.isfinite(f)) and np.all(f > 0)
+        ge = geo.geomagnetic_factor_error(np.array([1.5]), z, "numu", azimuth_deg=10.0)
+        assert np.all(np.isfinite(ge)) and np.all(ge > 0)

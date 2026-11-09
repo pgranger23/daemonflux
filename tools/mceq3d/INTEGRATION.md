@@ -712,3 +712,184 @@ The v1c table and its inputs as committed in 1716a8d (sha256):
 `kamioka_G_down_v1b.npz` 43ec21fb88031491699a57e9ed3863cb67a27dcfb17208c063d67064aea238aa;
 `kamioka_Rmu_v1.npz` 27ffb4b20386331e297709f1e1e4b414b64a39088923ceca66e66010ef40f9a1.
 **Erratum:** the commit message of 1716a8d quotes the prefixes 74b4d8a9 / 47e3dc47; they are wrong (typed before the hashes were computed). The values above are the correct ones.
+
+## 13. Hybrid table v2h and its 3D twin v2 (2026-11-09, CANDIDATE)
+
+Files: `$W/runs/v2h/out/kamioka_3D_v2h.npz` (label `kamioka_3D_v2h`, status `candidate`) and
+`$W/runs/v2h/out/kamioka_3D_v2.npz` (label `kamioka_3D_v2`, the same 3D factor without the hybrid level). Both use the
+`Tabulated3DModel` format of section 2, unchanged: `factor`, `factor_error` (absolute 1 sigma) on the v1c grid (E 5/dec 0.1-10 GeV
+x cos Z 0.1 x az 12). Builder: `tools/mceq3d/build_table_v2.py`.
+`regress` rebuilds the three v1c source blocks from v1c's inputs, bit for bit; `build` writes the tables and refuses to
+overwrite; `gates` runs gate G1. The run directory is `$W/runs/v2h` (`REPORT.md`, `scripts/`, `logs/`, `out/`).
+sha256: v2h `e3db406733bbe64fd9534c3366214b423f622f6a702b95518e4731a342a711ce`,
+v2 `576ea3ead035e2e06bfed208ae503c90a2741dd390a603059d207005dd563c64`,
+new engine grid `out/t4_D_up.npz` `14a7cbed9728accf32955490342f7d7ae7bba080fbc1686d5918bb6c0f8b6098`.
+
+### 13.1 What the hybrid is
+
+The PI decided that the production 1D level is the hybrid: daemonflux above about 2 GeV, the engine 1D (B_ref) below,
+blended smoothly, times the 3D factor. For each species and |cos Z| (no azimuth dependence):
+
+    L_s(E, |cos Z|) = (1 - w(E)) B_ref,s + w(E) Phi_df,s,     w(E) = 0.5 (1 + tanh(ln(E/1.7 GeV) / ln 2))
+
+* `w` is `mceq3d_flux.hybrid_weight(E, e0=1.7)`. Then w < 0.02 below 0.44 GeV, w = 0.18 at 1 GeV, 0.5 at 1.7 GeV, 0.75 at
+  2.5 GeV, and w > 0.98 above 6.6 GeV.
+* `B_ref` is the engine base in the REF population (MCEq floor 3.0 GeV, e_min 0.1, GSF, SIBYLL23D, v142p, CORSIKA US-Std). It is
+  the denominator of the 3D factor, so below the switch daemonflux x factor = F x B_ref = Phi_3D^PHYS.
+* `Phi_df` is `daemonflux.Flux(location="kamioka")`, calibrated, with nominal parameters.
+
+The table carries the level as `hybrid_correction` H (S, nE, nC) = int L / int Phi_df per bin, with factor_v2h = factor_v2 x H.
+The energy integral uses the engine's 10/decade grid points inside the bin with weights `e_widths` (the convention of
+`diag_v1.fine_avg`). The cos Z integral uses the 3-point Gauss rule of `base1d_kamioka.npz`. Up-going bins take H at |cos Z|,
+like the 1D flux. `factor_3d` stores factor_v2, so a user can undo the hybrid: factor / hybrid_correction.
+
+H is 0.61-0.66 at 0.10-0.16 GeV (that is 1/D, with D = Phi_df/B_ref = 1.53-1.64). It rises to 0.75-0.84 at 0.40-0.63 GeV,
+0.85-0.95 at 0.63-1 GeV and 0.96-1.03 at 1-1.6 GeV, and is 0.993-1.003 from 1.6 GeV upward. The cos Z dependence is at most 1.5%.
+
+### 13.2 The 3D factor v2 (v1c pipeline with three changes)
+
+* (a) MC down-going cells (source 0, E < 3.98 GeV) are multiplied by C'' = (kappa/kappa_ref)/(1+b) x gf
+  (fix1 REPORT, PM block).
+  * 0.1-1 GeV: fix1's per-cell values (`t4_closure.npy`). This includes the "0-0.2" key: kappa window 0.6-1, b of the
+    0-0.2 cap band.
+  * 1-3.98 GeV, from the definition: b from `s1d_cap.npz` (measured in every band), gf = sum B(3.0, e_min 0.03) / sum B_ref
+    over the kappa window (computed), and kappa/kappa_ref = 1 (assumed).
+  * The assumption kappa/kappa_ref = 1 rests on the T < 2 GeV/n content of t, dB/B, which is only 0.05-0.24% at 0.63-1 GeV
+    and falls with E.
+  * Values: C'' = 1.09-1.17 at 0.10-0.16 GeV, 0.99-1.02 at 0.16-0.25, 0.97-1.00 at 0.25-1, 0.95-1.01 at 1-2.5 and 0.99-1.04
+    at 2.5-3.98 GeV (b = -0.012 to -0.034 there).
+* Near-horizon MC cells (fix2's production-B finding): **kept**.
+  * The production-B artefact is in t, the straight-line reference, near the horizon. G = s/(kappa B) uses t only in the
+    kappa window cos Z 0.6-1, where t_B/t_A = 0.99-1.005 (fix2 PM check). The 3D tally s is a physical flux (fix2: "MC
+    tallies change by 0").
+  * Check (`scripts/c1_horizon.py`), q = <G''>/(<F_v4><R>) with R = the measured muon-bend response:
+    * cos Z 0.2-0.3: q is within -7%/+3% of the cos Z 0.35-0.95 median (mostly within 2-4%).
+    * cos Z 0-0.2: q is 5-20% low at E <= 0.4 GeV and at 1-1.6 GeV (antinue at 0.25-0.4 GeV and cos Z 0.05: 0.78).
+  * The near-horizon difference is not the B artefact, and its cause is open. It is carried as `err_horizon_rel` =
+    sqrt(max((q-1)^2 - sigma_model^2, 0)) on cos Z 0-0.2. 552 of 768 cells are non-zero, maximum 0.18.
+* (b) Engine cells come from F = Phi_3D^PHYS/B_ref with `eoff_model="v4"` (fix2 variant D, solve kwargs as fix2). This covers
+  source 1 (down-going, E >= 3.98 GeV) and source 3 (up-going, mirror-cone ratio x R_up of v1c).
+  * Inputs: the hor/dn6 grids come from `fix2/out/t4_D_*`. The up-going 10 x 12 grid is new: `v2h/out/t4_D_up.npz`, 421 s CPU.
+  * The fix1 v3 cells give `err_engine_spread_rel` = |F_v4 - F_v3| / F_v4: median 0.9% and max 9.6% up-going, at most 4.2%
+    down-going.
+* (c) R_up, sigma_R, sigma_model and the grid are as in v1c. The v1c relative error (factor_error/factor) is kept as
+  `err_v1c_rel`.
+
+`source` codes are unchanged in layout: 0 = MC x C'', 1 = engine v4 down-going, 3 = engine v4 up-going x mirror cone x R_up.
+
+### 13.3 Errors (`factor_error` absolute; terms stored as relative arrays)
+
+    v2 : rel^2 = err_v1c_rel^2 + err_Cpp_rel^2 + err_engine_spread_rel^2 + err_horizon_rel^2
+    v2h: rel^2 = (v2 terms) + err_hybrid_rel^2,   err_hybrid_rel = [(1 - w) B_ref / L] sigma_B,  sigma_B^2 = sigma_had^2 + sigma_prim^2
+
+* `err_Cpp_rel` combines two pieces.
+  * The kappa_ref estimator: |kappa_ref/kappa_h1 - 1| below 1 GeV, or dB/B of 0.63-1 GeV above.
+  * b: its fit error (+) 30% of b. The 30% covers the theta^2 form; lowE s1e's engine estimate is about 1.5x the fitted b.
+  * Result: median 1.0%, max 2.2%.
+* `sigma_had` = |DDM/B_ref - 1|. The base is recomputed with `MCEqRun.inject_ddm(DataDrivenModel())` (MCEq 1.4 DDM), same
+  atmosphere and REF population, at the 10 row centres.
+  * Values: 0.20-0.28 at 0.10-0.25 GeV, 0.13-0.23 at 0.4-0.63 GeV, 0.03-0.15 at 0.63-1 GeV, 0.01-0.05 at 1-2.5 GeV.
+  * It dips where DDM/B_ref crosses 1 (1-2 GeV). That is a weakness of a single-model spread.
+* `sigma_prim`: the prescribed recipe gives about 1e-4. That recipe is the prior error of `Flux(location="kamioka",
+  use_calibration=False)` with the hadronic-only part removed in quadrature. It is near zero because the prior covariance in
+  the spline file has a zero GSF block (sigma(GSF_1) = 0, sigma(GSF_2..6) = 0.012).
+  * Used instead: the GSF block of the calibrated covariance (diagonal 0.93-1.00, i.e. essentially unconstrained). It gives
+    0.4-1.0%, so sigma_B is in practice sigma_had.
+* Solar modulation is not in `factor_error`. The optional `dlnproduct_dphi` (S, nE, nC), in 1/GV, is the azimuth-mean
+  response of daemonflux x factor to the force-field potential:
+
+      d ln P/d phi = d ln Phi_3D/d phi - (w Phi_df/L) d ln B_ref/d phi
+
+  * This is the brief's "dlnF/dphi + dlnB_ref/dphi below the switch, dlnF/dphi above", with F = Phi_3D/B_ref at the same phi.
+    fix1's t5 files define F with an unmodulated B_ref, so their slope is d ln Phi_3D/d phi itself.
+  * Epoch convention: phi relative to the GSF epoch (phi0 = 0.55 GV label, not verified). The force field acts on the
+    un-floored primary, with the MCEq floor applied after. daemonflux is held fixed. The slope is a central difference at
+    +-0.3 GV.
+  * Inputs: t5 (E_off v3, reduced config, rows +-0.15/0.35/0.95, interpolated in |cos Z|) and REF MCEq bases at +-0.3 GV.
+  * Species-mean values below the switch: -0.22/GV (down 0.95) to -0.39/GV (up -0.95) at 0.10-0.16 GeV, and -0.14/-0.21 at
+    0.63-1 GeV. Above 3 GeV it is about 0, because the numerator and B_ref respond alike.
+
+Error budget, v2h (median / max relative error; variance share of each term):
+
+| band | hemisphere | median | max | v1c | C'' | engine spread | horizon | hybrid | v2 median |
+|---|---|---|---|---|---|---|---|---|---|
+| 0.1-0.25 | down | 0.243 | 0.305 | 11% | 1% | 0% | 1% | 87% | 0.075 |
+| 0.1-0.25 | up | 0.262 | 0.646 | 31% | 0% | 3% | 0% | 66% | 0.137 |
+| 0.25-1 | down | 0.158 | 0.500 | 7% | 0% | 0% | 2% | 91% | 0.027 |
+| 0.25-1 | up | 0.189 | 0.636 | 42% | 0% | 1% | 0% | 57% | 0.082 |
+| 1-2.5 | down | 0.036 | 0.343 | 69% | 2% | 0% | 19% | 10% | 0.031 |
+| 1-2.5 | up | 0.061 | 0.729 | 97% | 0% | 1% | 0% | 2% | 0.056 |
+| 2.5-10 | down | 0.050 | 0.251 | 93% | 1% | 1% | 5% | 0% | 0.050 |
+| 2.5-10 | up | 0.050 | 0.138 | 98% | 0% | 2% | 0% | 0% | 0.050 |
+
+### 13.4 Validation (`v2h/REPORT.md`; `out/gates_G1.md`, `out/validation.md`, `out/ext_condensed.md`, `out/analysis.md`)
+
+* **G1, identities through the API**, checked at 20 cos Z (row centres plus 0.02/0.10/.../0.98, both hemispheres) x 24
+  azimuths at engine grid energies:
+  * w > 0.98 (6.6-60 GeV): product_v2h/(Phi_df factor_v2) - 1 <= 0.20%. **PASS.**
+  * w < 0.02 (0.112-0.36 GeV): product_v2h/(factor_v2 B_ref) - 1 reaches 2.0%. **FAIL at 1%.**
+    * At the bin centres it is at most 0.18%.
+    * Below the first bin centre (0.112-0.126 GeV, where the table is flat in E) it reaches 1.6% (numu/antinumu).
+    * Between the 0.32 and 0.50 GeV centres it reaches 2.0% (nue near the horizon). The 0.40-0.63 GeV bin's H carries
+      w = 0.02-0.05, and linear interpolation of F x H is not F x H interpolated.
+  * Pointwise H does not fix either. Both are properties of the 5/dec grid with linear interpolation, applied to a ratio
+    that changes 4-10% per bin.
+* **G2, API**: PASS.
+  * Both tables load. `flux`, `error` and `geomagnetic_factor_error` are finite and positive on the full grid, including
+    up-going and zeniths 89.9/90/90.1/180: 1944 (zenith x azimuth x quantity) calls per table.
+  * daemonflux suite: 54 passed, 3 skipped. `test_tabulated3d.py` with the table env vars: 18 passed, 1 skipped, including
+    the new `test_kamioka_v2h_table_if_available`.
+  * mceq3d set (flux, deterministic, production, offaxis_mc, joint_cone + test_tabulated3d): 75 passed, 5 skipped, 0 failed.
+    The PM's last count was 67/12. Mine has one extra test (the new skip-if-absent one), and the split difference is not
+    explained.
+* **G3, v2/v1c**: every change above 5% has an identified source.
+  * MC cells: only 0.10-0.16 GeV, where v2/v1c is exactly C'' = 1.089-1.168.
+  * Engine down-going: at most 1.8%.
+  * Up-going: 284 cells, all at E <= 0.25 GeV:
+    * 0.10-0.16 GeV, |cos Z| 0.6-1: -5 to -9%, from E_off v4 (v4/v3 = 0.95-0.96).
+    * 0.10-0.16 GeV, |cos Z| 0-0.3: up to +20% (nue/antinue), from the PHYS population (v3/delivered = 1.05-1.14: primaries of
+      T 0.9-2.2 GeV/n at low far-side cutoffs, plus the e_min 0.03 grid).
+    * 0.16-0.25 GeV: -7.5% to +5%, from v4/v3.
+* **External (ext1 method, 4-reference envelope Honda solmin/solmax + Bartol fmin/fmax, flag at 3% in ln):**
+  * Level: below 1 GeV the species-mean level of Pv2h is within +5.5% of the envelope edges (written expectation: +-10%,
+    met). The largest single species is +8.3% (nue, 0.11-0.16 GeV, down-going cos Z 0.6-1). P1/P2/Pv2 sit at +8 to +63%.
+  * Level at 2.5-10 GeV: -1.4 to -3.1% for all products (daemonflux's own level).
+  * Flag counts P1 / Pv2 / Pv2h: level 130/128/27, nu/nubar 49/50/20, flavour 16/19/6, U/D 0/0/0, H/V 9/11/12, a1/a0
+    12/16/16, phase 2/2/2.
+  * The hybrid does not touch the EW shape. Down-going a1/a0 is 0.03-0.04 below Honda at 0.11-0.6 GeV. Up-going 0-0.3 is
+    +0.06 to +0.11 above Honda at 0.11-0.25 GeV.
+  * H/V (down 0-0.3 over 0.6-1) is 3-7% below the envelope at 0.4-2.5 GeV. It is slightly lower than P2 because of the 0-0.2
+    cap bias in C''.
+
+### 13.5 Not established / open
+
+* The G1 low-side tolerance needs a decision. Options:
+  * accept a 2% interpolation tolerance (well below err_hybrid, 13-28% there);
+  * test at bin centres;
+  * use a finer E grid or a lower first edge, which changes the v1c grid;
+  * carry the hybrid as a smooth 1D level option in daemonflux rather than in the table. That needs a `src/daemonflux` change
+    and is not implemented.
+* The near-horizon (cos Z 0-0.2) MC vs v4 difference of 5-20%.
+* Up-going v4 rows have no MC validation.
+* sigma_had is a single-model spread that vanishes at the DDM/B_ref crossing.
+* The v1c sigma_model is kept although C'' now corrects part of the mismatch it covers, so the budget is conservative at
+  0.1-0.25 GeV.
+* C'' above 1 GeV assumes kappa/kappa_ref = 1.
+* `dlnproduct_dphi` uses E_off v3 and 3 rows per hemisphere.
+
+### 13.6 PM review (2026-11-09)
+
+* **G1 decision: the 2% low-side tolerance is accepted for the candidate.** The deviation is interpolation between bin
+  centres (0.18% at the centres) of a ratio that changes 4-10% per bin, and it is an order of magnitude below
+  `err_hybrid_rel` there (13-28%). If v2h is promoted, revisit with a finer E grid below 1 GeV or with the hybrid as a
+  smooth 1D-level option inside daemonflux (a `src/daemonflux` change, not made).
+* **Test counts, PM rerun** with `DAEMONFLUX_3D_TABLE_V1` (v1c) and `DAEMONFLUX_3D_TABLE_V2H` set: daemonflux suite
+  56 passed, 1 skipped; the mceq3d set above 77 passed, 3 skipped when run from `tools/mceq3d`, 69 passed, 11 skipped when
+  run from the repo root. The split difference is the working directory: several mceq3d tests open data files by relative
+  name and skip elsewhere. No failures either way.
+* **Checked by the PM:** v1c sha256 unchanged; factor = factor_3d x hybrid_correction exactly; factor_3d = v2 factor
+  exactly; H at cos Z 0.95 as quoted in 13.1; median relative factor_error per E bin 0.26/0.24/0.21/0.17/0.08/0.06/0.05/
+  0.05/0.05/0.05.
+* **`dlnproduct_dphi`:** the PM brief said "dlnF/dphi + dlnB_ref/dphi below the switch"; that double-counts, because fix1's
+  t5 slopes already hold B_ref fixed. The formula in 13.3 is the correct one (d ln P = d ln Phi_3D - (w Phi_df/L) d ln B_ref).
+* **Status:** candidate. v1c remains the last committed table; nothing in `src/daemonflux` changed.
