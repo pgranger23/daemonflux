@@ -167,6 +167,8 @@ EOFF_TABLE = "offaxis_excess_channel_v2.npz"
 EOFF_TABLE_FLAT = "offaxis_excess.npz"
 #: E_off v3 table (``eoff_v3.build_table``; used only with ``eoff_model="v3"``)
 EOFF_TABLE_V3 = "offaxis_excess_channel_v3.npz"
+#: E_off v4 table (``eoff_v4.build_table``; used only with ``eoff_model="v4"``)
+EOFF_TABLE_V4 = "offaxis_excess_channel_v4.npz"
 SP_LABEL = {
     "total_numu": "numu",
     "total_antinumu": "antinumu",
@@ -823,7 +825,10 @@ class MCEq3DFlux:
         band-resolved cutoff response; the joint factor is ``sum_b J_b / sum_b D_b``
         and the up-going product ``sum_b E_off_b Phi_b G_b / sum_b Phi_b``.  It needs
         the table :data:`EOFF_TABLE_V3` built for the same population
-        (``eoff_v3.build_table``); see ``$W/runs/fix1/REPORT.md``.
+        (``eoff_v3.build_table``); see ``$W/runs/fix1/REPORT.md``.  ``"v4"`` (opt-in,
+        2026-11-09) = v3 with the kernels of :mod:`eoff_v4` (all nucleon generations,
+        polarised muon decays, K -> mu muons in the mu channel) and the table
+        :data:`EOFF_TABLE_V4`; everything else as v3 (``$W/runs/fix2/REPORT.md``).
         """
         import crflux.models as crf
         from mceq3d_db import make_run
@@ -838,9 +843,9 @@ class MCEq3DFlux:
         if production not in (None, "engine"):
             raise ValueError("production must be None (historical profile) or 'engine'")
         self._prod_spec = None if production is None else "engine"
-        if eoff_model not in (None, "v2", "v3"):
-            raise ValueError("eoff_model must be None/'v2' (delivered) or 'v3'")
-        self._eoff_model = None if eoff_model in (None, "v2") else "v3"
+        if eoff_model not in (None, "v2", "v3", "v4"):
+            raise ValueError("eoff_model must be None/'v2' (delivered), 'v3' or 'v4'")
+        self._eoff_model = None if eoff_model in (None, "v2") else str(eoff_model)
         self.base_model = base_model
         # hybrid-blend centre [GeV]. Physics window: bounded above by the
         # daemonflux muon-calibration floor mapped to neutrinos
@@ -2264,6 +2269,25 @@ class MCEq3DFlux:
         import eoff_v3 as _v3
         import joint_cone as jc
 
+        if getattr(self, "_eoff_model", None) == "v4":
+            # E_off v4: zenith-node profiles and row-dependent kernels (eoff_v4)
+            import eoff_v4 as _v4
+            inp4 = _v4.engine_inputs(self, cache_dir or _CACHE_DIR)
+            prods = inp4["prods"]
+            ep = prods[0]["ep_grid"]
+            alpha = np.concatenate([[0.0], np.deg2rad(_v3.ALPHA_NODES_DEG)])
+            zb = (None if inp4["zbands"] is None else
+                  [_v4.znodes_engine(z, jc.CHANNEL_SPECIES_MAP) for z in inp4["zbands"]])
+            wf = inp4["Wfun"]
+
+            def W_row(iz, cz, b, _wf=wf, _ep=ep):
+                return {s: tuple(np.concatenate([np.zeros((len(_ep), 1)),
+                                                 _wf(iz, cz, b, jc.CHANNEL_SPECIES_MAP[s],
+                                                     c, _ep)], axis=1)
+                                 for c in _v3.CHANNELS) for s in SPECIES}
+            self._v3_memo = dict(prods=prods, kern=inp4["kern"], alpha=alpha, W=None,
+                                 ep=ep, W_row=W_row, znodes=zb)
+            return self._v3_memo
         prods = _v3.band_profiles(self, cache_dir or _CACHE_DIR)
         kern = _v3.kernels(primary=self._spec["primary"],
                            t_floor=_v3.engine_floor_edge(self))
@@ -2358,13 +2382,19 @@ class MCEq3DFlux:
                 Dsum = {s: np.zeros(len(ep)) for s in SPECIES}
                 for b in range(_v3.N_BANDS):
                     chan = {s: prods[b]["chan"][jc.CHANNEL_SPECIES_MAP[s]] for s in SPECIES}
+                    if W is None:  # v4: row-dependent kernels, zenith-node profiles
+                        Wb = inp["W_row"](iz, cz, b)
+                        znb = None if inp["znodes"] is None else inp["znodes"][b]
+                    else:
+                        Wb, znb = W[b], None
                     res = jc.delivered_joint_factor(
                         cz, [azd], prods[b], fine, rc_grid, Gz[b],
                         sigma_pi=None, sigma_k=None, channels_by_species=chan,
-                        sigma_mu_by_species=None, W_by_species=W[b], alpha_rad=alpha,
+                        sigma_mu_by_species=None, W_by_species=Wb, alpha_rad=alpha,
                         d_cone=d_cone, mu_plus=MU_PLUS, prod_frame=prod_frame,
                         h_prod_km=h_prod_km, n_beta=n_beta, n_ray=n_ray,
-                        q_cache=qc[b], rc_family=rc_family, site_lat=site_lat)
+                        q_cache=qc[b], rc_family=rc_family, site_lat=site_lat,
+                        znodes=znb)
                     for s in SPECIES:
                         Jsum[s] += res["J"][s][0]
                         Dsum[s] += res["p_axis_s"][s]
@@ -2745,15 +2775,16 @@ class MCEq3DFlux:
                 lo = max(0.1, float(np.min(rc_map)) * 0.9)
                 hi = max(lo + 0.5, float(np.max(rc_map)) * 1.05)
                 rc_grid = np.linspace(lo, hi, 12)
-        v3 = getattr(self, "_eoff_model", None) == "v3"
+        v3 = getattr(self, "_eoff_model", None) in ("v3", "v4")
         Gb_by_z = Phib_by_z = None
         if v3:
             # band-resolved cutoff response (exact, per-primary-bin Green's
             # functions); its band sum IS geomag_response's G_s
             if offaxis_table is None:
-                offaxis_table = EOFF_TABLE_V3
+                offaxis_table = (EOFF_TABLE_V4 if self._eoff_model == "v4"
+                                 else EOFF_TABLE_V3)
             if cone_sigma_scale != 1.0:
-                raise ValueError("eoff_model='v3' has sampled kernels; "
+                raise ValueError("eoff_model='v3'/'v4' has sampled kernels; "
                                  "cone_sigma_scale is not defined for it")
             G_by_z, Gb_by_z, Phib_by_z = [], [], []
             for cz in cos_zeniths:

@@ -353,8 +353,51 @@ def _interp_G(rc_vals, rc_grid, gmat):
     return (1.0 - w)[:, None] * gmat[j - 1] + w[:, None] * gmat[j]
 
 
+def ground_cos_zenith(h_cm, psi):
+    """cos of the GROUND zenith of the straight line through altitude ``h_cm`` with
+    local zenith ``psi`` (sin theta_g = (R + h) sin psi / R); 0 for lines that do
+    not reach the ground going down (psi >= 90 deg or beyond the limb)."""
+    sg = (R_EARTH_CM + np.asarray(h_cm, float)) / R_EARTH_CM * np.sin(psi)
+    ok = (np.asarray(psi) < 0.5 * np.pi) & (sg < 1.0)
+    return np.where(ok, np.sqrt(np.clip(1.0 - sg * sg, 0.0, 1.0)), 0.0)
+
+
+def znode_weights(cg, cg_nodes):
+    """Linear-in-cos(theta_g) interpolation weights ``(n_nodes, n)`` over zenith
+    nodes ``cg_nodes`` (descending cos); clamped to the end nodes."""
+    cgn = np.asarray(cg_nodes, float)
+    c = np.clip(np.ravel(cg), cgn[-1], cgn[0])
+    w = np.zeros((len(cgn), c.size))
+    if len(cgn) == 1:  # a single profile: weight 1 everywhere
+        w[0] = 1.0
+        return w
+    for i in range(len(cgn) - 1):
+        hi, lo = cgn[i], cgn[i + 1]
+        m = (c <= hi) & (c >= lo) & (w.sum(0) == 0)
+        f = (c[m] - lo) / (hi - lo)
+        w[i, m] += f
+        w[i + 1, m] += 1.0 - f
+    return w
+
+
+def _p_lookup(xv, h, psi, x_grid, ep_grid, p, znodes):
+    """``p(X, E)`` at slant depths ``xv``: the single profile (``znodes=None``, the
+    historical path) or the zenith-node interpolation of ``znodes`` (E_off v4:
+    ``dict(cg=cos(theta_g) nodes, x=[x_k], p=[p_k])``) at the ground zenith of
+    each sample's primary line (:func:`ground_cos_zenith`)."""
+    if znodes is None:
+        return ox._p_at(xv, x_grid, ep_grid, p)
+    w = znode_weights(ground_cos_zenith(h, psi), znodes["cg"])
+    out = np.zeros((np.size(xv), p.shape[1] if p is not None else znodes["p"][0].shape[1]))
+    xv = np.ravel(xv)
+    for k in range(len(znodes["cg"])):
+        if np.any(w[k] > 0):
+            out += w[k][:, None] * ox._p_at(xv, znodes["x"][k], ep_grid, znodes["p"][k])
+    return out
+
+
 def cone_production(cos_theta, alpha_rad, beta_rad, x_grid, ep_grid, p, geom,
-                    n_ray=260, ray=None):
+                    n_ray=260, ray=None, znodes=None):
     """``(q[n_alpha, n_beta, nE], q_axis[nE])`` -- depth-integrated production.
 
         q[a,b,E]  = Int dl rho(h) p(X_slant(l, psi_p(a,b,l)), E)
@@ -364,13 +407,19 @@ def cone_production(cos_theta, alpha_rad, beta_rad, x_grid, ep_grid, p, geom,
     ``X_slant`` from ``offaxis_mc``'s curved table -- so Earth-shadowed /
     sub-limb primaries get ``X = inf`` and contribute exactly zero, identically
     to ``offaxis_mc.cone_numden``.
+
+    ``znodes`` (E_off v4, default ``None`` = unchanged): zenith-dependent profiles
+    ``p(X, E; theta_g)`` interpolated between MCEq solves at ground zeniths
+    ``theta_g`` -- the historical path uses ONE profile solved at theta = 0 for
+    every primary direction, which misses the zenith dependence of the muon-decay
+    production per unit depth (``$W/runs/fix2/REPORT.md``).
     """
     h_ray, _, psi_o, w = (arrival_ray(cos_theta, n_ray=n_ray) if ray is None
                           else ray)
     h_grid, psi_grid, table = geom
     cpo, spo = np.cos(psi_o), np.sin(psi_o)
     x_o = ox._interp_xslant(h_ray, psi_o, h_grid, psi_grid, table)
-    q_axis = w @ ox._p_at(x_o, x_grid, ep_grid, p)
+    q_axis = w @ _p_lookup(x_o, h_ray, psi_o, x_grid, ep_grid, p, znodes)
     nb, nray = len(beta_rad), len(h_ray)
     q = np.zeros((len(alpha_rad), nb, len(ep_grid)))
     cb = np.cos(beta_rad)
@@ -384,25 +433,35 @@ def cone_production(cos_theta, alpha_rad, beta_rad, x_grid, ep_grid, p, geom,
         psi_p = np.arccos(np.clip(
             ca * cpo[:, None] + sa * spo[:, None] * cb[None, :], -1, 1))
         xv = ox._interp_xslant(h_rep, psi_p.ravel(), h_grid, psi_grid, table)
-        pk = ox._p_at(xv, x_grid, ep_grid, p).reshape(nray, nb, -1)
+        pk = _p_lookup(xv, h_rep, psi_p.ravel(), x_grid, ep_grid, p,
+                       znodes).reshape(nray, nb, -1)
         q[ia] = np.einsum("l,lbe->be", w, pk)
     return q, q_axis
 
 
 def cone_production_multi(cos_theta, alpha_rad, beta_rad, x_grid, ep_grid,
-                          profiles, geom, n_ray=260, ray=None):
+                          profiles, geom, n_ray=260, ray=None, znodes=None):
     """:func:`cone_production` for a LIST of production profiles at once.
 
     The cone geometry (``X_slant`` lookup, the ray quadrature) is identical for
     every profile and is by far the expensive part, so the profiles are stacked
     along the energy axis and gathered in a single pass.  Returns
     ``([q_i], [q_axis_i])``.
+
+    ``znodes`` (E_off v4, default ``None``): ``dict(cg=..., x=[x_k],
+    profiles=[[p_i at node k for i] for k])`` -- the same list at every zenith
+    node (see :func:`cone_production`).
     """
     nE = len(ep_grid)
     P = np.concatenate([np.asarray(pi, float) for pi in profiles], axis=1)
     e_stack = np.arange(P.shape[1], dtype=float) + 1.0  # shape carrier only
+    zn = None
+    if znodes is not None:
+        zn = dict(cg=np.asarray(znodes["cg"], float), x=list(znodes["x"]),
+                  p=[np.concatenate([np.asarray(pi, float) for pi in pl], axis=1)
+                     for pl in znodes["profiles"]])
     q, qa = cone_production(cos_theta, alpha_rad, beta_rad, x_grid, e_stack, P,
-                            geom, n_ray=n_ray, ray=ray)
+                            geom, n_ray=n_ray, ray=ray, znodes=zn)
     return ([q[..., i * nE:(i + 1) * nE] for i in range(len(profiles))],
             [qa[i * nE:(i + 1) * nE] for i in range(len(profiles))])
 
@@ -688,6 +747,7 @@ def delivered_joint_factor(
     renorm=None,
     alpha_rad=None,
     W_by_species=None,
+    znodes=None,
 ):
     """``{species: F[n_az, nE]}`` with ``F_s = J_s / p_axis`` -- the single joint
     integral that replaces the delivered product ``E_off x <G_s>_cone``.
@@ -700,6 +760,11 @@ def delivered_joint_factor(
     ``sigma_k`` / ``sigma_mu_by_species``.  Channel-resolved mode only.  The result
     then also carries ``J`` and ``p_axis_s`` per species so that band-stratified
     integrals can be summed (``F = sum_b J_b / sum_b p_axis_b``).
+
+    ``znodes`` (2026-11-09, E_off v4; default ``None`` = unchanged): zenith-node
+    production profiles ``dict(cg=cos(theta_g) nodes, x=[x_k], chan=[{species:
+    (p_dir, p_k, p_mu)} per node])`` replacing the single theta = 0 profile of
+    ``channels_by_species`` in the cone integral (:func:`cone_production`).
 
     This is the engine-facing entry point (``MCEq3DFlux.joint_cone_factor``); the
     diagnostic/gate entry point is :func:`joint_cone`.
@@ -799,15 +864,24 @@ def delivered_joint_factor(
            None if ray is None else id(ray))
     if alpha_rad is not None or W_by_species is not None:
         key = key + (len(alpha), float(alpha.sum()), id(prod))
+    if znodes is not None:
+        if chan is None:
+            raise ValueError("znodes needs channels_by_species")
+        key = key + ("znodes", id(znodes))
     got = None if q_cache is None else q_cache.get(key)
     if got is None:
         if chan is None:
             plist = [prod["p_tot"] - prod["p_k"], prod["p_k"]]
         else:
             plist = [pc for s in sp_order for pc in chan[s]]
+        zn = None
+        if znodes is not None:
+            zn = dict(cg=znodes["cg"], x=znodes["x"],
+                      profiles=[[pc for s in sp_order for pc in ch_k[s]]
+                                for ch_k in znodes["chan"]])
         qs, qas = cone_production_multi(cos_theta, alpha, beta, prod["x_grid"],
                                         ep_grid, plist, prod["geom"], n_ray=n_ray,
-                                        ray=ray)
+                                        ray=ray, znodes=zn)
         got = (qs, qas)
         if q_cache is not None:
             q_cache[key] = got
