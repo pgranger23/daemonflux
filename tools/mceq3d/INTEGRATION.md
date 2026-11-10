@@ -893,3 +893,210 @@ Error budget, v2h (median / max relative error; variance share of each term):
 * **`dlnproduct_dphi`:** the PM brief said "dlnF/dphi + dlnB_ref/dphi below the switch"; that double-counts, because fix1's
   t5 slopes already hold B_ref fixed. The formula in 13.3 is the correct one (d ln P = d ln Phi_3D - (w Phi_df/L) d ln B_ref).
 * **Status:** candidate. v1c remains the last committed table; nothing in `src/daemonflux` changed.
+
+## 14. Near-horizon candidate v2i (2026-11-10, CANDIDATE)
+
+File: `$W/runs/v2i/out/kamioka_3D_v2i.npz` (label `kamioka_3D_v2i`, status `candidate`), `Tabulated3DModel` format unchanged.
+It is v2h (section 13) plus three near-horizon changes found by the hzn study (`$W/runs/hzn/REPORT.md`). Builder:
+`tools/mceq3d/build_table_v2.py build-v2i` / `gates-v2i`; the correction numbers come from
+`$W/runs/v2i/scripts/c0_corrections.py` (corrections npz, sha256 recorded in the table). v2h is untouched and still the reference
+candidate. sha256: v2i `e4029e6c...27e3be5`, corrections `a5fb8fe3...42e200a` (full values in 14.5).
+
+### 14.1 The hzn finding (and its caveats)
+
+* 0.10-0.40 GeV: the MC is right and the engine (E_off v4) is too high at the horizon. The multigeneration part of the v4 kernel
+  inside the factorised cone integral over-broadens at grazing angles. Engine-only horizon departure relative to the zenith-profile
+  variant Z at 0.10-0.16 GeV, rows 0.05 / 0.15: multigeneration +13.3% / +10.2%, net v4 +8.7% / +5.6% [m]. The MC's field-free
+  shape sides with Z (-0.008 +- 0.028 / +0.025 +- 0.014) and rejects v4 (-0.096 +- 0.028 / -0.031 +- 0.014) [m].
+  Honda H/V and E-W a1/a0 support this independently, but Honda and Bartol differ by 24/15/6% in H/V at 0.1-0.4 GeV, so that check is coarse.
+* Strength: 3.4 sigma at 0.10-0.16 GeV, row 0.05; about 2 sigma at 0.25-0.40; not discriminating at 0.16-0.25. The finding is
+  POST HOC relative to the pre-registered criterion (by the letter only Bd passes). The mechanism is NOT established.
+* 0.4-1.0 GeV: MC and engine agree within about 3%, not arbitrated. 1.0-1.6 GeV: most of the -7% is a definition effect on the
+  MC-table side (C'' divided the horizon rows by 1 + b with b from the "0-0.2" cap band, measured with the 1/cos flux weight; a
+  heavy-tail artefact), the rest about -6% at row 0.05 is a bend residual at 1-2 sigma, not closed.
+* Up-going near-horizon cells are engine-only and carry the same v4 excess. The correction is a template exp(-D[E_off_v4/E_off_Z]);
+  Z is not a validated engine (its cos Z >= 0.2 pass is a cancellation). It is an engineering patch backed by the MC's field-free
+  measurement at 0.10-0.16 GeV. The mirror-cone (cutoff part) and far-side in-atmosphere bend of the up-going cells are untested.
+* Beyond Kamioka: every site's up-going hemisphere is engine-only, so the v4 horizon defect should be fixed in the engine (or masked
+  at |cos Z| < 0.3) before the engine route is used elsewhere.
+
+### 14.2 The v2i definition
+
+factor_3d_v2i = factor_3d_v2h x corr_v2i; factor_v2i = factor_3d_v2i x hybrid_correction (unchanged).
+`corr_v2i` (4, 10, 20) = `corr_fb` x `corr_cup`, azimuth-independent, exactly 1.0 (bit-identical cells) outside the 80 touched cells.
+Rows: cos Z +0.05 / +0.15 are table indices 10 / 11 (source 0), -0.05 / -0.15 are 9 / 8 (source 3); verified from `cosz_edges` and `source`.
+
+**(a) Cap-bias key, MC horizon rows** (source 0, cos Z 0.05 / 0.15, E bins 0-6), all species and azimuths:
+f_b = (1 + b1)/(1 + b0), b = production-B cap bias of the "0-0.2" band, b1 = measure 1 (1/cos flux weights, what C'' used), b0 = measure 0
+(crossing count). Re-run of `hzn/scripts/a15_b_measure0.py`. b1 equals `Cpp_parts_b` of v2h at these rows and `lowE/s1d_cap.npz`
+(max difference 0.0, species-independent). E bin 7 unchanged.
+
+| E bin / GeV | 0 / 0.10-0.16 | 1 / 0.16-0.25 | 2 / 0.25-0.40 | 3 / 0.40-0.63 | 4 / 0.63-1.0 | 5 / 1.0-1.6 | 6 / 1.6-2.5 |
+|---|---|---|---|---|---|---|---|
+| b1 | +0.0677 | +0.0622 | +0.0364 | +0.0413 | +0.0297 | +0.0506 | +0.0145 |
+| b0 | +0.0726 | +0.0559 | +0.0342 | +0.0266 | +0.0133 | +0.0264 | +0.0178 |
+| sigma_b0 | 0.0021 | 0.0024 | 0.0029 | 0.0034 | 0.0043 | 0.0054 | 0.0070 |
+| f_b | 0.9955 | 1.0060 | 1.0021 | 1.0143 | 1.0162 | 1.0235 | 0.9967 |
+| err_capb_rel | 0.0068 | 0.0077 | 0.0087 | 0.0126 | 0.0152 | 0.0200 | 0.0211 |
+
+**(c) Up-going near-horizon correction** (source 3, cos Z -0.05 / -0.15), E bins 0-2; c_up from `hzn/out/b4_upgoing_template.npz`
+(template exp(-D[E_off_v4/E_off_Z]), species-resolved; mc = MC field-free measurement, species-mean used):
+
+| cos Z | species | 0.10-0.16 | 0.16-0.25 | 0.25-0.40 |
+|---|---|---|---|---|
+| -0.05 | nue | 0.9073 | 0.9133 | 0.9283 |
+| -0.05 | antinue | 0.9084 | 0.9043 | 0.9233 |
+| -0.05 | numu | 0.9214 | 0.9391 | 0.9773 |
+| -0.05 | antinumu | 0.9282 | 0.9468 | 0.9820 |
+| -0.15 | all (species-mean MC) | 0.9701 | 0.9676 | 0.9791 |
+
+E bins 3-4 (0.4-1 GeV): no correction (evidence not established), only an error. E bins 5-9: nothing.
+
+### 14.3 Errors
+
+`factor_error` stays absolute. (factor_error/factor)^2 = err_v1c^2 + err_Cpp^2 + err_engine_spread^2 + err_horizon^2 + err_hybrid^2
++ err_capb^2 + err_upcorr^2, all stored as relative arrays (4, 10, 20, 12); v2h's `err_horizon_rel` is kept as `err_horizon_rel_v2h`.
+Cells outside the touched set keep v2h's `factor_error` bit for bit.
+
+* `err_capb_rel` (MC horizon cells, E bins 0-6): sqrt((|f_b - 1|/2)^2 + (3 sigma_b0)^2). The 3 is because hzn found jackknife errors
+  of b to be 2-4x the per-primary ones. Table above.
+* `err_horizon_rel` re-assigned on the MC rows 0.05 / 0.15, azimuth- and species-independent. D_f = ln f - <ln f> over rows 0.35-0.95
+  (hzn `a2_decomp.py`), used as |D| relative error. E bins 0-2: |species-mean D_q| of the engine-Z decomposition
+  (`a2_decomp_Z.npz`); bins 3-6: |species-mean (D_Bd + D_Cut)| of the v4 decomposition (`a2_decomp.npz`). E bin 7: v2h's value.
+  Exception: antinue 0.25-0.40 GeV, row 0.05 keeps its v2h value (unexplained cell).
+
+| E bin / GeV | 0 | 1 | 2 | 3 | 4 | 5 | 6 |
+|---|---|---|---|---|---|---|---|
+| row 0.05 | 0.0069 | 0.0157 | 0.0281 | 0.0433 | 0.0904 | 0.0339 | 0.0266 |
+| row 0.15 | 0.0198 | 0.0336 | 0.0041 | 0.0266 | 0.0331 | 0.0140 | 0.0565 |
+
+* `err_upcorr_rel` (up-going rows -0.05 / -0.15): E bins 0-2 sqrt(se_mean^2 + (mean_k template - mean_k mc)^2), se_mean = sqrt(sum_k
+  mc_err^2)/4; E bins 3-4 |1 - mean_k template|; species-independent.
+
+| E bin / GeV | 0 / 0.10-0.16 | 1 / 0.16-0.25 | 2 / 0.25-0.40 | 3 / 0.40-0.63 | 4 / 0.63-1.0 |
+|---|---|---|---|---|---|
+| row -0.05 | 0.0263 | 0.0804 | 0.0643 | 0.0171 | 0.0107 |
+| row -0.15 | 0.0294 | 0.0192 | 0.0159 | 0.0040 | 0.0013 |
+
+  The se_mean here uses the quadrature sum / 4 as specified (0.0257 / 0.0603 / 0.0458 at row -0.05; 0.0159 / 0.0156 / 0.0159 at
+  row -0.15). hzn's log quotes the jackknife error of the species mean, 0.028 / 0.065 / 0.049 and 0.014 / 0.016 / 0.019, slightly different
+  because the species are correlated in the jackknife.
+* `dlnproduct_dphi` is unchanged from v2h (the corrections are not propagated into the solar response); its note says so.
+
+Relative factor_error (median / max over species x azimuth), v2h -> v2i, E bins 0-7:
+
+| row cos Z | E0 0.10-0.16 | E1 0.16-0.25 | E2 0.25-0.40 | E3 0.40-0.63 | E4 0.63-1.00 | E5 1.00-1.58 | E6 1.58-2.51 | E7 2.51-3.98 |
+|---|---|---|---|---|---|---|---|---|
+| +0.05 | 0.233/0.288 -> 0.225/0.260 | 0.225/0.272 -> 0.218/0.256 | 0.229/0.325 -> 0.231/0.325 | 0.173/0.500 -> 0.174/0.502 | 0.095/0.260 -> 0.132/0.276 | 0.114/0.338 -> 0.094/0.337 | 0.104/0.343 -> 0.105/0.344 | 0.151/0.251 -> 0.151/0.251 |
+| +0.15 | 0.227/0.251 -> 0.228/0.252 | 0.218/0.249 -> 0.220/0.251 | 0.215/0.235 -> 0.214/0.232 | 0.156/0.210 -> 0.159/0.212 | 0.066/0.123 -> 0.075/0.128 | 0.096/0.129 -> 0.061/0.075 | 0.062/0.085 -> 0.082/0.102 | 0.095/0.154 -> 0.095/0.154 |
+| -0.05 | 0.263/0.299 -> 0.265/0.300 | 0.239/0.272 -> 0.252/0.284 | 0.214/0.316 -> 0.224/0.323 | 0.209/0.304 -> 0.210/0.305 | 0.148/0.379 -> 0.148/0.379 | 0.166/0.535 -> 0.166/0.535 | 0.154/0.496 -> 0.154/0.496 | 0.062/0.138 -> 0.062/0.138 |
+| -0.15 | 0.256/0.305 -> 0.258/0.306 | 0.231/0.295 -> 0.232/0.296 | 0.209/0.374 -> 0.210/0.374 | 0.188/0.456 -> 0.188/0.456 | 0.127/0.579 -> 0.127/0.579 | 0.104/0.729 -> 0.104/0.729 | 0.121/0.535 -> 0.121/0.535 | 0.055/0.125 -> 0.055/0.125 |
+
+### 14.4 Gates and external results
+
+* V1 identities (`out/gates_V1V2.md`, `build_table_v2.py gates-v2i`) PASS: factor_3d_v2i / factor_3d_v2h / corr_v2i - 1 = 2.2e-16;
+  factor = factor_3d x hybrid_correction exactly; factor_3d bit-identical where corr = 1; hybrid_correction bit-identical; 80 of 800
+  (species, E, cos Z) cells have corr != 1, all inside the expected set.
+* V2 errors PASS: max |(factor_error/factor)^2 / sum(terms^2) - 1| = 6.7e-16; factor_error changes in 1152 cells, all touched
+  (672 MC horizon + 480 up-going).
+* V3 tests: daemonflux `pytest tests` with `DAEMONFLUX_3D_TABLE_V1` (v1c), `_V2H`, `_V2I`: 57 passed, 1 skipped (was 56 / 1; the new
+  `test_kamioka_v2i_table_if_available`). mceq3d from `tools/mceq3d`: 78 passed, 3 skipped (was 77 / 3; set: test_mceq3d_flux, test_mceq3d_deterministic, test_mceq3d_production, test_offaxis_mc, test_joint_cone + ../../tests/test_tabulated3d.py, run from `tools/mceq3d` with `MC3D_POOL_CACHE`; the 3 skips need a cached real production profile or `DAEMONFLUX_3D_TABLE`).
+* V4 external (Honda solmin/solmax, Bartol fmin/fmax; scripts copied from v2h's x1-x4 into `$W/runs/v2i/scripts`, plus `x5_near_horizon.py`).
+  Flag count (outside the envelope by > 0.03 in ln, a1/a0 by > 0.05, phase > 15 deg), all tags:
+
+| tag | P1 (v1c) | Pv2h | Pv2i |
+|---|---|---|---|
+| H/V | 9 | 12 | 7 |
+| a1/a0 | 12 | 16 | 16 |
+| flavour | 16 | 6 | 5 |
+| level | 130 | 27 | 23 |
+| nu/nubar | 49 | 20 | 20 |
+| phase | 2 | 2 | 2 |
+| total | 218 | 83 | 73 |
+
+  The x2 flag set has no row-resolved U/D at |cos Z| < 0.3; the near-horizon detail below is from `x5_near_horizon.py` (`out/near_horizon.md`).
+
+Near-horizon detail, species means, E bands 0.11-1 GeV (Pv2h -> Pv2i; Honda/Bartol values in `out/near_horizon.md`). Expectations were
+stated before the run; no tuning.
+
+1. **Down-going unchanged below 0.4 GeV within 1%: MET.** Max |Pv2i/Pv2h - 1| = 0.41% over all 10 rows x 4 species x 3 bands (0.40% /
+   0.41% at rows 0.05 / 0.15; this is f_b = 0.9955 / 1.006).
+2. **Up-going H/V at |cos Z| < 0.2 below 0.4 GeV moves 3-8% toward Honda: PARTLY MET.**
+   * Row 0.05: Pv2i/Pv2h - 1 = -8.3% / -7.4% / -4.8% at 0.11-0.16 / 0.16-0.25 / 0.25-0.40 GeV (H/V 2.100 -> 1.927, 1.759 -> 1.629,
+     1.452 -> 1.383; Honda 1.951-2.085, 1.627-1.722, 1.377-1.438). The gap to Honda's mean was 3.9 / 4.8 / 3.1%, so the move closes it
+     and overshoots by 1-4%; Pv2i sits at or just below Honda's lower edge but inside the Honda-Bartol envelope.
+   * Row 0.15: -3.0% / -3.1% / -2.0%. Pv2h was already below the Honda mean there (Honda higher by 3.7 / 2.2 / 2.5%), so this moves AWAY
+     from Honda (Pv2i is 4.8-4.9% below Honda's lower edge at 0.11-0.25 GeV, inside the envelope only because Bartol is lower).
+3. **U/D at |cos Z| 0.05 below 0.4 GeV drops about 8%: MET at the two lowest bands** (-8.0% / -7.7%; -5.1% at 0.25-0.40 GeV).
+   **WARNING, new U/D flags against the Honda/Bartol envelope** (ln distance beyond the nearest edge, > 0.03 flagged):
+
+| U/D cell | Pv2h | Pv2i |
+|---|---|---|
+| 0.05, 0.11-0.16 GeV | +0.014 (inside) | **-0.046** (NEW, now below the envelope: U/D 0.996 vs 1.043-1.067) |
+| 0.05, 0.16-0.25 GeV | +0.030 | -0.026 |
+| 0.05, 0.25-0.40 GeV | +0.037 | inside |
+| 0.05, 0.40-0.63 GeV | +0.042 | +0.023 |
+| 0.15, 0.11-0.16 GeV | -0.035 | **-0.063** (worse) |
+| 0.15, 0.16-0.25 GeV | inside | **-0.033** (NEW) |
+
+   Net: 4 flagged U/D cells in Pv2h (3 high, 1 low), 3 in Pv2i (all low): the high-side excess at 0.25-0.63 GeV and row 0.05 is gone,
+   but the 0.1-0.25 GeV cells overshoot to the low side. The x2 flag set does not include these rows (it has U/D only for |cos Z|
+   0.3-1), so the flag table above is unaffected.
+
+Other: down-going H/V at rows 0.05 / 0.15 rises 1.3-1.7% at 0.40-1 GeV (f_b) and keeps one flag per row at 0.63-1.0 GeV (-0.044) and
+at 0.40-0.63 GeV row 0.15 (-0.034); E-W a1/a0 is unchanged to 0.001 (corrections are azimuth-independent): down-going rows still 0.01-0.04 below the Honda mean, up-going
+0.02-0.14 above it at 0.11-0.63 GeV (pre-existing in v2h). Species-mean level excursions below 1 GeV stay within 5.5% of the envelope
+(Pv2h 5.5%).
+
+### 14.5 Reproduce and sha256
+
+    source $W/runs/dbv142/env.sh; export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 \
+        MCEQ3D_CACHE=$W/mceq3d_cache TMPDIR=$W/tmp MCEQ3D_NJOBS=4 HZN=$W/runs/hzn V2I=$W/runs/v2i
+    $PY $W/runs/v2i/scripts/c0_corrections.py                       # -> out/corrections_v2i.npz
+    cd $R/tools/mceq3d
+    $PY build_table_v2.py build-v2i [out/corrections_v2i.npz]       # -> out/kamioka_3D_v2i.npz (needs v2h sha below)
+    $PY build_table_v2.py gates-v2i                                  # -> out/gates_V1V2.md
+    cd $W/runs/v2i; $PY scripts/x1_eval_products.py Pv2i; for x in x2_analyze x3_summarize x4_tables x5_near_horizon; do $PY scripts/$x.py; done
+    DAEMONFLUX_3D_TABLE_V1=... _V2H=... _V2I=$W/runs/v2i/out/kamioka_3D_v2i.npz $PY -m pytest tests
+
+Full sha256 (computed):
+
+    e4029e6ce3baede6e4634dcdb34f9f54ebde3ecb7b716f93cb892353127e3be5  out/kamioka_3D_v2i.npz
+    a5fb8fe3608fb115c0d1b4fa58d60936bdbfaf349d85058d95f10c5f642e200a  out/corrections_v2i.npz
+    e3db406733bbe64fd9534c3366214b423f622f6a702b95518e4731a342a711ce  ../v2h/out/kamioka_3D_v2h.npz
+    ffa41e0c4edb26f9b1a00bf0e1a250a68a227c86f03310dbabc085eab280d511  ../integ/out/kamioka_3D_v1c.npz
+    a8b50a860df456e8dcc85f86e02afcaa7e7b82106514c096e6fe1a3ed2ad69dd  ../hzn/out/a2_decomp_Z.npz
+    287b053803ead7bb86c4315aeb830fd919b9602676fdabcbe032133e94846e3a  ../hzn/out/a2_decomp.npz
+    7b6bf0eacad101109f78edccdeca0b251c2bb6896304095f7cb08e04afba1183  ../hzn/out/b4_upgoing_template.npz
+    d855057d057af77e8e6b41491cc0cddf6a0f52a6b536d1c50eff7f78d3f4e224  ../m4/sky/B_total.npz
+    f760923535b9c93c60fe9feda96a00fc94301e9ed4fca9eda7a6a72b096ff1ca  ../lowE/out/s1d_cap.npz
+    9179f71be6aa074a777ccccd3fa9c1f741ddaddc18372ffedb7b044f82b921bd  ../hzn/scripts/a15_b_measure0.py
+    d86abe5bc729085ea2d5a5a1a15624b1aab52e9d2d18b7cb45f54a23647d3c6a  ../hzn/scripts/hzn_lib.py
+
+### 14.6 PM review (2026-11-10)
+
+* **PM checks:**
+  * sha256 of v2i, the corrections file, v2h, v2 and v1c recomputed: all as in 14.5.
+  * Identities recomputed independently: factor_3d_v2i / factor_3d_v2h / corr_v2i - 1 <= 2.2e-16; cells outside the 80 touched ones are
+    bit-identical; factor = factor_3d x hybrid_correction exactly; (factor_error/factor)^2 = sum of the seven terms to 6.7e-16.
+  * f_b, c_up and the touched rows (10/11 down, 9/8 up) are as specified.
+  * daemonflux tests rerun with `DAEMONFLUX_3D_TABLE_V1/_V2H/_V2I`: 57 passed, 1 skipped.
+* **Spec issue (PM):** se_mean = sqrt(sum_k mc_err^2)/4 does not reproduce hzn's jackknife species-mean errors exactly (6-10% low at
+  row -0.05, slightly high at -0.15). The effect on err_upcorr_rel is <= 0.3 points. Left as built.
+* **The pre-stated U/D warning fired.**
+  * Background: Honda and Bartol agree on U/D at the horizon to about 2%, although they differ by up to 24% in H/V. In those models the
+    up/down-symmetric geometry largely cancels in U/D, and what remains is mainly the cutoff asymmetry.
+  * In this table the two hemispheres come from different calculations (MC down, engine up), so U/D is a direct test of their consistency.
+  * Before the correction, the up-going cells carried the v4 excess of about +8% at |cos Z| 0.05. Yet U/D was only +1.4 to +4.2% high at
+    row 0.05, and already 3.5% low at row 0.15, 0.11-0.16 GeV.
+  * With the excess removed, U/D is 3-6% below the envelope at 0.1-0.25 GeV in both rows.
+  * Reading: the up-going near-horizon cells very likely carry a second error of the opposite sign, about 4-7% at 0.1-0.25 GeV.
+    Untested candidates: the v1c-era mirror-cone ratio, the single far-side cutoff, R_up, and the missing far-side in-atmosphere bend.
+    This is the situation the lowE study warned about: two up-going errors partly cancel, so do not fix one alone.
+  * The correction does improve 0.25-0.63 GeV at row 0.05 (three high-side flags removed).
+* **PM recommendation:**
+  * Keep changes (a) and (b) on the down-going MC cells; they are not in question.
+  * Do not apply the up-going correction (c) as a central value. Carry it as an uncertainty, |1 - c_up| combined with err_upcorr_rel,
+    until the up-going near-horizon side is tested directly (a far-side check, estimated earlier at 7-29 core-h).
+  * Decision pending with the PI. As built, v2i applies (c).
+* **Status:** candidate. v2h stays the reference candidate until the PI decides. v1c is unchanged; nothing in `src/daemonflux` changed.

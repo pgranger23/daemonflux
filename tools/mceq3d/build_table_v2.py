@@ -1,4 +1,4 @@
-"""Kamioka 3D table v2 and its hybrid-level twin v2h (candidate).
+"""Kamioka 3D table v2, its hybrid-level twin v2h and the near-horizon v2i (candidate).
 
     python build_table_v2.py regress   rebuild the v1c factor blocks from v1c's inputs
                                        with this code path (must agree bit for bit)
@@ -7,7 +7,16 @@
     python build_table_v2.py gates     gate G1 (hybrid identities through daemonflux)
                                        -> $W/runs/v2h/out/gates_G1.md
 
-Draft documentation: ``$W/runs/v2h/INTEGRATION_13_draft.md`` (INTEGRATION.md section 13).
+    python build_table_v2.py build-v2i [CORR.npz]
+                                       $W/runs/v2i/out/kamioka_3D_v2i.npz = v2h x the
+                                       near-horizon corrections (refuses to overwrite;
+                                       CORR defaults to $V2I_CORR or
+                                       $W/runs/v2i/out/corrections_v2i.npz)
+    python build_table_v2.py gates-v2i identities (V1) and errors (V2) of v2i vs v2h
+                                       -> $W/runs/v2i/out/gates_V1V2.md
+
+Draft documentation: ``$W/runs/v2h/INTEGRATION_13_draft.md`` (INTEGRATION.md section
+13), ``$W/runs/v2i/INTEGRATION_14_draft.md`` (section 14, v2i).
 
 v2 = the v1c pipeline (``diag_v1.cmd_build_v1b("v1c")``: same grid, R_up, sigma_R,
 sigma_model) with
@@ -32,6 +41,16 @@ Errors (relative, in quadrature; ``factor_error`` stays absolute): v1c terms (v1
 factor_error / factor), C'' (MC cells), engine spread |F_v4 - F_v3| / F_v4 (engine
 cells), near-horizon MC / v4 term (MC cells, cos Z 0-0.2), and for v2h only the
 hybrid-level term [(1 - w) B_ref / L] sigma_B, sigma_B^2 = sigma_had^2 + sigma_prim^2.
+
+v2i = v2h with three near-horizon changes from the hzn study (``$W/runs/hzn/REPORT.md``;
+numbers produced by ``$W/runs/v2i/scripts/c0_corrections.py`` -> corrections npz, whose
+sha256 is recorded): (a) MC horizon cells (source 0, cos Z 0.05 / 0.15, E bins 0-6)
+x f_b = (1 + b1) / (1 + b0), the cap bias of C'' re-measured without the 1/cos weight,
+new term err_capb_rel; (b) err_horizon_rel re-assigned on those cells from hzn's
+decomposition; (c) up-going source-3 cells at cos Z -0.05 / -0.15, E bins 0-2, x c_up
+(template / MC field-free measurement), new term err_upcorr_rel (E bins 3-4: no
+correction, error only).  factor_3d_v2i = factor_3d_v2h x corr_v2i, factor = factor_3d x
+hybrid_correction as before.
 """
 
 import importlib.util  # noqa: F401  (before any MCEq import)
@@ -52,6 +71,8 @@ FIX1 = os.path.join(W, "runs", "fix1", "out")
 FIX2 = os.path.join(W, "runs", "fix2", "out")
 LOWE = os.path.join(W, "runs", "lowE", "out")
 V2H = os.path.join(W, "runs", "v2h", "out")
+V2I = os.path.join(W, "runs", "v2i", "out")
+V2H_SHA256 = "e3db406733bbe64fd9534c3366214b423f622f6a702b95518e4731a342a711ce"
 INTEG = V.OUT
 SP = D.MC_SPECIES  # nue antinue numu antinumu (table order)
 ESP = D.SPECIES  # total_<sp>, engine order = SP order
@@ -751,5 +772,268 @@ def cmd_gates():
     print("\n".join(L))
 
 
+# ----------------------------------------------------------------------------- v2i
+#: hzn arrays hold E bins 0-6 and the |cos Z| rows 0.05, 0.15
+V2I_NE = 7
+ROW_DN = (10, 11)  # cos Z +0.05, +0.15 (source 0 below 3.98 GeV)
+ROW_UP = (9, 8)  # cos Z -0.05, -0.15 (source 3)
+
+PROV_V2I = (
+    "Kamioka 3D factor v2i = v2h x corr_v2i (near-horizon changes from the hzn study, "
+    "$W/runs/hzn/REPORT.md): (a) MC horizon cells (source 0, cos Z 0.05/0.15, E bins "
+    "0-6) x f_b = (1 + b1)/(1 + b0), b1 = measure-1 and b0 = measure-0 cap bias of the "
+    "0-0.2 band (production B), because C'' divided these rows by the 1/cos-heavy-tail "
+    "b1; (b) err_horizon_rel re-assigned on those cells (E bins 0-2 |species-mean "
+    "D_q| of the engine-Z decomposition, bins 3-6 |species-mean (D_Bd + D_Cut)| of the "
+    "v4 decomposition, antinue 0.25-0.40 GeV row 0.05 keeps the v2h value); (c) "
+    "up-going source-3 cells at cos Z -0.05/-0.15: E bins 0-2 x c_up (row -0.05 "
+    "species-resolved v4/Z template, row -0.15 species-mean MC field-free), E bins 3-4 "
+    "no correction but an error |1 - mean template|. factor_3d = factor_3d_v2h x "
+    "corr_v2i, factor = factor_3d x hybrid_correction (unchanged). factor_error = "
+    "factor x sqrt(err_v1c_rel^2 + err_Cpp_rel^2 + err_engine_spread_rel^2 + "
+    "err_horizon_rel^2 + err_hybrid_rel^2 + err_capb_rel^2 + err_upcorr_rel^2). "
+    "Tool: tools/mceq3d/build_table_v2.py build-v2i; doc: INTEGRATION.md section 14 "
+    "(draft $W/runs/v2i/INTEGRATION_14_draft.md). v2h provenance follows. "
+)
+CORR_NOTE = (
+    "corr_v2i (4, 10, 20) = corr_fb x corr_cup, azimuth-independent; exactly 1.0 "
+    "outside the MC horizon rows (E bins 0-6) and the up-going rows -0.05/-0.15 "
+    "(E bins 0-2)"
+)
+ERR_CAPB_NOTE = (
+    "MC horizon cells (source 0, cos Z 0.05/0.15, E bins 0-6): sqrt((|f_b - 1|/2)^2 + "
+    "(3 sigma_b0)^2); sigma_b0 = fit error of b0, x3 because hzn found jackknife "
+    "errors of b to be 2-4x the per-primary ones; 0 elsewhere"
+)
+ERR_UPCORR_NOTE = (
+    "up-going cos Z -0.05/-0.15: E bins 0-2 sqrt(se_mean^2 + (mean_k template - "
+    "mean_k mc)^2), se_mean = sqrt(sum_k mc_err^2)/4; E bins 3-4 |1 - mean_k "
+    "template| (no correction applied, evidence not established); 0 elsewhere"
+)
+HOR_NOTE_V2I = (
+    "MC cells cos Z 0.05/0.15, E bins 0-6 (replaces the v2h term, kept as "
+    "err_horizon_rel_v2h): E bins 0-2 |species-mean D_q| (hzn a2_decomp_Z), bins 3-6 "
+    "|species-mean (D_Bd + D_Cut)| (hzn a2_decomp, v4), D_f = ln f - mean over rows "
+    "0.35-0.95 of ln f; azimuth- and species-independent except antinue 0.25-0.40 GeV "
+    "row 0.05 (v2h value kept); E bin 7 as v2h"
+)
+DPHI_NOTE_V2I = (
+    "UNCHANGED from v2h (v2i's corrections are not propagated into the solar "
+    "response). " + DPHI_NOTE
+)
+V2I_TERMS = (
+    "err_v1c_rel",
+    "err_Cpp_rel",
+    "err_engine_spread_rel",
+    "err_horizon_rel",
+    "err_hybrid_rel",
+    "err_capb_rel",
+    "err_upcorr_rel",
+)
+
+
+def v2i_arrays(h, c):
+    """All new v2i arrays from the v2h npz ``h`` and the corrections npz ``c``."""
+    assert np.array_equal(h["species"], c["species"])
+    assert np.allclose(h["cosz_edges"][8:13], [-0.2, -0.1, 0.0, 0.1, 0.2])
+    src = h["source"]
+    assert np.all(src[:V2I_NE, list(ROW_DN)] == 0) and np.all(src[:, list(ROW_UP)] == 3)
+    ne = h["factor"].shape[1]
+    corr_fb = np.ones((4, ne, 20))
+    corr_cup = np.ones((4, ne, 20))
+    capb = np.zeros((4, ne, 20))
+    upc = np.zeros((4, ne, 20))
+    hor = h["err_horizon_rel"].copy()
+    for j, (rd, ru) in enumerate(zip(ROW_DN, ROW_UP)):
+        corr_fb[:, :V2I_NE, rd] = c["f_b"][None, :]
+        capb[:, :V2I_NE, rd] = c["err_capb"][None, :]
+        corr_cup[:, :3, ru] = c["c_up"][:, :3, j]
+        upc[:, :5, ru] = c["err_upcorr"][None, :5, j]
+        new = np.broadcast_to(c["err_horizon"][None, :, j], (4, V2I_NE)).copy()
+        keep = c["keep_v2h_mask"][:, :, j]
+        new[keep] = h["err_horizon_rel"][:, :V2I_NE, rd, 0][keep]
+        hor[:, :V2I_NE, rd, :] = new[..., None]
+    corr = corr_fb * corr_cup
+    f3d = h["factor_3d"] * corr[..., None]
+    fac = f3d * h["hybrid_correction"][..., None]
+    rel2 = (
+        h["err_v1c_rel"] ** 2
+        + h["err_Cpp_rel"] ** 2
+        + h["err_engine_spread_rel"] ** 2
+        + hor**2
+        + h["err_hybrid_rel"] ** 2
+        + capb[..., None] ** 2
+        + upc[..., None] ** 2
+    )
+    touched = (
+        (corr != 1.0)[..., None]
+        | (capb != 0)[..., None]
+        | (upc != 0)[..., None]
+        | (hor != h["err_horizon_rel"])
+    )
+    ferr = np.where(touched, fac * np.sqrt(rel2), h["factor_error"])
+    assert np.all(np.isfinite(fac)) and np.all(fac > 0) and np.all(np.isfinite(ferr))
+    return dict(
+        corr=corr,
+        corr_fb=corr_fb,
+        corr_cup=corr_cup,
+        capb=capb,
+        upc=upc,
+        hor=hor,
+        f3d=f3d,
+        fac=fac,
+        ferr=ferr,
+    )
+
+
+def _load_h():
+    p = os.path.join(V2H, "kamioka_3D_v2h.npz")
+    if sha(p) != V2H_SHA256:
+        raise RuntimeError(f"v2h sha256 differs from {V2H_SHA256}: {p}")
+    return p, np.load(p, allow_pickle=False)
+
+
+def _corr_path():
+    if len(sys.argv) > 2:
+        return sys.argv[2]
+    return os.environ.get("V2I_CORR", os.path.join(V2I, "corrections_v2i.npz"))
+
+
+def cmd_build_v2i():
+    ph, h = _load_h()
+    pc = _corr_path()
+    c = np.load(pc, allow_pickle=False)
+    out = os.path.join(V2I, "kamioka_3D_v2i.npz")
+    if os.path.exists(out):
+        raise FileExistsError(out)
+    os.makedirs(V2I, exist_ok=True)
+    a = v2i_arrays(h, c)
+    shape = a["fac"].shape
+    d = {k: h[k] for k in h.files}
+    for k in ("factor", "factor_error", "factor_3d", "err_horizon_rel"):
+        d[k + "_v2h"] = h[k]
+    d.update(
+        factor=a["fac"],
+        factor_error=a["ferr"],
+        factor_3d=a["f3d"],
+        label="kamioka_3D_v2i",
+        status="candidate",
+        provenance=PROV_V2I + str(h["provenance"]),
+        build_date=datetime.now().isoformat(timespec="seconds"),
+        code_git_rev=git_rev(),
+        corr_v2i=a["corr"],
+        corr_fb=a["corr_fb"],
+        corr_cup=a["corr_cup"],
+        corr_v2i_note=CORR_NOTE,
+        err_horizon_rel=a["hor"],
+        err_horizon_note=HOR_NOTE_V2I,
+        err_horizon_note_v2h=str(h["err_horizon_note"]),
+        err_capb_rel=np.broadcast_to(a["capb"][..., None], shape).copy(),
+        err_capb_note=ERR_CAPB_NOTE,
+        err_upcorr_rel=np.broadcast_to(a["upc"][..., None], shape).copy(),
+        err_upcorr_note=ERR_UPCORR_NOTE,
+        dlnproduct_dphi_note=DPHI_NOTE_V2I,
+        input_sha256_v2h=sha(ph),
+        input_sha256_corrections_v2i=sha(pc),
+    )
+    for k in c.files:
+        if k.startswith("input_sha256_"):
+            d["input_sha256_hzn_" + k[len("input_sha256_") :]] = str(c[k])
+        elif k in ("b1", "b0", "sigma_b0", "f_b", "c_up", "err_upcorr", "err_capb"):
+            d["v2i_" + k] = c[k]
+    np.savez(out, **d)
+    print("wrote", out, sha(out))
+
+
+def cmd_gates_v2i():
+    ph, h = _load_h()
+    p = os.path.join(V2I, "kamioka_3D_v2i.npz")
+    n = np.load(p, allow_pickle=False)
+    L = ["# v2i gates V1 (identities) and V2 (errors)", "", f"table sha256 {sha(p)}"]
+    L.append("")
+    ok = True
+    # V1
+    corr = n["corr_v2i"]
+    one = corr == 1.0
+    one4 = np.broadcast_to(one[..., None], n["factor"].shape)
+    same = np.array_equal(n["factor_3d"][one4], h["factor_3d"][one4])
+    dev = np.abs(n["factor_3d"] / h["factor_3d"] / corr[..., None] - 1).max()
+    fh = np.abs(n["factor"] / (n["factor_3d"] * n["hybrid_correction"][..., None]) - 1)
+    hsame = np.array_equal(n["hybrid_correction"], h["hybrid_correction"])
+    exp = np.zeros(corr.shape, bool)
+    exp[:, :V2I_NE, list(ROW_DN)] = True
+    exp[:, :3, list(ROW_UP)] = True
+    L += ["## V1 identities", ""]
+    for name, val, good in (
+        ("max |factor_3d_v2i / factor_3d_v2h / corr_v2i - 1|", dev, dev < 1e-14),
+        ("max |factor / (factor_3d x hybrid_correction) - 1|", fh.max(), fh.max() == 0),
+        ("factor_3d bit-identical to v2h where corr == 1.0", float(same), same),
+        ("hybrid_correction bit-identical to v2h", float(hsame), hsame),
+        ("corr != 1 only inside the expected set", float(np.all(~one <= exp)), True),
+    ):
+        good = bool(good) if name[:4] != "corr" else bool(np.all(~one <= exp))
+        L.append(f"- {name}: {val:.3g} -> {'PASS' if good else 'FAIL'}")
+        ok &= good
+    L.append(f"- cells with corr != 1: {int((~one).sum())} of {one.size}")
+    # V2
+    s2 = sum(n[t] ** 2 for t in V2I_TERMS)
+    dd = np.abs((n["factor_error"] / n["factor"]) ** 2 / s2 - 1).max()
+    chg = n["factor_error"] != h["factor_error"]
+    touch = (
+        (n["err_horizon_rel"] != h["err_horizon_rel"])
+        | (n["err_capb_rel"] != 0)
+        | (n["err_upcorr_rel"] != 0)
+        | (corr != 1.0)[..., None]
+    )
+    chg_ok = bool(np.all(chg <= touch))
+    unch = all(
+        np.array_equal(n[k], h[k])
+        for k in (
+            "err_v1c_rel",
+            "err_Cpp_rel",
+            "err_engine_spread_rel",
+            "err_hybrid_rel",
+            "dlnproduct_dphi",
+        )
+    )
+    L += ["", "## V2 errors", ""]
+    L.append(
+        f"- max |(factor_error/factor)^2 / sum(terms^2) - 1| = {dd:.2e} -> "
+        f"{'PASS' if dd <= 1e-12 else 'FAIL'}"
+    )
+    L.append(f"- factor_error changes only in touched cells ({int(chg.sum())} cells "
+             f"changed): {'PASS' if chg_ok else 'FAIL'}")
+    L.append(f"- unchanged v2h arrays bit-identical: {'PASS' if unch else 'FAIL'}")
+    ok &= bool(dd <= 1e-12 and chg_ok and unch)
+    L += [
+        "",
+        "Relative factor_error (median / max over species x azimuth), v2h -> v2i",
+        "",
+        "| row cos Z | "
+        + " | ".join(f"E{i} {E_EDGES[i]:.2f}-{E_EDGES[i + 1]:.2f}" for i in range(8))
+        + " |",
+        "|---|" + "---|" * 8,
+    ]
+    for r, lab in ((10, "+0.05"), (11, "+0.15"), (9, "-0.05"), (8, "-0.15")):
+        cells = []
+        for i in range(8):
+            b = h["factor_error"][:, i, r] / h["factor"][:, i, r]
+            a2 = n["factor_error"][:, i, r] / n["factor"][:, i, r]
+            cells.append(
+                f"{np.median(b):.3f}/{b.max():.3f} -> "
+                f"{np.median(a2):.3f}/{a2.max():.3f}"
+            )
+        L.append(f"| {lab} | " + " | ".join(cells) + " |")
+    L += ["", f"**V1+V2 overall: {'PASS' if ok else 'FAIL'}**", ""]
+    open(os.path.join(V2I, "gates_V1V2.md"), "w").write("\n".join(L))
+    print("\n".join(L))
+
+
 if __name__ == "__main__":
-    {"regress": cmd_regress, "build": cmd_build, "gates": cmd_gates}[sys.argv[1]]()
+    {
+        "regress": cmd_regress,
+        "build": cmd_build,
+        "gates": cmd_gates,
+        "build-v2i": cmd_build_v2i,
+        "gates-v2i": cmd_gates_v2i,
+    }[sys.argv[1]]()

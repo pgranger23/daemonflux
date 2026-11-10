@@ -477,3 +477,71 @@ def test_kamioka_v2h_table_if_available(flux_factory):
         assert np.all(np.isfinite(f)) and np.all(f > 0)
         ge = geo.geomagnetic_factor_error(np.array([1.5]), z, "numu", azimuth_deg=10.0)
         assert np.all(np.isfinite(ge)) and np.all(ge > 0)
+
+
+def test_kamioka_v2i_table_if_available(flux_factory):
+    """The candidate Kamioka near-horizon table v2i (if present): loads, carries the
+    v2i provenance and correction map, factor = factor_3d x hybrid_correction,
+    factor_3d = factor_3d_v2h x corr_v2i with corr_v2i == 1 outside the touched cells,
+    evaluates down- and up-going with finite positive values and errors."""
+    import os
+
+    path = os.environ.get("DAEMONFLUX_3D_TABLE_V2I", "")
+    if not path or not os.path.exists(path):
+        pytest.skip("set DAEMONFLUX_3D_TABLE_V2I to kamioka_3D_v2i.npz to run this")
+    d = np.load(path, allow_pickle=False)
+    for k in (
+        "corr_v2i",
+        "corr_fb",
+        "corr_cup",
+        "factor_3d",
+        "factor_3d_v2h",
+        "hybrid_correction",
+        "err_capb_rel",
+        "err_upcorr_rel",
+        "err_horizon_rel_v2h",
+        "input_sha256_v2h",
+        "input_sha256_corrections_v2i",
+        "dlnproduct_dphi",
+    ):
+        assert k in d.files
+    npt.assert_allclose(
+        d["factor"], d["factor_3d"] * d["hybrid_correction"][..., None], rtol=1e-12
+    )
+    corr = d["corr_v2i"]
+    npt.assert_allclose(
+        d["factor_3d"], d["factor_3d_v2h"] * corr[..., None], rtol=1e-14
+    )
+    npt.assert_array_equal(corr, d["corr_fb"] * d["corr_cup"])
+    touched = np.zeros(corr.shape, dtype=bool)
+    touched[:, :7, [10, 11]] = True  # MC horizon rows cos Z 0.05, 0.15 (E bins 0-6)
+    touched[:, :3, [8, 9]] = True  # up-going rows cos Z -0.15, -0.05 (E bins 0-2)
+    assert np.all(corr[~touched] == 1.0)
+    assert np.all(corr[touched] > 0.85) and np.all(corr[touched] < 1.1)
+    for k in ("err_capb_rel", "err_upcorr_rel"):
+        assert np.all(d[k] >= 0) and np.all(np.isfinite(d[k]))
+    terms = (
+        "err_v1c_rel",
+        "err_Cpp_rel",
+        "err_engine_spread_rel",
+        "err_horizon_rel",
+        "err_hybrid_rel",
+        "err_capb_rel",
+        "err_upcorr_rel",
+    )
+    npt.assert_allclose(
+        (d["factor_error"] / d["factor"]) ** 2,
+        sum(d[t] ** 2 for t in terms),
+        rtol=1e-12,
+    )
+    m = Tabulated3DModel(path)
+    assert m.label == "kamioka_3D_v2i"
+    assert m.status == "candidate"
+    assert np.all(m._df > 0) and np.all(np.isfinite(m._f))
+    geo = flux_factory()
+    geo.set_geomagnetic_model(m)
+    for z in (10.0, 170.0):  # the bundled test splines cover zenith 0-18 deg
+        f = geo.flux(np.array([1.5, 5.0]), z, "numuflux", azimuth_deg=100.0)
+        assert np.all(np.isfinite(f)) and np.all(f > 0)
+        ge = geo.geomagnetic_factor_error(np.array([1.5]), z, "numu", azimuth_deg=10.0)
+        assert np.all(np.isfinite(ge)) and np.all(ge > 0)
