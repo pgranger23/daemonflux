@@ -1369,3 +1369,63 @@ low.
     -0.05/-0.15 carry the error-only correction of v2j.
   * Before the engine is used on its own near the horizon at any site, it needs a model that passes the gate, or the masked or
     error-carried treatment of v2j.
+
+### 16.9 The effective energy-loss density: bounded follow-up (2026-11-12, STOPPED; draft for the PM)
+
+Run directory `$W/runs/mgfix`: `PREREG.md` addendum D, `HANDBACK_v6.md`, scripts `toy3d_mu.py`, `d1_densities.py`,
+`d2_redecay.py`, `d2_score.py`, `c4_external_hor.py`. No repo change: `tools/mceq3d` is as committed in 39a23f0, so v4 and v5 are
+unchanged.
+
+**Question.** v5 (section 16) evaluates the mu-channel energy-loss kernel at the vertex (decay) density of every cone sample. It
+fixes the horizon direction but over-corrects at cos Z 0.2-0.6 and 0.4-1 GeV. Is another physical density the right effective
+one? The candidates, fixed in advance, are:
+* (a) the muon's birth point;
+* (b) its decay point (v5);
+* (c) the path average, column / length;
+* (d) v4's on-axis row density.
+
+**Measurements** (a tagged toy with the MC's physics and every pion tracked: 0.40M primaries, 1.41M muons recorded, 0.70 core-h):
+* **Where the samples are.** At |cos Z| 0.05, (a), (b) and (c) agree to 3-14% in every alpha bin. v4's row density (d) is right
+  for alpha < 20 deg and 2-3x too low beyond.
+  At |cos Z| 0.45-0.65:
+  * (a) is 0.57-0.91 x (b), and (c) is 0.78-0.96 x (b): downward muons come from thinner air;
+  * (d) is 1.4-2.2x above the samples' geometric-mean densities.
+* **Paired re-decay.** Every recorded muon was re-decayed by the v4 kernel machinery at a constant density: the family nodes, and
+  each definition per muon.
+  * The control (re-decay at the realised decay energy) reproduces the realised kernel: chi2/ndf 0.64 over 106 sensitive cells.
+  * The pre-registered criterion: rho*, where the node scan crosses the realised <cos alpha>, must lie within ln 1.4 of <ln rho_D>
+    in >= 75% of the sensitive weight in each of five muon-direction bands.
+  * **No definition passes it** (a 0.34-0.46, b 0.34-0.62, c 0.34-0.57, d 0.00-0.41). **STOP: no v6.**
+* **Why the test cannot decide.** The per-cell resolution of ln rho* (median 0.32) equals the tolerance, and the candidate
+  densities differ by <= 25%.
+* **Supplementary, not pre-registered.** The direct chi2/ndf of each definition's re-decayed kernel against the control is 1.07 (a),
+  0.83 (b), 1.01 (c) and 6.67 (d).
+  * So the vertex density used by v5 is as good as the path average at the kernel level.
+  * v5's over-correction at intermediate zenith is therefore not a density-definition issue. Its cause is open.
+  * Untested candidates: the generator family's kernel-physics offsets at 0.4-1 GeV (+2-4%, mgfix I2), the zenith-node profiles, the
+    -2% product-form residual at 0.4-1 GeV, and the cutoff part of the joint integral.
+* **Ground-reaching muons** carry <= 0.3% of the mu-channel weight at muon cos zenith < 0.3, and 0.4-3.5% at 0.6-0.7 (rising with
+  E). They shift <cos alpha> by <= 0.001: negligible for the kernel.
+* **Prereg slip, reported.** The addendum's target formula had the offset sign reversed. The intended target (offset removed) and
+  the literal one were both scored, and neither matches.
+
+**External metric (iii'), for future E_off gates.** Defined in addendum D.4. The engine enters only the horizon rows 0.05 / 0.15,
+so V (cos Z 0.6-1) is the MC product in both products and the engine's R1 deficit at the vertical drops out.
+* The test: Delta = ln(H/V)_ENG - ln(H/V)_MC, species mean, against half the Honda/Bartol spread (floor 0.03), plus the E-W a1/a0
+  rule.
+* Reference values: v4 5/10, v5 9/10, v4c 8/10 H/V cells; E-W fails for all (v5 -0.037 / -0.023 against 0.026 / 0.022).
+
+**Status.** v5 stays an opt-in diagnostic (section 16). No v6. The engine's near-horizon E_off remains as in 16: the v4c toy factor
+is the available interim.
+
+### 16.10 PM note on 16.9 (2026-11-12)
+
+* The stop rule was applied as written. The repo was confirmed unchanged by the PM: only the mcup agent's tools/mc3d edits are
+  open. CPU was 0.70 core-h.
+* The supplementary result (v5's decay density is as good as the path average at the kernel level, chi2/ndf 0.83 vs 1.01) narrows
+  the question. v5's mid-zenith over-correction comes from something other than the density definition. Candidates are listed
+  in 16.9.
+* Under the horizon-relative metric (iii'), v5 passes 9/10 H/V cells and v4 5/10. This metric was defined after v5's numbers were
+  known, so it is a reference value, not a pass.
+* No further engine iteration is scheduled until the PI decides. The engine remains unfit for use on its own near the horizon,
+  so v2j's treatment applies.
