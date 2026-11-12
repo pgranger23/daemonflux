@@ -22,6 +22,13 @@ cannot make a neutrino above ``e_nu_min`` at the detector:
   component feeds nothing back into the hadronic cascade in MCEq either, so
   dropping it keeps the two calculations comparable.  (Charm matters only above
   ~10^5 GeV, far outside the 3D/1D table's range.)
+
+The thresholds above are the ``legacy`` scheme (the default).  They keep the
+neutrino of the two-body decay itself but drop charged pions too early for the
+muon-decay-chain neutrinos (E_nu <= (E_mu + p_mu)/2 <= (E_pi + p_pi)/2): the
+opt-in ``chain`` scheme (``thresholds(e_nu_min, scheme="chain")``, ``sky3d
+--thresholds chain``) drops a particle only if no chain from it reaches
+``e_nu_min``; see ``runs/pithr/DERIVATION.md`` and ``THRESHOLD_SCHEMES``.
 """
 
 from __future__ import annotations
@@ -51,7 +58,80 @@ _R_PI = (M_MU / MASS[211]) ** 2
 _R_K = (M_MU / MASS[321]) ** 2
 
 
-def thresholds(e_nu_min):
+#: thresholds schemes (``thresholds(..., scheme=)``, ``Config(thr_scheme=)``,
+#: ``sky3d --thresholds``); ``legacy`` is the default and reproduces every
+#: earlier run bit for bit
+THRESHOLD_SCHEMES = ("legacy", "chain")
+
+#: Fermi momentum [GeV/c] granted to a nuclear target nucleon when bounding
+#: the pion-production threshold of the ``chain`` scheme
+_P_FERMI = 0.30
+
+#: E + p of the hardest pion of an annihilation at rest (2 m_N)
+_EP_ANNIHIL = 2.0 * M_N
+
+
+def _ep_two_body(m0, m1, m2):
+    """E* + p* of daughter 1 of the two-body decay m0 -> m1 m2 (rest frame)."""
+    p = np.sqrt((m0 ** 2 - (m1 + m2) ** 2) * (m0 ** 2 - (m1 - m2) ** 2)) \
+        / (2.0 * m0)
+    return np.sqrt(p * p + m1 * m1) + p
+
+
+#: pion of Lambda -> p pi-
+_EP_LAMBDA = _ep_two_body(MASS[3122], MASS[211], MASS[2212])
+
+
+def _e_min_ep(mass, a):
+    """Smallest total energy of a particle of ``mass`` with ``E + p >= a``."""
+    if a <= mass:                    # E + p >= m always
+        return mass
+    return (a * a + mass * mass) / (2.0 * a)
+
+
+def _nucleon_pion_threshold(e_nu_min, p_fermi=_P_FERMI):
+    """Smallest nucleon total energy at which ``N + N_target -> N N pi`` can
+    give a pion with ``E_pi + p_pi >= 2 e_nu_min`` (the pion's muon chain then
+    reaches ``e_nu_min``; ``chain`` scheme derivation, DERIVATION.md sec. 5).
+    The target nucleon moves head-on with ``p_fermi``."""
+    a = 2.0 * e_nu_min
+    m_pi, m_n = MASS[211], M_N
+    e_t = np.sqrt(m_n * m_n + p_fermi * p_fermi)
+
+    def ok(e):
+        p = np.sqrt(max(e * e - m_n * m_n, 0.0))
+        s = 2.0 * m_n * m_n + 2.0 * (e * e_t + p * p_fermi)
+        rs = np.sqrt(s)
+        if rs < 2.0 * m_n + m_pi:
+            return False
+        e_star = (s + m_pi * m_pi - 4.0 * m_n * m_n) / (2.0 * rs)
+        p_star = np.sqrt(max(e_star * e_star - m_pi * m_pi, 0.0))
+        boost = (e + e_t + p - p_fermi) / rs          # e^{y_cm}
+        return (e_star + p_star) * boost >= a
+
+    lo, hi = m_n, m_n + 100.0 * max(e_nu_min, 1.0)
+    for _ in range(80):
+        mid = 0.5 * (lo + hi)
+        lo, hi = (lo, mid) if ok(mid) else (mid, hi)
+    return hi
+
+
+def thresholds(e_nu_min, scheme="legacy"):
+    """Tracking thresholds (total energy) per species, ``{pdg: E_min}``.
+
+    ``scheme="legacy"`` (default): the thresholds of every run up to mcup.
+    ``scheme="chain"``: a particle is dropped only if no decay / interaction
+    chain from it can give a neutrino above ``e_nu_min`` (DERIVATION.md).  The
+    key identity is that a two-body daughter of a parent of mass M has
+    ``E* + p* <= M`` in the parent frame, so ``E + p`` of any daughter chain
+    is bounded by the parent's ``E + p``, and a neutrino has ``E_nu <=
+    (E_mu + p_mu) / 2``.  pi+-: ``E + p >= 2 e_nu_min``.
+    """
+    if scheme not in THRESHOLD_SCHEMES:
+        raise ValueError(f"unknown thresholds scheme {scheme!r}; "
+                         f"use one of {THRESHOLD_SCHEMES}")
+    if scheme == "chain":
+        return _thresholds_chain(e_nu_min)
     t = {}
     for p in (211, -211):
         t[p] = e_nu_min / (1.0 - _R_PI)
@@ -69,10 +149,40 @@ def thresholds(e_nu_min):
     return t
 
 
+def _thresholds_chain(e_nu_min):
+    a = 2.0 * e_nu_min
+    t = {}
+    # pi+-: E_nu <= (E_pi + p_pi)/2 through pi -> mu -> nu (and pi -> e nu)
+    for p in (211, -211):
+        t[p] = _e_min_ep(MASS[211], a)
+    # K+-, K_L, K_S: K -> mu nu, mu -> nu reaches (E_K + p_K)/2 exactly, and
+    # K -> pi chains are bounded by it too; for e_nu_min < m_K/2 no kaon is
+    # ever dropped
+    for p in (321, -321, 130, 310):
+        t[p] = _e_min_ep(MASS[int(p)], a)
+    # mu+-: kept as in ``legacy`` (a superset of the exact E + p >= 2 e_nu_min,
+    # so the muon records are those of ``legacy``)
+    for p in (13, -13):
+        t[p] = max(M_MU, e_nu_min)
+    # nucleons: pion production N N -> N N pi with a Fermi-moving target; the
+    # legacy value is kept where it is lower (never raise a bound)
+    e_n = _nucleon_pion_threshold(e_nu_min)
+    for p in (2212, 2112):
+        t[p] = min(e_n, M_N + e_nu_min / (1.0 - _R_PI))
+    # antinucleons and anti-Lambda annihilate (even at rest) into pions with
+    # E + p up to ~2 m_N (energy conservation, 2-pion final state)
+    for p in (-2212, -2112):
+        t[p] = _e_min_ep(MASS[p], a * MASS[p] / _EP_ANNIHIL)
+    t[-3122] = _e_min_ep(MASS[3122], a * MASS[3122] / _EP_ANNIHIL)
+    # Lambda -> p pi-, n pi0: the pion has E* + p* = _EP_LAMBDA (< M_Lambda)
+    t[3122] = _e_min_ep(MASS[3122], a * MASS[3122] / _EP_LAMBDA)
+    return t
+
+
 class Config:
     def __init__(self, collinear=True, bfield=None, energy_loss=True,
                  e_nu_min=0.1, decay_mode="kinematic", polarisation=True,
-                 max_particles=200000):
+                 max_particles=200000, thr_scheme="legacy"):
         self.collinear = bool(collinear)
         self.bfield = bfield
         self.energy_loss = bool(energy_loss)
@@ -80,7 +190,8 @@ class Config:
         self.decay_mode = decay_mode
         self.polarisation = bool(polarisation)
         self.max_particles = int(max_particles)
-        self.thr = thresholds(e_nu_min)
+        self.thr_scheme = str(thr_scheme)
+        self.thr = thresholds(e_nu_min, self.thr_scheme)
 
 
 # ---------------------------------------------------------------------------

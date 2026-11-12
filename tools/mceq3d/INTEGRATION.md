@@ -1709,3 +1709,35 @@ the two differ by up to 0.011 (E6 at cos Z -0.05: 1.006 arithmetic, 0.995 geomet
   * U/D at |cos Z| 0.15, 0.11-0.16 GeV, 3-4% below Honda solmax.
   * cos Z -0.25 and E >= 1.58 GeV up-going are still engine cells.
   * nue/antinue up-going at 0.4-0.63 GeV.
+
+## 19. MC charged-pion threshold fix, opt-in (run pithr, 2026-11-12)
+
+`shower.thresholds` dropped pi+- below e_nu_min/(1 - m_mu^2/m_pi^2) = 0.234 GeV,
+which bounds only the neutrino of the two-body decay; the muon of the decay still reaches E_nu <= (E_mu + p_mu)/2 <= (E_pi + p_pi)/2
+(0.211 GeV at the cut), so the MC lost muon-chain neutrinos up to ~0.21 GeV (the toy soft-ancestry share of the 0.10-0.16 GeV flux:
+4.5 / 2.6 / 1.9 percent at |cos Z| 0.05 / 0.55 / 0.95). The opt-in scheme `thresholds(e_nu_min, scheme="chain")` / `sky3d --thresholds chain`
+keeps a particle unless no chain can give e_nu_min (pi: E + p >= 2 e_nu_min, i.e. 0.1487 GeV; kaons, antinucleons, Lambda never dropped;
+muons as before; nucleons Fermi-smeared NNpi threshold 1.045 GeV, inert). Default `legacy`: production B and mcup unchanged (bit-identity run:
+0 differing arrays). Field-free validation, 445 k primaries per scheme: R_s(chain/legacy), 0.10-0.16 GeV = 1.097 +- 0.068 / 1.023 +- 0.027 /
+1.020 +- 0.025 at |cos Z| 0.05 / 0.55 / 0.95 (pre-registered 1.047 / 1.027 / 1.019), 1 within errors above 0.25 GeV; the 1D tally gains the same neutrinos
+(R_t 0.86 +- 0.14 / 0.97 +- 0.04 / 1.05 +- 0.03), the net s/t factor is 1.28 / 1.05 / 0.97 with errors 0.05-0.15, i.e. consistent with 1 and not resolved
+better than ~5 percent. Cost of `chain`: +19 percent CPU per primary in the field-free low-energy sample. To be applied to the table
+only after a larger run (the 1 percent target needs ~10x the statistics in the s/t ratio, unless the s-t covariance is exploited).
+
+### 19.1 PM review (2026-11-12)
+
+* **PM checks:**
+  * The diff of `shower.py` was read. `legacy` is the unchanged code path, and `chain` is a separate function.
+  * The pion bound was checked by hand. For pi -> mu nu, E*_mu + p*_mu = m_pi, so E_mu + p_mu <= E_pi + p_pi. Muon decay gives
+    E_nu <= (E_mu + p_mu)/2. The threshold is therefore E_pi >= (a^2 + m_pi^2)/(2a) with a = 2 e_nu_min, which is 0.1487 GeV.
+  * test_thresholds and test_decays were rerun: 27 passed.
+* **Validation:** the s ratio chain/legacy at 0.10-0.16 GeV is 1.097 +- 0.068 / 1.023 +- 0.027 / 1.020 +- 0.025 at
+  |cos Z| 0.05 / 0.55 / 0.95. This matches the toy's soft-ancestry share, as pre-registered.
+* **Not resolved:** the net table effect s/t. It is consistent with 1 at 4-15% precision, so no correction is applied. The tables
+  keep `err_softpi_rel` (v2k/v2l).
+* **Finding (method):** the per-neutrino `sq` errors understate the noise by 3.6-4.4x because neutrinos of one shower are
+  correlated. The table pipeline uses the task-group jackknife, which is not affected (`analyse_sky.py` explains why). Any
+  quick-look error built from `*sq` arrays must not be quoted.
+* **CPU:** `chain` costs 1.03x (production-like sample) to 1.19x (field-free) per primary.
+* **Use:** every new production MC run should use `--thresholds chain`. Production B and mcup stay as they are (legacy). Correcting
+  the existing MC cells needs either a rerun or a resolved s/t measurement.

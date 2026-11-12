@@ -167,7 +167,8 @@ class Options:
                  trace_batch=10000, max_files_per_group=64, keep_cfiles=True,
                  keep_reals=False, reanchor=False, mu_bend="full", crn=False,
                  primary_energy=None, mu_cf=False, primary_model="H3A",
-                 resim_rmin=0.0, resim_groups=None, upgoing=False):
+                 resim_rmin=0.0, resim_groups=None, upgoing=False,
+                 thresholds="legacy"):
         self.cutoff = bool(cutoff)
         self.bend_primary = bool(bend_primary)
         self.muon_field = bool(muon_field)
@@ -221,6 +222,11 @@ class Options:
         #: its ray with the ground sphere -- the up-going tallies ``us``/``un``
         #: and ``hinj_up``; off by default (signature and outputs unchanged)
         self.upgoing = bool(upgoing)
+        #: opt-in (run pithr): tracking-threshold scheme, ``legacy`` (default,
+        #: every earlier run) or ``chain`` (``shower.thresholds``)
+        if thresholds not in ("legacy", "chain"):
+            raise ValueError("thresholds must be 'legacy' or 'chain'")
+        self.thresholds = str(thresholds)
 
     def signature(self):
         s = [self.cutoff, self.bend_primary, self.muon_field, self.r_thr,
@@ -236,6 +242,8 @@ class Options:
                                             for g in (self.resim_groups or ())]
         if self.upgoing:                       # existing manifests stay valid
             s += [-2.0, 1.0]
+        if self.thresholds != "legacy":         # existing manifests stay valid
+            s += [-3.0, 1.0]
         return np.array(s, float)
 
     def needs_field(self):
@@ -554,7 +562,7 @@ def _init(cache, n_pool, e_nu_min, lat, lon, caps, model, opts, fieldgrid,
                                     xs="mceq", readonly=True)
     _CTX["cfg"] = Config(collinear=False, bfield=None, energy_loss=True,
                          e_nu_min=e_nu_min, decay_mode="kinematic",
-                         polarisation=True)
+                         polarisation=True, thr_scheme=opts.thresholds)
     _CTX["caps"] = NestedCaps(lat, lon, caps)
     _CTX["model"] = prim.primary_model(model)
     prim.ENERGY_CONVENTION = opts.primary_energy
@@ -1396,6 +1404,8 @@ def trace_replay_task(job):
         dd["m3b_counts"] = np.array([cnt[c] for c in COUNT_NAMES])
         dd["m3b_count_names"] = np.array(COUNT_NAMES)
         dd["m3b_opts"] = opts.signature()
+        if opts.thresholds != "legacy":      # legacy outputs stay unchanged
+            dd["thr_scheme"] = np.array([opts.thresholds])
         sky._atomic_savez(tfile(outdir, tag, ti), dd, compressed=True)
         out.append((ti, float(meta[7])))
         if not opts.keep_cfiles:
@@ -1517,7 +1527,8 @@ def run(nshower, nproc, groups, theta_inj, caps, cache, opts, n_pool=2000,
            "model": np.array([model]), "seed0": np.array([seed0]),
            "chunk": np.array([chunk]), "collinear": np.array([False]),
            "field_model": np.array([opts.model]),
-           "date": np.array([opts.date.isoformat()])}
+           "date": np.array([opts.date.isoformat()]),
+           "thr_scheme": np.array([opts.thresholds])}
     sky._atomic_savez(mpath, man)
     fld = None
     if opts.needs_field():
@@ -1653,6 +1664,11 @@ def main(argv=None):
                          "its ray with the ground sphere: the up-going "
                          "tallies us/un and hinj_up (opt-in; off: outputs "
                          "unchanged)")
+    ap.add_argument("--thresholds", default="legacy",
+                    choices=("legacy", "chain"),
+                    help="tracking-threshold scheme: legacy (default, all "
+                         "earlier runs) or chain (keeps charged pions whose "
+                         "muon-decay neutrino can exceed e_nu_min)")
     ap.add_argument("--merge-only", action="store_true")
     a = ap.parse_args(argv)
     if a.merge_only:
@@ -1665,7 +1681,8 @@ def main(argv=None):
                    reanchor=a.reanchor, mu_bend=a.mu_bend, crn=a.crn,
                    primary_energy=a.primary_energy, mu_cf=a.mu_cf,
                    primary_model=a.model, resim_rmin=a.resim_rmin, keep_cfiles=not a.no_keep_cfiles,
-                   resim_groups=a.resim_groups, upgoing=a.upgoing)
+                   resim_groups=a.resim_groups, upgoing=a.upgoing,
+                   thresholds=a.thresholds)
     alloc = None
     if a.alloc:
         d = np.load(a.alloc)
