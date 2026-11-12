@@ -15,6 +15,18 @@
     python build_table_v2.py gates-v2i identities (V1) and errors (V2) of v2i vs v2h
                                        -> $W/runs/v2i/out/gates_V1V2.md
 
+    python build_table_v2.py build-v2j [CORR.npz]
+                                       $W/runs/v2j/out/kamioka_3D_v2j.npz = v2i with the
+                                       up-going correction carried as an error only
+                                       (c_up = 1, species-resolved err_upcorr; refuses
+                                       to overwrite; CORR defaults to $V2J_CORR or
+                                       $W/runs/v2j/out/corrections_v2j.npz)
+    python build_table_v2.py gates-v2j identities and errors of v2j vs v2h and v2i
+                                       -> $W/runs/v2j/out/gates.md (section "builder")
+
+``$V2_OUTDIR`` redirects the output directory of build-v2i / build-v2j (reproducibility
+checks); the default is the run directory of the table.
+
 Draft documentation: ``$W/runs/v2h/INTEGRATION_13_draft.md`` (INTEGRATION.md section
 13), ``$W/runs/v2i/INTEGRATION_14_draft.md`` (section 14, v2i).
 
@@ -51,6 +63,12 @@ decomposition; (c) up-going source-3 cells at cos Z -0.05 / -0.15, E bins 0-2, x
 (template / MC field-free measurement), new term err_upcorr_rel (E bins 3-4: no
 correction, error only).  factor_3d_v2i = factor_3d_v2h x corr_v2i, factor = factor_3d x
 hybrid_correction as before.
+
+v2j = v2i with (c) not applied as a central value: c_up = 1 (the up-going cells keep
+their v2h values) and err_upcorr_rel becomes species-resolved, carrying |1 - c_up_v2i|
+in quadrature with the jackknife error of the species-mean MC ratio and the
+template-MC difference (``$W/runs/v2j/scripts/c0_corrections_v2j.py``); (a) and
+(b) are v2i's.
 """
 
 import importlib.util  # noqa: F401  (before any MCEq import)
@@ -72,6 +90,7 @@ FIX2 = os.path.join(W, "runs", "fix2", "out")
 LOWE = os.path.join(W, "runs", "lowE", "out")
 V2H = os.path.join(W, "runs", "v2h", "out")
 V2I = os.path.join(W, "runs", "v2i", "out")
+V2J = os.path.join(W, "runs", "v2j", "out")
 V2H_SHA256 = "e3db406733bbe64fd9534c3366214b423f622f6a702b95518e4731a342a711ce"
 INTEG = V.OUT
 SP = D.MC_SPECIES  # nue antinue numu antinumu (table order)
@@ -821,6 +840,35 @@ DPHI_NOTE_V2I = (
     "UNCHANGED from v2h (v2i's corrections are not propagated into the solar "
     "response). " + DPHI_NOTE
 )
+PROV_V2J = (
+    "Kamioka 3D factor v2j = v2i with the up-going correction (c) carried as an "
+    "uncertainty only: (a) cap-bias factor f_b on the MC horizon cells (source 0, "
+    "cos Z 0.05/0.15, E bins 0-6) and (b) err_horizon_rel as in v2i; (c) c_up = 1 "
+    "everywhere, "
+    "i.e. the up-going source-3 cells (cos Z -0.05/-0.15) keep their v2h factor_3d and "
+    "factor, and err_upcorr_rel becomes species-resolved: E bins 0-2 sqrt(se_jk^2 + "
+    "(mean_k template - mean_k mc)^2 + (1 - c_up_v2i[species])^2), se_jk = jackknife "
+    "error of the species-mean MC field-free ratio (hzn b4 machinery), E bins 3-4 "
+    "|1 - mean_k template| as in v2i. Reason: with c_up applied v2i's U/D at |cos Z| "
+    "0.05/0.15 fell 3-6% below the Honda/Bartol envelope at 0.1-0.25 GeV "
+    "(INTEGRATION.md 14.6). factor = factor_3d x hybrid_correction (unchanged). "
+    "factor_error = factor x sqrt(err_v1c_rel^2 + err_Cpp_rel^2 + "
+    "err_engine_spread_rel^2 + err_horizon_rel^2 + err_hybrid_rel^2 + err_capb_rel^2 + "
+    "err_upcorr_rel^2). Tool: tools/mceq3d/build_table_v2.py build-v2j; doc: "
+    "INTEGRATION.md section 15 (draft $W/runs/v2j/INTEGRATION_15_draft.md). v2h "
+    "provenance follows. "
+)
+CORR_NOTE_V2J = (
+    "corr_v2j (4, 10, 20) = corr_fb x corr_cup, azimuth-independent; corr_cup == 1 "
+    "everywhere (up-going correction carried as an error only); != 1 only on the MC "
+    "horizon rows (E bins 0-6)"
+)
+ERR_UPCORR_NOTE_V2J = (
+    "up-going cos Z -0.05/-0.15, species-resolved: E bins 0-2 sqrt(se_jk^2 + "
+    "(mean_k template - mean_k mc)^2 + (1 - c_up_v2i[species])^2), se_jk = jackknife "
+    "error of the species-mean MC field-free ratio; E bins 3-4 |1 - mean_k template|; "
+    "0 elsewhere. No correction is applied (c_up = 1)"
+)
 V2I_TERMS = (
     "err_v1c_rel",
     "err_Cpp_rel",
@@ -833,7 +881,11 @@ V2I_TERMS = (
 
 
 def v2i_arrays(h, c):
-    """All new v2i arrays from the v2h npz ``h`` and the corrections npz ``c``."""
+    """All new v2i / v2j arrays from the v2h npz ``h`` and the corrections npz ``c``.
+
+    ``c["err_upcorr"]`` may have shape (7, 2) (v2i) or (4, 7, 2) (v2j,
+    species-resolved).
+    """
     assert np.array_equal(h["species"], c["species"])
     assert np.allclose(h["cosz_edges"][8:13], [-0.2, -0.1, 0.0, 0.1, 0.2])
     src = h["source"]
@@ -844,11 +896,15 @@ def v2i_arrays(h, c):
     capb = np.zeros((4, ne, 20))
     upc = np.zeros((4, ne, 20))
     hor = h["err_horizon_rel"].copy()
+    # (7, 2) species-mean or (4, 7, 2) species-resolved
+    eu = np.asarray(c["err_upcorr"])
+    assert eu.shape in ((V2I_NE, 2), (4, V2I_NE, 2))
+    eu = np.broadcast_to(eu, (4, V2I_NE, 2))
     for j, (rd, ru) in enumerate(zip(ROW_DN, ROW_UP)):
         corr_fb[:, :V2I_NE, rd] = c["f_b"][None, :]
         capb[:, :V2I_NE, rd] = c["err_capb"][None, :]
         corr_cup[:, :3, ru] = c["c_up"][:, :3, j]
-        upc[:, :5, ru] = c["err_upcorr"][None, :5, j]
+        upc[:, :5, ru] = eu[:, :5, j]
         new = np.broadcast_to(c["err_horizon"][None, :, j], (4, V2I_NE)).copy()
         keep = c["keep_v2h_mask"][:, :, j]
         new[keep] = h["err_horizon_rel"][:, :V2I_NE, rd, 0][keep]
@@ -893,21 +949,30 @@ def _load_h():
     return p, np.load(p, allow_pickle=False)
 
 
-def _corr_path():
+def _corr_path(env, default):
     if len(sys.argv) > 2:
         return sys.argv[2]
-    return os.environ.get("V2I_CORR", os.path.join(V2I, "corrections_v2i.npz"))
+    return os.environ.get(env, default)
 
 
-def cmd_build_v2i():
+def _build_candidate(tag):
+    """Build kamioka_3D_<tag>.npz (tag v2i or v2j) from v2h and the corrections npz."""
+    v2j = tag == "v2j"
     ph, h = _load_h()
-    pc = _corr_path()
+    own = V2J if v2j else V2I
+    pc = _corr_path(
+        "V2J_CORR" if v2j else "V2I_CORR",
+        os.path.join(own, "corrections_%s.npz" % tag),
+    )
     c = np.load(pc, allow_pickle=False)
-    out = os.path.join(V2I, "kamioka_3D_v2i.npz")
+    outdir = os.environ.get("V2_OUTDIR", own)
+    out = os.path.join(outdir, "kamioka_3D_%s.npz" % tag)
     if os.path.exists(out):
         raise FileExistsError(out)
-    os.makedirs(V2I, exist_ok=True)
+    os.makedirs(outdir, exist_ok=True)
     a = v2i_arrays(h, c)
+    if v2j:
+        assert np.all(a["corr_cup"] == 1.0)
     shape = a["fac"].shape
     d = {k: h[k] for k in h.files}
     for k in ("factor", "factor_error", "factor_3d", "err_horizon_rel"):
@@ -916,33 +981,43 @@ def cmd_build_v2i():
         factor=a["fac"],
         factor_error=a["ferr"],
         factor_3d=a["f3d"],
-        label="kamioka_3D_v2i",
+        label="kamioka_3D_%s" % tag,
         status="candidate",
-        provenance=PROV_V2I + str(h["provenance"]),
+        provenance=(PROV_V2J if v2j else PROV_V2I) + str(h["provenance"]),
         build_date=datetime.now().isoformat(timespec="seconds"),
         code_git_rev=git_rev(),
-        corr_v2i=a["corr"],
-        corr_fb=a["corr_fb"],
-        corr_cup=a["corr_cup"],
-        corr_v2i_note=CORR_NOTE,
         err_horizon_rel=a["hor"],
         err_horizon_note=HOR_NOTE_V2I,
         err_horizon_note_v2h=str(h["err_horizon_note"]),
         err_capb_rel=np.broadcast_to(a["capb"][..., None], shape).copy(),
         err_capb_note=ERR_CAPB_NOTE,
         err_upcorr_rel=np.broadcast_to(a["upc"][..., None], shape).copy(),
-        err_upcorr_note=ERR_UPCORR_NOTE,
+        err_upcorr_note=ERR_UPCORR_NOTE_V2J if v2j else ERR_UPCORR_NOTE,
         dlnproduct_dphi_note=DPHI_NOTE_V2I,
         input_sha256_v2h=sha(ph),
-        input_sha256_corrections_v2i=sha(pc),
     )
+    d["corr_" + tag] = a["corr"]
+    d["corr_" + tag + "_note"] = CORR_NOTE_V2J if v2j else CORR_NOTE
+    d["corr_fb"] = a["corr_fb"]
+    d["corr_cup"] = a["corr_cup"]
+    d["input_sha256_corrections_" + tag] = sha(pc)
     for k in c.files:
         if k.startswith("input_sha256_"):
             d["input_sha256_hzn_" + k[len("input_sha256_") :]] = str(c[k])
         elif k in ("b1", "b0", "sigma_b0", "f_b", "c_up", "err_upcorr", "err_capb"):
-            d["v2i_" + k] = c[k]
+            d[tag + "_" + k] = c[k]
+        elif v2j and k in ("c_up_v2i", "err_upcorr_v2i", "se_jk_species_mean"):
+            d[k] = c[k]
     np.savez(out, **d)
     print("wrote", out, sha(out))
+
+
+def cmd_build_v2i():
+    _build_candidate("v2i")
+
+
+def cmd_build_v2j():
+    _build_candidate("v2j")
 
 
 def cmd_gates_v2i():
@@ -1029,6 +1104,165 @@ def cmd_gates_v2i():
     print("\n".join(L))
 
 
+#: sha256 of the protected inputs (runs/v2i/out/sha256.txt, INTEGRATION.md 14.5, 13)
+PROTECTED_SHA = {
+    "v1c": (
+        os.path.join(W, "runs", "integ", "out", "kamioka_3D_v1c.npz"),
+        "ffa41e0c4edb26f9b1a00bf0e1a250a68a227c86f03310dbabc085eab280d511",
+    ),
+    "v2h": (
+        os.path.join(V2H, "kamioka_3D_v2h.npz"),
+        V2H_SHA256,
+    ),
+    "v2": (
+        os.path.join(V2H, "kamioka_3D_v2.npz"),
+        "576ea3ead035e2e06bfed208ae503c90a2741dd390a603059d207005dd563c64",
+    ),
+    "v2i": (
+        os.path.join(V2I, "kamioka_3D_v2i.npz"),
+        "e4029e6ce3baede6e4634dcdb34f9f54ebde3ecb7b716f93cb892353127e3be5",
+    ),
+    "corrections_v2i": (
+        os.path.join(V2I, "corrections_v2i.npz"),
+        "a5fb8fe3608fb115c0d1b4fa58d60936bdbfaf349d85058d95f10c5f642e200a",
+    ),
+}
+
+
+def cmd_gates_v2j():
+    ph, h = _load_h()
+    L = ["# v2j gates (builder): identities and errors vs v2h and v2i", ""]
+    ok = True
+    L += ["## Protected files (sha256 must be unchanged; a mismatch is a STOP)", ""]
+    for k, (pp, ref) in PROTECTED_SHA.items():
+        good = sha(pp) == ref
+        ok &= good
+        L.append(f"- {k}: {sha(pp)} -> {'PASS' if good else 'FAIL (STOP)'}")
+        if not good:
+            print("\n".join(L))
+            raise RuntimeError(f"protected file changed: {pp}")
+    pj = os.environ.get("V2_TABLE", os.path.join(V2J, "kamioka_3D_v2j.npz"))
+    n = np.load(pj, allow_pickle=False)
+    i = np.load(PROTECTED_SHA["v2i"][0], allow_pickle=False)
+    L += ["", f"table {pj}", f"sha256 {sha(pj)}", ""]
+
+    def gate(name, val, good):
+        nonlocal ok
+        ok &= bool(good)
+        L.append(f"- {name}: {val} -> {'PASS' if good else 'FAIL'}")
+
+    shp = n["factor"].shape
+    # rows / E masks on the (species, E, cos Z, azimuth) grid
+    rowmask = np.zeros(shp, bool)
+    dn = rowmask.copy()
+    up = rowmask.copy()
+    dn[:, :, 10:12] = True
+    up[:, :, 8:10] = True
+    e7 = np.zeros(shp, bool)
+    e7[:, :V2I_NE] = True
+    e5 = np.zeros(shp, bool)
+    e5[:, :5] = True
+    L += ["## Identities", ""]
+    gate(
+        "factor == factor_3d x hybrid_correction (max abs diff)",
+        float(
+            np.abs(
+                n["factor"] - n["factor_3d"] * n["hybrid_correction"][..., None]
+            ).max()
+        ),
+        np.array_equal(n["factor"], n["factor_3d"] * n["hybrid_correction"][..., None]),
+    )
+    for k in ("factor", "factor_3d", "factor_error"):
+        gate(
+            f"down-going rows 10/11, all E: {k} bit-identical to v2i",
+            "equal",
+            np.array_equal(n[k][dn], i[k][dn]),
+        )
+    for k in ("factor", "factor_3d"):
+        gate(
+            f"up-going rows 8/9, all E: {k} bit-identical to v2h",
+            "equal",
+            np.array_equal(n[k][up], h[k][up]),
+        )
+    chg = n["factor_error"] != h["factor_error"]
+    gate(
+        "up-going factor_error differs from v2h only in E bins 0-4 and rows 8/9",
+        f"{int(chg.sum())} cells differ in total, {int((chg & up).sum())} up-going",
+        bool(np.all(chg[up] <= e5[up])) and bool(np.all(chg[up & ~e5] == 0)),
+    )
+    gate(
+        "up-going factor_error differs from v2h in all E bins 0-4 cells",
+        int((chg & up & e5).sum()),
+        bool(np.all(chg[up & e5])),
+    )
+    touched = dn | up
+    touched &= e7
+    ngrid = 0
+    bad = []
+    for k in h.files:
+        a = h[k]
+        if a.ndim >= 3 and a.shape[:3] == (4, shp[1], shp[2]):
+            tm = touched[..., 0].reshape(touched.shape[:3] + (1,) * (a.ndim - 3))
+            m = ~np.broadcast_to(tm, a.shape)
+            ngrid += 1
+            if not np.array_equal(a[m], n[k][m]):
+                bad.append(k)
+        elif k not in n.files:
+            bad.append(k + " (missing)")
+        elif a.dtype.kind in "fiub" and not np.array_equal(a, n[k]):
+            bad.append(k)
+    gate(
+        "every cell outside rows 8-11 / E bins 0-6 bit-identical to v2h, all "
+        f"{ngrid} grid arrays (+ non-grid numeric arrays); differing: {bad or 'none'}",
+        "",
+        not bad,
+    )
+    s2 = sum(n[t] ** 2 for t in V2I_TERMS)
+    dd = float(np.abs((n["factor_error"] / n["factor"]) ** 2 / s2 - 1).max())
+    gate(
+        "max |(factor_error/factor)^2 / sum(err_*_rel^2) - 1| (limit 1e-12)",
+        f"{dd:.2e}",
+        dd <= 1e-12,
+    )
+    gate(
+        "label / status",
+        f"{n['label']} / {n['status']}",
+        str(n["label"]) == "kamioka_3D_v2j" and str(n["status"]) == "candidate",
+    )
+    gate("corr_cup == 1 everywhere", "", np.all(n["corr_cup"] == 1.0))
+    gate(
+        "hybrid_correction bit-identical to v2h",
+        "",
+        np.array_equal(n["hybrid_correction"], h["hybrid_correction"]),
+    )
+    L += [
+        "",
+        "Relative factor_error (median / max over species x azimuth), v2h | v2i -> v2j",
+        "",
+        "| row cos Z | "
+        + " | ".join(f"E{k} {E_EDGES[k]:.2f}-{E_EDGES[k + 1]:.2f}" for k in range(8))
+        + " |",
+        "|---|" + "---|" * 8,
+    ]
+    for r, lab in ((10, "+0.05"), (11, "+0.15"), (9, "-0.05"), (8, "-0.15")):
+        cells = []
+        for k in range(8):
+            q = {
+                t: m["factor_error"][:, k, r] / m["factor"][:, k, r]
+                for t, m in (("h", h), ("i", i), ("j", n))
+            }
+            cells.append(
+                " -> ".join(f"{np.median(q[t]):.3f}/{q[t].max():.3f}" for t in "hij")
+            )
+        L.append(f"| {lab} | " + " | ".join(cells) + " |")
+    L += ["", f"**Builder gates overall: {'PASS' if ok else 'FAIL'}**", ""]
+    out = os.environ.get("V2_GATES", os.path.join(V2J, "gates.md"))
+    if os.path.exists(out):
+        raise FileExistsError(out)
+    open(out, "w").write("\n".join(L))
+    print("\n".join(L))
+
+
 if __name__ == "__main__":
     {
         "regress": cmd_regress,
@@ -1036,4 +1270,6 @@ if __name__ == "__main__":
         "gates": cmd_gates,
         "build-v2i": cmd_build_v2i,
         "gates-v2i": cmd_gates_v2i,
+        "build-v2j": cmd_build_v2j,
+        "gates-v2j": cmd_gates_v2j,
     }[sys.argv[1]]()

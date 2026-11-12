@@ -545,3 +545,79 @@ def test_kamioka_v2i_table_if_available(flux_factory):
         assert np.all(np.isfinite(f)) and np.all(f > 0)
         ge = geo.geomagnetic_factor_error(np.array([1.5]), z, "numu", azimuth_deg=10.0)
         assert np.all(np.isfinite(ge)) and np.all(ge > 0)
+
+
+def test_kamioka_v2j_table_if_available(flux_factory):
+    """The candidate Kamioka table v2j (if present): v2i with the up-going correction
+    carried as an error only.  Loads, label, factor = factor_3d x hybrid_correction,
+    corr_cup == 1, up-going rows 8/9 equal v2h, down-going rows 10/11 equal v2i (when
+    DAEMONFLUX_3D_TABLE_V2H / _V2I are set), error budget closes, evaluates finite."""
+    import os
+
+    path = os.environ.get("DAEMONFLUX_3D_TABLE_V2J", "")
+    if not path or not os.path.exists(path):
+        pytest.skip("set DAEMONFLUX_3D_TABLE_V2J to kamioka_3D_v2j.npz to run this")
+    d = np.load(path, allow_pickle=False)
+    for k in (
+        "corr_v2j",
+        "corr_fb",
+        "corr_cup",
+        "factor_3d_v2h",
+        "factor_v2h",
+        "hybrid_correction",
+        "err_capb_rel",
+        "err_upcorr_rel",
+        "c_up_v2i",
+        "input_sha256_v2h",
+        "input_sha256_corrections_v2j",
+    ):
+        assert k in d.files
+    assert str(d["label"]) == "kamioka_3D_v2j"
+    npt.assert_array_equal(
+        d["factor"], d["factor_3d"] * d["hybrid_correction"][..., None]
+    )
+    assert np.all(d["corr_cup"] == 1.0)
+    npt.assert_array_equal(d["corr_v2j"], d["corr_fb"])
+    for k in ("err_capb_rel", "err_upcorr_rel"):
+        assert np.all(d[k] >= 0) and np.all(np.isfinite(d[k]))
+    # up-going rows: error carried, no central change
+    assert np.all(d["err_upcorr_rel"][:, :5, [8, 9]] > 0)
+    npt.assert_array_equal(d["factor"][:, :, [8, 9]], d["factor_v2h"][:, :, [8, 9]])
+    npt.assert_array_equal(
+        d["factor_3d"][:, :, [8, 9]], d["factor_3d_v2h"][:, :, [8, 9]]
+    )
+    terms = (
+        "err_v1c_rel",
+        "err_Cpp_rel",
+        "err_engine_spread_rel",
+        "err_horizon_rel",
+        "err_hybrid_rel",
+        "err_capb_rel",
+        "err_upcorr_rel",
+    )
+    npt.assert_allclose(
+        (d["factor_error"] / d["factor"]) ** 2,
+        sum(d[t] ** 2 for t in terms),
+        rtol=1e-12,
+    )
+    p2h = os.environ.get("DAEMONFLUX_3D_TABLE_V2H", "")
+    if p2h and os.path.exists(p2h):
+        h = np.load(p2h, allow_pickle=False)
+        for k in ("factor", "factor_3d"):
+            npt.assert_array_equal(d[k][:, :, [8, 9]], h[k][:, :, [8, 9]])
+    p2i = os.environ.get("DAEMONFLUX_3D_TABLE_V2I", "")
+    if p2i and os.path.exists(p2i):
+        i = np.load(p2i, allow_pickle=False)
+        for k in ("factor", "factor_3d", "factor_error"):
+            npt.assert_array_equal(d[k][:, :, [10, 11]], i[k][:, :, [10, 11]])
+    m = Tabulated3DModel(path)
+    assert m.label == "kamioka_3D_v2j"
+    assert m.status == "candidate"
+    assert np.all(m._df > 0) and np.all(np.isfinite(m._f))
+    geo = flux_factory()
+    geo.set_geomagnetic_model(m)
+    for z in (10.0, 170.0):
+        f = geo.flux(np.array([1.5, 5.0]), z, "numuflux", azimuth_deg=100.0)
+        assert np.all(np.isfinite(f)) and np.all(f > 0)
+        ge = geo.geomagnetic_factor_error(np.array([1.5]), z, "numu", azimuth_deg=10.0)
+        assert np.all(np.isfinite(ge)) and np.all(ge > 0)

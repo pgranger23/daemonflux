@@ -1100,3 +1100,93 @@ Full sha256 (computed):
     until the up-going near-horizon side is tested directly (a far-side check, estimated earlier at 7-29 core-h).
   * Decision pending with the PI. As built, v2i applies (c).
 * **Status:** candidate. v2h stays the reference candidate until the PI decides. v1c is unchanged; nothing in `src/daemonflux` changed.
+
+## 15. Candidate v2j: v2i with the up-going correction carried as an error only (2026-11-12, CANDIDATE)
+
+File: `$W/runs/v2j/out/kamioka_3D_v2j.npz` (label `kamioka_3D_v2j`, status `candidate`), format unchanged. Builder:
+`tools/mceq3d/build_table_v2.py build-v2j` / `gates-v2j` (the same `_build_candidate` code path as `build-v2i`). Correction numbers:
+`$W/runs/v2j/scripts/c0_corrections_v2j.py` (reads `v2i/out/corrections_v2i.npz` and `v2j/out/b4_jk_v2j.npz`). v2h, v2i untouched.
+
+### 15.1 Definition
+Reason (14.6): with c_up applied, v2i's U/D at |cos Z| 0.05/0.15 fell 3-6% below the Honda/Bartol envelope at 0.1-0.25 GeV.
+* Kept from v2i: (a) cap-bias factor f_b on the MC horizon cells (source 0, rows +0.05/+0.15, E bins 0-6) with err_capb_rel; (b) err_horizon_rel.
+* Changed: (c) c_up = 1 everywhere (`corr_cup` == 1). The up-going rows (-0.05/-0.15, table indices 9/8) keep their v2h `factor_3d` and
+  `factor` bit for bit. `corr_v2j` = `corr_fb`. Down-going rows 10/11: `factor`, `factor_3d`, `factor_error` bit-identical to v2i.
+* `err_upcorr_rel` is species-resolved (4 species, E bins 0-4, rows -0.05/-0.15): E bins 0-2
+  sqrt(se_jk^2 + (mean_k template - mean_k mc)^2 + (1 - c_up_v2i[species])^2); E bins 3-4 |1 - mean_k template| (v2i value, species-broadcast); 0 elsewhere.
+* Fix of v2i's spec error: se_jk is now the jackknife error of the species-mean MC field-free ratio (hzn b4 machinery, replicates
+  in `hzn_lib.replicates`), not sqrt(sum mc_err^2)/4 (6-10% low at row 0.05). Reproduces hzn's quoted values [m]:
+  row 0.05 0.0284 / 0.0654 / 0.0488 (bands 0.10-0.16 / 0.16-0.25 / 0.25-0.40), MC 0.909 +- 0.028 at 0.10-0.16; row 0.15 0.0143 / 0.0155 / 0.0189.
+
+### 15.2 Errors
+(factor_error/factor)^2 = sum of the seven err_*_rel^2 (same terms as 14.3), max deviation 6.7e-16 [m].
+err_upcorr_rel (E bins 0-4):
+
+| row | species | 0.10-0.16 | 0.16-0.25 | 0.25-0.40 | 0.40-0.63 | 0.63-1.0 |
+|---|---|---|---|---|---|---|
+| -0.05 | nue | 0.0971 | 0.1210 | 0.0978 | 0.0171 | 0.0107 |
+| -0.05 | antinue | 0.0961 | 0.1276 | 0.1015 | 0.0171 | 0.0107 |
+| -0.05 | numu | 0.0837 | 0.1040 | 0.0702 | 0.0171 | 0.0107 |
+| -0.05 | antinumu | 0.0774 | 0.0997 | 0.0689 | 0.0171 | 0.0107 |
+| -0.15 | all | 0.0414 | 0.0376 | 0.0282 | 0.0040 | 0.0013 |
+
+Median relative factor_error, v2h -> v2j (rows -0.05 / -0.15, E bins 0-2): 0.263/0.256 -> 0.278/0.260; 0.239/0.231 -> 0.264/0.234;
+0.214/0.209 -> 0.232/0.211. Down-going rows equal v2i.
+
+### 15.3 Gates (builder, `out/gates.md`), all PASS [m]
+Protected sha256 (v1c, v2h, v2, v2i, corrections_v2i) unchanged; factor == factor_3d x hybrid_correction exactly; rows 10/11 factor,
+factor_3d, factor_error == v2i; rows 8/9 factor, factor_3d == v2h; up-going factor_error differs from v2h in all 480 cells of E bins 0-4
+and nowhere else (1152 cells in total including the 672 down-going cells, as v2i); every cell outside rows 8-11 / E bins 0-6 is
+bit-identical to v2h in all 12 grid arrays; `build-v2i` rebuilt into `v2j/work` has arrays bit-identical to v2i (only build_date and code_git_rev differ).
+
+### 15.4 External check (Honda solmin/solmax, Bartol fmin/fmax; flags > 0.03 in ln beyond the envelope)
+Pre-stated expectation (written into gates.md before the run): up-going categories = Pv2h, down-going = Pv2i, U/D = Pv2h up to f_b.
+Result: up-going level/flavour/nu-nubar/a1/a0/phase flags = Pv2h exactly (0 flag-set differences, 0 value differences); down-going
+H/V, level, flavour, nu/nubar flags = Pv2i exactly. Flag totals P1 218 / Pv2h 83 / Pv2i 73 / Pv2j 77 (H/V 7, a1/a0 16, flavour 6, level 26, nu/nubar 20, phase 2).
+U/D at |cos Z| 0.3-1 (x2): 0 flags for all products. Near-horizon U/D, species mean, 0.1-1 GeV, with the table error [e]:
+see HANDBACK.md; Pv2j has 2 flagged cells (0.05 at 0.25-0.40: +0.033; 0.15 at 0.11-0.16: -0.032; Pv2h had 4, Pv2i 3), no new ones, and every
+miss is 0.00-0.11 of the table's own U/D error (about 0.2-0.36).
+The U/D change relative to Pv2h comes only from f_b in the down-going denominator (<= 0.4% below 0.4 GeV, up to 1.8% at 0.4-1 GeV).
+
+### 15.5 Reproduce and sha256
+    cd $W/runs/v2j     # env: runs/dbv142/env.sh, OMP_NUM_THREADS=1 etc.
+    PYTHONPATH=$PYTHONPATH:$W/runs/hzn/scripts $PY scripts/b4_jk_v2j.py      # -> out/b4_jk_v2j.npz (hzn b4 log reproduced identically)
+    $PY scripts/c0_corrections_v2j.py                                       # -> out/corrections_v2j.npz
+    $PY $R/tools/mceq3d/build_table_v2.py build-v2j                          # -> out/kamioka_3D_v2j.npz
+    $PY $R/tools/mceq3d/build_table_v2.py gates-v2j                          # -> out/gates.md
+    V2_OUTDIR=$W/runs/v2j/work $PY $R/tools/mceq3d/build_table_v2.py build-v2i   # arrays == v2i
+    a99adaa6485ab6e8118b949cdd5174bfbc8bc0e83b0fba539add51e3bd09ac2d  out/kamioka_3D_v2j.npz
+    ab858d7be9bf8cba7923ce30fc3c620a7f228d3f533904c609bc4c51e5737fc8  out/corrections_v2j.npz
+    fb51afd03dedde1ed62603bf6dc8d8a1a0ee238ee1ee46b85a0093044d1966a2  out/b4_jk_v2j.npz
+Tests: `DAEMONFLUX_3D_TABLE_{V1,V2H,V2I,V2J}` set, `pytest tests`: 58 passed / 1 skipped (new `test_kamioka_v2j_table_if_available`).
+
+### 15.6 PM review (2026-11-12)
+
+* **PM checks:**
+  * sha256 of v1c, v2h, v2, v2i and corrections_v2i recomputed: unchanged. v2j and corrections_v2j are as in 15.5.
+  * Identities recomputed independently, all exact: factor = factor_3d x hybrid_correction; rows 8/9 factor and factor_3d equal v2h;
+    rows 10/11 factor, factor_3d and factor_error equal v2i; every cell outside rows 8-11 / E bins 0-6 equals v2h (factor and
+    factor_error); the error quadrature closes to 6.7e-16.
+  * daemonflux tests rerun with `DAEMONFLUX_3D_TABLE_{V1,V2H,V2I,V2J}`: 58 passed, 1 skipped.
+  * The PM wrapped seven lines over 88 characters in `build_table_v2.py` (formatting only; black and flake8 are not installed in
+    the LCG environment). A v2j rebuild into a scratch directory after the reformat gives identical arrays and provenance.
+* **Brief erratum (PM):** the brief's expectation "the U/D cells reproduce Pv2h's flags exactly" ignored that U/D has the
+  down-going cells, which carry f_b, in its denominator. The agent wrote the corrected expectation into gates.md before the run.
+  The result matches it: 4 -> 2 near-horizon U/D flags, none new.
+* **The table's per-cell errors cannot test U/D at the few-% level (PM caveat on 15.4):**
+  * The statement that every U/D miss is "0.00-0.11 of the table's U/D error" treats the up and down cells as uncorrelated.
+  * err_hybrid_rel (16-22% below 0.63 GeV) is identical in the two hemispheres and cancels in U/D. Parts of err_v1c_rel
+    (sigma_model's general 0.1-0.25 GeV level term) are common as well.
+  * Even without the hybrid term, the uncorrelated U/D error is 14-20%. Most of it is err_v1c_rel: 10-14% up-going, 7-9% down-going.
+  * The table stores no up/down correlation. The external U/D check therefore stays the operative test of hemisphere consistency.
+  * Open item: a correlation model, or a stored U/D-relevant error.
+* **err_upcorr may double-count:** it has both the template-minus-MC term and |1 - c_up|, giving 8-13% at |cos Z| 0.05 below
+  0.4 GeV. This is conservative by intent while the up-going side is unresolved. It is to be replaced by the MC up-going
+  measurement (run `mcup`, in progress).
+* **Status:** v2j supersedes v2i. It is the recommended candidate following the PI's go-ahead (2026-11-12) on the recommendation in
+  14.6. v2h stays in place as the parent; v1c is unchanged; nothing in `src/daemonflux` changed.
+* **In progress:**
+  * `mgfix`: the engine's multigeneration horizon excess, as a new opt-in E_off model.
+  * `mcup`: an MC second-root up-going scorer, which measures rows 8/9 directly.
+
+  If mcup closes, rows 8/9 become MC cells like rows 10/11 (planned v2k).
