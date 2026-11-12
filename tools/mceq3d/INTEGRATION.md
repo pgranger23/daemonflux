@@ -1190,3 +1190,182 @@ Tests: `DAEMONFLUX_3D_TABLE_{V1,V2H,V2I,V2J}` set, `pytest tests`: 58 passed / 1
   * `mcup`: an MC second-root up-going scorer, which measures rows 8/9 directly.
 
   If mcup closes, rows 8/9 become MC cells like rows 10/11 (planned v2k).
+
+## 16. E_off v5 and the near-horizon mechanism of the engine (2026-11-12, DIAGNOSTIC: v5 fails its pre-registered gate)
+
+Run directory `$W/runs/mgfix` (`PREREG.md` with addenda A/B, `HANDBACK.md`, `scripts/`, `logs/`, `out/`). New repo files:
+`tools/mceq3d/eoff_v5.py`, `tools/mceq3d/diag_eoff_horizon.py`, `tools/mceq3d/test_eoff_v5.py`,
+`tools/mceq3d/test_diag_eoff_horizon.py`; `tools/mceq3d/mceq3d_flux.py` gets the `eoff_model="v5"` plumbing only.
+`eoff_model="v4"` is unchanged (bit-identical engine output, 16.5). Labels [m] measured, [d] derived, [e] estimate.
+
+### 16.1 What was asked, what was found
+
+The hzn study (section 14.1) isolated the multigeneration kernel of E_off v4 as the ingredient that raises the engine's horizon
+departure (+13% at |cos Z| 0.05, 0.10-0.16 GeV) and found the MC's field-free shape below v4 (D(P') = -0.096 +- 0.028). Its
+hypothesis: later-generation vertices displaced from the primary line, misplaced by the factorised cone. Result:
+
+* **The factorisation is not the main cause, and displacement is not a cause.** A field-free, spherically symmetric toy that runs
+  the MC's own cascade code (tools/mc3d physics, imported read-only) and scores every neutrino reproduces the MC's horizon shape
+  (6/6 cells, e.g. D = -0.104 +- 0.012 against v4 at row 0.05, 0.10-0.16 GeV; MC -0.096 +- 0.028) [m]. On the same chains, moving
+  every vertex onto its primary line changes the horizon by <= 1-2% (displacement), crediting the chains the atmosphere truncates by
+  <= 0.2%, decorrelating depth and angle by ~1%; the whole product form (vertex on the primary line, kernel independent of depth and
+  symmetric about the primary) errs by +2.2 +- 1.6% / +4.2 +- 2.0% at row 0.05 for 0.10-0.16 / 0.16-0.25 GeV, ~0 at row 0.15 and
+  0.25-0.40 GeV, and about -2% at 0.4-1 GeV (two independent toy runs combined) [m]. The later-generation part of every step is
+  <= 2%: the multigeneration kernel itself is not wrong.
+* **The main cause is an input: the density of the muon energy loss.** v4 evaluates its mu-channel kernel at ONE density per row,
+  the decay-weighted density of the ON-AXIS production (0.26e-4 g/cm3 at |cos Z| 0.05). The horizon enhancement is carried by
+  off-axis samples (steep primaries feeding deep production points); for the mu channel at 0.10-0.18 GeV and row 0.05 their
+  log-mean density is 1.3e-4, 3.6x the on-axis value; at row 0.65 the two agree (1.1e-4 / 1.2e-4) [m]. The row kernel is
+  therefore too wide exactly where the horizon is made; a wide (all-generation) kernel makes this visible.
+  Evaluating the kernel at each sample's own density (v5) closes the engine-vs-toy factorised gap (pre-registered reading 6/6) [m].
+* **The MC reference has a small artefact at 0.10-0.25 GeV.** tools/mc3d drops charged pions below e_nu_min/(1 - m_mu^2/m_pi^2)
+  = 0.234 GeV (exact for pi -> nu, not for pi -> mu -> nu: it removes muon-decay neutrinos up to ~0.21 GeV, 4.5% of the 0.10-0.16
+  GeV flux at row 0.05, 1.9% at 0.95). Paired on the toy, the cut lowers the field-free horizon departure by 0.021 +- 0.003 /
+  0.014 +- 0.001 / 0.013 +- 0.001 (rows 0.05 / 0.15 / 0.25, 0.10-0.16 GeV) and 0.017 (row 0.05, 0.16-0.25 GeV); 0 above [m].
+  It also explains about 2/3 of the 6% mu-channel width difference between the engine kernel and the MC's realised cone at
+  0.10-0.16 GeV.
+* Not causes [m]: escape/ground truncation (M1: the MC's later-generation share is HIGHER for near-horizontal primaries, opposite to
+  the truncation prediction; toy <= 0.2%), the cone quadrature (doubling n_beta and n_ray moves the horizon by <= 0.1%), the
+  engine's on-axis 1D vs B (<= 0.5% below 0.4 GeV).
+
+### 16.2 The v5 definition (`eoff_v5.py`)
+
+    J_s = sum_c sum_j sum_alpha W_{s,c,j}(alpha) mean_beta[ q_{s,c,j}(alpha, beta) G_s(alpha, beta) ]
+    q_{s,c,j}(alpha, beta) = Int dl rho(h) lambda_j(rho(h)) p_{s,c}(X_slant(l, psi_p(alpha, beta)), E; theta_g)
+
+* `lambda_j(rho)`: linear-in-ln-rho weights over the density nodes `rho_j` = eoff_v4.RHO_FAMILY + RHO_EXTRA = (0.3, 0.6, 1.2, 2.5,
+  5.0, 10) x 1e-4 g/cm3, clamped at the ends; evaluated at every arrival-ray point (the neutrino production point = the muon decay
+  point). Sum over j = 1, so sum_j q_j is v4's q.
+* `W_{s,mu,j}`: the v4 energy-loss kernel (all generations, polarisation, K -> mu) at rho_j (eoff_v4.kernel_family; the 1e-3 member
+  is new, cache key `el0.001`). Direct and kaon channels: v4's kernels, unchanged.
+* Everything else is v4: zenith-node depth profiles, geometry, cutoff, production-point frame, band stratification. Up-going rows use
+  the v5 G = 1 table (`offaxis_excess_channel_v5.npz`, built by `eoff_v5.build_table_v5`, scheme `v5a`, `table_tag` with the nodes);
+  the engine refuses a non-v5 table under `eoff_model="v5"`.
+* Use: `MCEq3DFlux(..., eoff_model="v5")`, `solve(..., offaxis_table=<v5 table>)` (default `EOFF_TABLE_V5`, not committed: the
+  table is in `$W/runs/mgfix/out/`, sha256 below). The v5 joint q's are memoised separately (`_joint_q_v5`).
+* No free parameter; nothing is fitted to the MC.
+
+### 16.3 The E_off horizon gate (`diag_eoff_horizon.py`)
+
+    $PY tools/mceq3d/diag_eoff_horizon.py --addon $W/runs/m4/work/addon_addon.npz --sums $W/runs/hzn/out/a1_addon_sums.npz \
+        --base $W/runs/integ/out/base1d_kamioka.npz --fine $W/runs/integ/out/engine_F_fine.npz TABLE [TABLE ...]
+
+The field-free P' test of hzn (b3): species-mean D(P') at rows 0.05/0.15/0.25 x 5 bands 0.10-1.0 GeV, gate max(3%, 2 sigma_jk).
+It reproduces hzn's numbers exactly (v4 11/15, Z 14/15). Together with fix2's r'' closure (cos Z 0.2-1) it is the E_off gate:
+fix2 tested only cos Z >= 0.2. Its reference carries the soft-pion cut (16.1): at 0.10-0.16 GeV the MC's horizon is 1.3-2.1%
+low.
+
+### 16.4 Results (criteria pre-registered in `PREREG.md`; numbers in `HANDBACK.md` sec. 4)
+
+| criterion | v4 | **v5 (pre-registered)** | v4c (interim, post hoc) |
+|---|---|---|---|
+| (i) P' horizon gate, 15 cells | 11/15 | **12/15 FAIL**: 0.10-0.16 row 0.05 -0.069(28); 0.63-1.0 rows 0.05/0.15 +0.094(39), +0.040(19) | 15/15 (not independent: the toy shares the MC's physics) |
+| (ii) fix2 r'' gate, cos Z 0.2-1 | 6/60 fail | **13/60 FAIL**, 7 new, 20 cells worse than v4 by > 1 sigma (engine 1-3% lower at cos Z 0.2-0.6 below 0.63 GeV) | 7/60 FAIL, 1 new, 6 worse (all at cos Z 0.2-0.3, 0.4-1 GeV, from c(0.25) = 1.02-1.03) |
+| (iii) Honda/Bartol H/V (40 cells) and E-W | 20 cells fail; a1/a0 -0.053/-0.035 | **21 fail; a1/a0 -0.037/-0.023 (MC -0.026/-0.022) FAIL** | 16 fail; a1/a0 unchanged FAIL |
+
+* (iii)'s H/V failures at 0.11-0.25 GeV come from the engine's cos Z 0.6-1 rows (fix2's R1: r'' 1.07-1.09 at 0.10-0.16 GeV), which
+  normalise H/V. No horizon-only E_off change can pass that cell set.
+* Reading: the local-density energy loss is the right direction at the horizon, but the vertex density over-corrects at
+  intermediate zenith and at 0.4-1 GeV, where v4 was right. **v5 is not recommended for production.**
+* The interim factor `out/c_horizon_toy.npz` is first-principles (MC physics, field-free, every pion) and site-independent. If the
+  PM wants an engine horizon correction for up-going cells or other sites, it is the better-founded replacement for hzn's
+  E_off_v4/E_off_Z template at |cos Z| < 0.2.
+  * At |cos Z| 0.25, its 0.4-1 GeV values (1.02-1.03 +- 0.012) conflict with the MC closure.
+  * Using it only at |cos Z| < 0.2 is a post hoc restriction and is not applied here.
+
+### 16.5 v4 bit-identity, tests, CPU, files
+
+* `eoff_model="v4"` after the edits: the engine solve on the hor grid (fix2 t4_engine recipe) equals `fix2/out/t4_D_hor.npz` in
+  every array (flux, Fnew, Fphys, G1, cutoff, base). `eoff_v4.py` is unchanged.
+* Tests (named files, `MC3D_POOL_CACHE`, from `tools/mceq3d`): 86 passed, 2 skipped.
+  * test_mceq3d_flux 16, test_mceq3d_deterministic 3, test_mceq3d_production 3, test_offaxis_mc 13, test_joint_cone 24 + 2
+    skipped, test_upgoing_cone 3;
+  * new test_eoff_v5 19, new test_diag_eoff_horizon 5.
+* CPU: 4.0 core-h, `$W/runs/mgfix/logs/ledger.txt`.
+* sha256:
+  * `out/offaxis_excess_channel_v5.npz` ca6999de910ca40dcb5cc6b68c36ae1173d69fdda6816cb3013de50640ead77d;
+  * `out/c_horizon_toy.npz` edaf02c3d6c91b9c912c688daee6cedbb9b2481c4d4fb6918bdc5942d9339c3a;
+  * `out/t4_v5_up.npz` 53bc99d92460ec84d4b38a29bdc9867d78f27f7be47a40b44260a53323abf2aa;
+  * `out/t4_v4c_up.npz` 0ef38baaaaa1d69b75c0efab6e1be76ba8fde2f9dd56c57a0feaadf91b320ede.
+* Reproduce. Cores 4-11. Engine jobs need cwd `tools/mceq3d` (`m_spliced_v2.npz` is read from the cwd).
+
+      source $W/runs/mgfix/env.sh; cd $W/runs/mgfix
+      ./run.sh toy_main 4-11 $PY scripts/toy3d.py run $MG/work/toy_main 8 20261112 450000 280000 67000 9600 2900 1000 300
+      TOY_PION_THR=none ./run.sh toy_nocut 4-9 $PY scripts/toy3d.py run $MG/work/toy_nocut 6 20261113 315000 196000 47000 6700 2000 700 210
+      $PY scripts/toy_analyse.py work/toy_main out/toy_H_main.npz 8; $PY scripts/toy_analyse.py work/toy_nocut out/toy_H_nocut.npz 6
+      $PY scripts/toy_final.py; $PY scripts/i6_report.py; $PY scripts/k_interim.py
+      RUNCWD=$R/tools/mceq3d ./run.sh b_build_v5 10 $PY scripts/b_build_v5.py
+      RUNCWD=$R/tools/mceq3d ./run.sh e_v5_up 8 $PY scripts/e_engine.py v5 up    # also hor, dn6; "v4 hor" = the identity check
+
+### 16.6 Up-going engine rows (step 5)
+
+`out/t4_v5_up.npz` and `out/t4_v4c_up.npz` follow the v2h recipe (10 rows x 12 az). Ratios to v2h's v4 rows, species mean, at
+|cos Z| 0.05 / 0.15:
+
+| E [GeV] | v5 / v4 | v4c / v4 | hzn template | MC field-free |
+|---|---|---|---|---|
+| 0.10-0.16 | 0.949 / 0.973 | 0.939 / 0.983 | 0.916 / 0.945 | 0.909(28) / 0.970 |
+| 0.16-0.25 | 0.941 / 0.965 | 0.940 / 0.978 | 0.926 / 0.956 | 0.977(65) / 0.967 |
+| 0.25-0.40 | 0.943 / 0.965 | 0.928 / 0.998 | 0.952 / 0.978 | 0.903(49) / 0.979 |
+| 0.40-0.63 | 0.961 / 0.976 | 0.958 / 0.999 | 0.983 / 0.996 | 1.01 / 1 |
+| 0.63-1.0 | 0.974 / 0.984 | 1.014 / 1.018 | 0.989 / 0.999 | 1.07 / 1 |
+
+* v5 also lowers |cos Z| 0.35 by 0.7-1.5% and 0.4-1 GeV by 2-4%. v4c leaves |cos Z| >= 0.35 untouched.
+* Neither addresses the second up-going error flagged in 14.6 (mirror cone, far-side cutoff, R_up).
+
+### 16.7 Not established / open
+
+* **The effective density for the muon energy loss.** The vertex density over-corrects. The path-average along the muon flight is
+  the natural next candidate; it is untested, and the engine has no per-sample muon direction.
+* **The residual product-form error.** It is +2-4% at row 0.05 below 0.25 GeV and -2% at 0.4-1 GeV, with no single step.
+* **The mu kernel at 0.10-0.16 GeV** is still 2-3.5% wider than the MC-physics cone.
+* **The cutoff part of the joint integral is untested by the field-free toy.**
+* **The MC's soft-pion cut (tools/mc3d `shower.thresholds`, pions below 0.234 GeV).**
+  * It biases every MC product at 0.10-0.25 GeV, including the v1c/v2h/v2i MC cells. For the horizon shape: -2.1 / -1.4 / -1.3%
+    at rows 0.05 / 0.15 / 0.25, 0.10-0.16 GeV.
+  * Suggested fix (not applied, other agents' files): pion threshold at m_pi; a muon-decay neutrino above e_nu_min needs
+    E_pi > ~0.15 GeV (kinematic limit).
+* **The row-0.05 measure-1 estimators** (toy and MC) have a log-divergent variance (cos Z -> 0); their jackknife errors are lower
+  bounds.
+
+### 16.8 PM review (2026-11-12)
+
+* **PM checks:**
+  * The named engine tests were rerun by the PM (test_eoff_v5, test_diag_eoff_horizon, test_mceq3d_flux, test_joint_cone,
+    test_upgoing_cone): 67 passed, 2 skipped, the same as the agent's counts for those files.
+  * The v4 identity was recomputed: `mgfix/out/t4_v4_hor.npz` equals `fix2/out/t4_D_hor.npz` in all 26 arrays except `cpu_s`.
+  * `eoff_v4.py` is unchanged (sha256 8252a5af...).
+  * The diff of `mceq3d_flux.py` was read. It is plumbing only: the v5 branch and a table-scheme guard. Default and v2-v4 paths are
+    untouched.
+  * The MC pion threshold was confirmed in the code: `tools/mc3d/shower.py` `thresholds()`, pi+- below
+    e_nu_min / (1 - m_mu^2/m_pi^2).
+* **Reading:**
+  * The brief's hypothesis (vertex displacement of later generations) is refuted. The "multigeneration" label from hzn named an
+    ingredient switch, not the mechanism.
+  * The supported cause is an input: v4 applies one mu-channel energy-loss kernel per row, at the on-axis decay density. The
+    off-axis samples that make the horizon sit in air about 3.6x denser.
+  * The toy (the MC's own cascade code, field-free, full sphere) reproduces the MC's horizon shape in 6/6 cells at 2-3x smaller
+    error. This independently confirms that v4 is about 8% high at |cos Z| 0.05 below 0.4 GeV. The toy shares the MC's physics, so
+    it is not independent of the MC's physics modelling.
+* **v5 fails all three pre-registered criteria. It stays an opt-in diagnostic, not a candidate; its table is not committed.**
+* **v4c (v4 x c_toy) is post hoc.** It fails (ii) narrowly, at cos Z 0.2-0.3, 0.4-1 GeV. It is not adopted. Its numbers are kept
+  for comparison only.
+* **Criterion (iii) as briefed could not be passed by any horizon-only change (PM brief error).** H/V divides by the cos Z 0.6-1
+  rows, where the engine is 7-9% low at 0.10-0.16 GeV (fix2's R1). A future gate needs a horizon-relative external metric, written
+  down before the numbers.
+* **New MC defect (affects every MC product at 0.10-0.25 GeV):** `shower.thresholds` sets the pion threshold for the direct
+  channel only. It drops pions whose muons can still give neutrinos above e_nu_min.
+  * The soft-ancestry share of the 0.10-0.16 GeV flux is 4.5% at |cos Z| 0.05 and 1.9% at 0.95.
+  * In the table convention G = s/(kappa B), the level largely cancels through kappa. The horizon rows keep a bias of about -1.3 to
+    -2.1% at 0.10-0.16 GeV.
+  * Not fixed yet. tools/mc3d is in use by the `mcup` run, which keeps production B's threshold so that the up- and down-going rows
+    share one convention. The fix (threshold e_nu_min for pi and K, opt-in or with a version tag) and its correction of the MC cells
+    are scheduled after mcup.
+* **Up-going engine rows:** v5/v4 and v4c/v4 are 0.93-0.95 at |cos Z| 0.05 below 0.4 GeV, consistent with hzn's c_up template.
+  The second, opposite up-going error (14.6) is not addressed here; that is mcup's job.
+* **Status:**
+  * The engine horizon defect is located but not fixed.
+  * v4 stays the engine default for eoff_model="v4". The Kamioka table is unaffected: rows +0.05/+0.15 are MC cells, and rows
+    -0.05/-0.15 carry the error-only correction of v2j.
+  * Before the engine is used on its own near the horizon at any site, it needs a model that passes the gate, or the masked or
+    error-carried treatment of v2j.
