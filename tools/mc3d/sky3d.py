@@ -65,6 +65,27 @@ With ``cutoff=False, bend_primary=False, muon_field=False`` the driver is the
 milestone-2b driver (``sky._shard``) with the azimuthal reuse: same RNG
 stream, the same neutrinos, and the azimuth-summed tallies equal
 ``sky._shard``'s (``test_m3b.py::test_regression_reproduces_milestone_2b``).
+
+**Up-going second root (opt-in, ``Options.upgoing`` / ``--upgoing``, run
+mcup 2026-11).**  The 3D tallies above take the first (near) root of each
+neutrino's straight ray with the ground sphere, so ``cos Z < 0`` is empty.
+With ``upgoing`` every 3D entry is also scored at the **second** root, the
+exit point (``locate_vec2``, ``scoring.NestedCaps.crossing2``): an up-going
+neutrino at the site with ``|cos Z| = c`` entered the Earth at ``Q``,
+``2 arcsin(c)`` from the site (5.7 / 17.3 / 29 deg for c = 0.05 / 0.15 /
+0.25), with the local zenith cosine ``c`` there -- the mirror of a
+down-going horizon shower, inside the ordinary injection patch for the rows
+0.05 / 0.15.  Two more tallies, on the same grid and caps and in both
+measures (``w / |cos psi|`` at the exit point), with per-primary squares:
+``us`` (the ``s`` weight, i.e. the copy's cutoff verdict) and ``un`` (copy 0,
+no cutoff, like ``n``), plus ``hinj_up`` (measure, smallest-cap index,
+species, E bin 5/dec 0.1-3.98 GeV, ``|cos Z|`` band, injection distance from
+the site in 1-deg bins) for the injection-patch coverage.  The pending test then also keeps realisations that can reach the
+cap at the second root (exact for neutrinos not born in a muon decay,
+conservative for muons: ``cone_may_hit_cap_up``), and copies with an
+up-going hit are traced.  Off by default: the manifest signature and every
+existing output are unchanged; on, the down-going tallies are unchanged too
+(``test_upgoing.py``).
 """
 
 from __future__ import annotations
@@ -93,10 +114,17 @@ N_AZ = 12
 B_MAX_T = 6.5e-5
 TAGS = ("s", "n", "t", "v")
 SUFFIX = ("0", "0sq", "1", "1sq")
+#: the opt-in up-going (second-root) tallies (``Options.upgoing``), and the
+#: E bins (5/dec, = the Kamioka table's bins 0-7) and |cos Z| bands of their
+#: injection-distance histogram ``hinj_up``
+UP_TAGS = ("us", "un")
+UP_HINJ_E = 0.1 * 10.0 ** (np.arange(9) / 5.0)
+UP_HINJ_CZ = (0.0, 0.1, 0.2, 0.3, 0.5, 1.0)
 SUMMED = tuple(t + s for t in TAGS for s in SUFFIX) + ("hinj", "cone_h",
                                                        "cone_h2", "cone_m",
                                                        "mub_m", "mub_h",
-                                                       "mucf", "mucf_full")
+                                                       "mucf", "mucf_full") \
+    + tuple(t + s for t in UP_TAGS for s in SUFFIX) + ("hinj_up",)
 #: muon-bend modes (``Options.mu_bend``): the full bend, or a diagnostic
 #: decomposition keeping only its vertical or only its horizontal component,
 #: or ``"none"``: the muon-field pipeline (per-copy re-transport and Michel
@@ -139,7 +167,7 @@ class Options:
                  trace_batch=10000, max_files_per_group=64, keep_cfiles=True,
                  keep_reals=False, reanchor=False, mu_bend="full", crn=False,
                  primary_energy=None, mu_cf=False, primary_model="H3A",
-                 resim_rmin=0.0, resim_groups=None):
+                 resim_rmin=0.0, resim_groups=None, upgoing=False):
         self.cutoff = bool(cutoff)
         self.bend_primary = bool(bend_primary)
         self.muon_field = bool(muon_field)
@@ -189,6 +217,10 @@ class Options:
         #: re-transported muon (same proper time, same decay numbers), and the
         #: fate classes of ``Tally.mucf`` -- no effect on the physics tallies
         self.mu_cf = bool(mu_cf)
+        #: opt-in (run mcup): also score every 3D entry at the second root of
+        #: its ray with the ground sphere -- the up-going tallies ``us``/``un``
+        #: and ``hinj_up``; off by default (signature and outputs unchanged)
+        self.upgoing = bool(upgoing)
 
     def signature(self):
         s = [self.cutoff, self.bend_primary, self.muon_field, self.r_thr,
@@ -202,6 +234,8 @@ class Options:
         if self.resim_rmin > 0.0 or self.resim_groups is not None:
             s += [-1.0, self.resim_rmin] + [float(SPECIES_ORDER.index(g))
                                             for g in (self.resim_groups or ())]
+        if self.upgoing:                       # existing manifests stay valid
+            s += [-2.0, 1.0]
         return np.array(s, float)
 
     def needs_field(self):
@@ -225,6 +259,31 @@ def locate_vec(caps, r, u):
     s = np.where(s <= 0.0, -b + sq, s)
     ok = (disc >= 0.0) & (s > 0.0)
     h = r + s[:, None] * u
+    return _frame_vec(caps, h, u, ok)
+
+
+def locate_vec2(caps, r, u):
+    """``locate_vec`` at the **second** (far) root, the exit point of the ray
+    (``scoring.NestedCaps.locate2`` for rows): ``(i0, cz, az, cosi)`` with
+    ``cz < 0`` (up-going arrival in the exit point's local frame); ``i0 = -1``
+    where the exit point is in no cap or the ray has no second root (origin
+    inside the sphere, moving away, grazing or missing)."""
+    r = np.asarray(r, float)
+    u = np.asarray(u, float)
+    re = caps.r_e
+    b = np.einsum("ij,ij->i", r, u)
+    c = np.einsum("ij,ij->i", r, r) - re * re
+    disc = b * b - c
+    s2 = -b + np.sqrt(np.maximum(disc, 0.0))
+    ok = (disc > 0.0) & (c > 0.0) & (b < 0.0)
+    h = r + np.where(ok, s2, 0.0)[:, None] * u
+    return _frame_vec(caps, h, u, ok)
+
+
+def _frame_vec(caps, h, u, ok):
+    """Cap index (``-1`` where not ``ok`` or in no cap), cos zenith, azimuth
+    and ``|cos|`` of the arrival direction in the local frame of the crossing
+    points ``h`` (rows)."""
     hn = np.linalg.norm(h, axis=1)
     n = h / np.where(hn > 0, hn, 1.0)[:, None]
     ax = np.asarray(caps.axis)
@@ -284,6 +343,18 @@ def soft_hits(caps, r, u, margin_rad):
     ok_hit = hit & (arc_x <= th + m)
     ok_miss = (~hit) & (eps < m) & (arc_t <= th + m)
     return ok_hit | ok_miss
+
+
+def soft_hits_up(caps, r, u):
+    """Exact second-root test: does the ray ``(r, u)`` leave the ground sphere
+    (up-going) inside the largest cap?  Used with zero margin only, for the
+    neutrinos that are rigidly rotated into the copies (the cap is invariant
+    under the rotations about the site vertical)."""
+    r = np.atleast_2d(np.asarray(r, float))
+    u = np.atleast_2d(np.asarray(u, float))
+    if len(r) == 0:
+        return np.zeros(0, bool)
+    return locate_vec2(caps, r, u)[0] >= 0
 
 
 # ---------------------------------------------------------------------------
@@ -390,17 +461,68 @@ def cone_may_hit_cap(caps, P, u, alpha, n_edge=72):
     return (ang <= alpha + beta) & (gam - alpha < gam_t)
 
 
-def pending_3d(caps, nu, mu, muon_field, e_nu_min, extra_deg, pend_all=False):
+def cone_may_hit_cap_up(caps, P, u, alpha, n_edge=72):
+    """Conservative second-root version of :func:`cone_may_hit_cap`: can some
+    direction within ``alpha`` of ``u`` (rows), from ``P``, leave the ground
+    sphere inside the largest cap (an up-going crossing)?  Necessary
+    conditions: the cone reaches below the horizon of ``P`` (it must enter the
+    Earth), and it overlaps the disc of radius ``beta`` around the direction
+    ``d_C`` of the site.  If every point of the cap is hidden from ``P``
+    (beyond its horizon circle), each cap point is the exit point of exactly
+    one direction from ``P`` and the cap's image is bounded by the image of
+    its rim, so ``beta`` = the largest angle between ``d_C`` and the
+    direction of a rim point (no interior maximum: ``-d_C`` points above the
+    horizon of ``P``).  Otherwise -- ``P``'s horizon circle (angular radius
+    ``arccos(R_E/|P|)`` about its foot point) reaches the cap, or ``P`` is
+    above it -- ``beta = pi`` (accept)."""
+    P = np.atleast_2d(np.asarray(P, float))
+    u = np.atleast_2d(np.asarray(u, float))
+    if len(P) == 0:
+        return np.zeros(0, bool)
+    re = caps.r_e
+    ax = np.asarray(caps.axis, float)
+    th = math.radians(caps.thetas[-1])
+    t1, t2 = geo._tangent_basis(ax)
+    ph = np.linspace(0.0, 2.0 * np.pi, n_edge, endpoint=False)
+    rim = re * (math.cos(th) * ax[None, :]
+                + math.sin(th) * (np.cos(ph)[:, None] * t1[None, :]
+                                  + np.sin(ph)[:, None] * t2[None, :]))
+    C = re * ax
+    dC = C[None, :] - P
+    dC /= np.linalg.norm(dC, axis=1)[:, None]
+    dk = rim[None, :, :] - P[:, None, :]
+    dk /= np.linalg.norm(dk, axis=2)[:, :, None]
+    beta = np.arccos(np.clip(np.einsum("ikj,ij->ik", dk, dC), -1, 1)).max(1)
+    pn = np.linalg.norm(P, axis=1)
+    psi = np.arccos(np.clip((P @ ax) / pn, -1, 1))       # foot point - site
+    th_sil = np.arccos(np.clip(re / pn, -1, 1))          # horizon circle
+    beta = np.where(psi <= th + th_sil, np.pi, beta)
+    ang = np.arccos(np.clip(np.einsum("ij,ij->i", u, dC), -1, 1))
+    gam = np.arccos(np.clip(-np.einsum("ij,ij->i", P, u) / pn, -1, 1))
+    gam_t = np.arcsin(np.clip(re / pn, -1, 1))
+    return (ang <= alpha + beta) & (gam - alpha < gam_t)
+
+
+def pending_3d(caps, nu, mu, muon_field, e_nu_min, extra_deg, pend_all=False,
+               upgoing=False):
     """``(pending, muon_mask)``: does the realisation need a 3D replay, and
-    which of its muons must be re-transported per copy."""
+    which of its muons must be re-transported per copy.  With ``upgoing``
+    a realisation (muon) is also kept if it can reach the largest cap at the
+    second root (:func:`soft_hits_up`, :func:`cone_may_hit_cap_up`)."""
     if pend_all:
         return True, np.ones(len(mu), bool)
     if not muon_field:
-        return bool(len(nu) and soft_hits(caps, nu[:, NU_R], nu[:, NU_U],
-                                          0.0).any()), np.zeros(len(mu), bool)
+        p = bool(len(nu) and soft_hits(caps, nu[:, NU_R], nu[:, NU_U],
+                                       0.0).any())
+        if upgoing and not p and len(nu):
+            p = bool(soft_hits_up(caps, nu[:, NU_R], nu[:, NU_U]).any())
+        return p, np.zeros(len(mu), bool)
     rigid = np.abs(nu[:, NU_PAR]) != 13 if len(nu) else np.zeros(0, bool)
     p = bool(rigid.any() and soft_hits(caps, nu[rigid][:, NU_R],
                                        nu[rigid][:, NU_U], 0.0).any())
+    if upgoing and not p and rigid.any():
+        p = bool(soft_hits_up(caps, nu[rigid][:, NU_R],
+                              nu[rigid][:, NU_U]).any())
     mm = np.zeros(len(mu), bool)
     if len(mu):
         live = np.isin(mu[:, MU_KIND], (bend.MU_DECAY, bend.MU_GROUND))
@@ -410,8 +532,10 @@ def pending_3d(caps, nu, mu, muon_field, e_nu_min, extra_deg, pend_all=False):
             ue = ml[:, MU_UEND]
             gr = ml[:, MU_KIND] == bend.MU_GROUND
             P[gr] -= 1.0e5 * ue[gr]          # 1 km back up the track
-            mm[live] = cone_may_hit_cap(caps, P, ue,
-                                        muon_margin(ml, e_nu_min, extra_deg))
+            mg = muon_margin(ml, e_nu_min, extra_deg)
+            mm[live] = cone_may_hit_cap(caps, P, ue, mg)
+            if upgoing:
+                mm[live] |= cone_may_hit_cap_up(caps, P, ue, mg)
     return p or bool(mm.any()), mm
 
 
@@ -544,7 +668,8 @@ def cascade_task(task):
         p3, mmask = (False, None)
         if kind in ("B", "C"):
             p3, mmask = pending_3d(caps, nu, mu, opts.muon_field, cfg.e_nu_min,
-                                   opts.margin_extra_deg, opts.pend_all)
+                                   opts.margin_extra_deg, opts.pend_all,
+                                   opts.upgoing)
         p1 = False
         if kind in ("B", "S"):
             p1 = opts.pend_all or caps.locate(r0[i], u0[i]) is not None
@@ -580,6 +705,12 @@ def cascade_task(task):
     e3 = ent["3d"]
     pairs = np.unique(np.stack([e3["prim"], e3["copy"]], 1)[e3["w0"] > 0],
                       axis=0) if len(e3["prim"]) else np.zeros((0, 2), int)
+    eu = ent.get("3du")
+    if eu is not None and len(eu["prim"]):     # (+ copies with an up-going hit)
+        pu = np.stack([eu["prim"], eu["copy"]], 1)[eu["w0"] > 0]
+        if len(pu):
+            pairs = np.unique(np.concatenate([pairs.reshape(-1, 2)
+                                              .astype(np.int64), pu]), axis=0)
     gate_p = np.array([p["gate"] for p in prims], int).reshape(-1, naz)
     if opts.cutoff and len(pairs):
         gv = gate_p[pairs[:, 0], pairs[:, 1]]
@@ -657,9 +788,22 @@ class Tally:
     HINJ_CZ = (0.0, 0.1, 0.2, 0.5, 1.0)
     HINJ_NTH = 60
 
-    def __init__(self, grid):
+    def __init__(self, grid, upgoing=False):
         self.g = grid
         self.a = {t + s: np.zeros(grid.size) for t in TAGS for s in SUFFIX}
+        #: opt-in up-going (second-root) tallies ``us``/``un`` and the
+        #: injection distances of the ``us`` entries, ``hinj_up[measure,
+        #: i0cap, species, E bin (UP_HINJ_E), |cosZ| band (UP_HINJ_CZ),
+        #: theta]`` (``i0cap`` = smallest cap holding the exit point; measure 0
+        #: = crossing weight, 1 = ``/|cos psi|``)
+        self.upgoing = bool(upgoing)
+        if self.upgoing:
+            for t in UP_TAGS:
+                for s in SUFFIX:
+                    self.a[t + s] = np.zeros(grid.size)
+            self.hinj_up = np.zeros((2, grid.ncap, len(SPECIES),
+                                     len(UP_HINJ_E) - 1, len(UP_HINJ_CZ) - 1,
+                                     self.HINJ_NTH))
         self.hinj = np.zeros((2, len(SPECIES), len(CONE_BANDS) - 1,
                               len(self.HINJ_CZ) - 1, self.HINJ_NTH))
         # muon-bend diagnostics of the 3D [s] entries born in a muon decay:
@@ -714,6 +858,20 @@ class Tally:
         ok = (k >= 0) & (ib >= 0) & (ib < len(b) - 1) & (czc >= hz[0]) & (w != 0)
         np.add.at(self.hinj, (np.full(ok.sum(), view), k[ok], ib[ok], iz[ok],
                               ith[ok]), w[ok])
+
+    def add_hinj_up(self, icap, k, e, acz, ith, w0, w1):
+        """Injection distances of the up-going entries (``acz = |cos Z|``,
+        ``icap`` the smallest cap index holding the exit point, ``w0`` / ``w1``
+        the measure-0 / measure-1 weights)."""
+        b = UP_HINJ_E
+        ib = np.searchsorted(b, e, side="right") - 1
+        hz = np.asarray(UP_HINJ_CZ)
+        czc = np.minimum(acz, 1.0)
+        iz = np.clip(np.searchsorted(hz, czc, side="right") - 1, 0, len(hz) - 2)
+        ok = (k >= 0) & (ib >= 0) & (ib < len(b) - 1) & (w0 != 0)
+        for m, w in ((0, w0), (1, w1)):
+            np.add.at(self.hinj_up, (np.full(ok.sum(), m), icap[ok], k[ok],
+                                     ib[ok], iz[ok], ith[ok]), w[ok])
 
     def add_mub(self, flat, bv, bh, w):
         """Muon-bend diagnostics of the 3D entries (``flat`` = smallest-cap
@@ -779,6 +937,8 @@ class Tally:
                  hinj=self.hinj, hinj_cz=np.array(self.HINJ_CZ),
                  mub_m=self.mub_m, mub_h=self.mub_h, mucf=self.mucf,
                  mucf_full=self.mucf_full)
+        if self.upgoing:
+            d["hinj_up"] = self.hinj_up
         return d
 
 
@@ -1099,6 +1259,24 @@ def build_entries(prims, seed, grid, opts, fld, sitemap, e_nu_min,
             e3[key] = _cat(E[key])[keep][hit].astype(np.float32)
         e3["cls"] = _cat(E["cls"])[keep][hit].astype(np.int8)
     ent = {}
+    if opts.upgoing:
+        # the same entries at the second root (exit point, up-going); always
+        # present (possibly empty) so that every t-file holds the tallies
+        e3u = {key: np.zeros(0) for key in ("flat", "k", "e", "cz", "ith",
+                                             "w0", "wn", "inv", "prim",
+                                             "copy")}
+        if E["pdg"]:
+            i0u, czu, azu, cosiu = locate_vec2(caps, r[keep], u[keep])
+            flatu, kku = grid.bins(pdg[keep], e[keep], i0u, czu, azu)
+            hu = flatu >= 0
+            e3u = {"flat": flatu[hu].astype(np.int64),
+                   "k": kku[hu].astype(np.int8), "e": e[keep][hu],
+                   "cz": czu[hu], "inv": 1.0 / np.maximum(cosiu[hu], 1e-6)}
+            for key in ("w0", "wn", "prim", "copy", "ith"):
+                e3u[key] = _cat(E[key])[keep][hu]
+            for key in ("prim", "copy", "ith"):
+                e3u[key] = e3u[key].astype(np.int64)
+        ent["3du"] = e3u
     if CF["pdg"]:
         pdg = _cat(CF["pdg"]).astype(int)
         e = _cat(CF["e"])
@@ -1126,8 +1304,17 @@ def build_entries(prims, seed, grid, opts, fld, sitemap, e_nu_min,
 def tally_entries(grid, ent, A):
     """Phase 2: the tallies from the entries and the (n_prim, n_az) verdict
     matrix ``A``."""
-    tal = Tally(grid)
+    tal = Tally(grid, upgoing="3du" in ent)
     e3, e1 = ent["3d"], ent["1d"]
+    eu = ent.get("3du")
+    if eu is not None and len(eu["flat"]):
+        wu = eu["w0"] * A[eu["prim"], eu["copy"]]
+        tal.accumulate("us", eu["flat"], wu, wu * eu["inv"], eu["prim"])
+        tal.accumulate("un", eu["flat"], eu["wn"], eu["wn"] * eu["inv"],
+                       eu["prim"])
+        tal.add_hinj_up(eu["flat"] // (grid.size // grid.ncap),
+                        eu["k"].astype(int), eu["e"], np.abs(eu["cz"]),
+                        eu["ith"], wu, wu * eu["inv"])
     if len(e3["flat"]):
         ws = e3["w0"] * A[e3["prim"], e3["copy"]]
         tal.accumulate("s", e3["flat"], ws, ws * e3["inv"], e3["prim"])
@@ -1461,6 +1648,11 @@ def main(argv=None):
                          "re-transported muon, fate classes (Tally.mucf)")
     ap.add_argument("--no-keep-cfiles", action="store_true",
                     help="delete each c-file after its t-file is written")
+    ap.add_argument("--upgoing", action="store_true",
+                    help="also score every 3D neutrino at the second root of "
+                         "its ray with the ground sphere: the up-going "
+                         "tallies us/un and hinj_up (opt-in; off: outputs "
+                         "unchanged)")
     ap.add_argument("--merge-only", action="store_true")
     a = ap.parse_args(argv)
     if a.merge_only:
@@ -1473,7 +1665,7 @@ def main(argv=None):
                    reanchor=a.reanchor, mu_bend=a.mu_bend, crn=a.crn,
                    primary_energy=a.primary_energy, mu_cf=a.mu_cf,
                    primary_model=a.model, resim_rmin=a.resim_rmin, keep_cfiles=not a.no_keep_cfiles,
-                   resim_groups=a.resim_groups)
+                   resim_groups=a.resim_groups, upgoing=a.upgoing)
     alloc = None
     if a.alloc:
         d = np.load(a.alloc)

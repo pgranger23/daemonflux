@@ -1429,3 +1429,156 @@ is the available interim.
   known, so it is a reference value, not a pass.
 * No further engine iteration is scheduled until the PI decides. The engine remains unfit for use on its own near the horizon,
   so v2j's treatment applies.
+
+## 17. MC measurement of the Kamioka up-going near-horizon cells (run mcup, 2026-11-12)
+
+Run directory `$W/runs/mcup` (`BRIEF.md`, `PREREG.md` with addenda A1-A6, `HANDBACK.md`, `MCUP_RESULTS.md`, `scripts/`,
+`logs/ledger.txt`, `out/`). No table was built; the proposed rows are in `out/mcup_rows_P1+P2.npz`.
+
+### 17.1 Why and what
+In every Kamioka table so far the up-going cells come from the engine alone (source 3: E_off(|cos Z|) x single far-side cutoff
+x the v1c-era mirror-cone ratio x R_up). v2i applied hzn's c_up (0.91-0.93 at cos Z -0.05, 0.97 at -0.15, below 0.4 GeV);
+that pushed U/D at |cos Z| 0.05/0.15 3-6% below the Honda/Bartol envelope at 0.1-0.25 GeV (14.6), so v2j carries c_up as an
+error only (15). mcup measures these cells with the 3D MC and production B's physics, so both hemispheres come from one
+calculation.
+
+* **Geometry.** An up-going neutrino at the site with |cos Z| = c entered the Earth at Q, 2 arcsin(c) from the site
+  (5.7 / 17.3 / 29 deg for c = 0.05 / 0.15 / 0.25), with local zenith cosine c at Q: the mirror of a down-going horizon
+  shower. The MC scored only the first root of each neutrino's straight ray with the ground sphere; the new opt-in
+  `sky3d --upgoing` also scores the second root (the exit point), with the same grid, caps, weights (`s1 = w/|cos psi|` at
+  the exit point) and cutoff verdicts (tallies `us`, `un`, `hinj_up`; `tools/mc3d/scoring.py`, `sky3d.py`, 34 tests in
+  `tools/mc3d/test_upgoing.py`). Off by default; off = previous outputs bit for bit.
+* **Table convention** (as v2i's down-going MC cells, 14.2):
+  G''_up = us1 / (kappa B(|cos Z|)) x kor x gf / (1 + b0_up), kor and gf = v2h `Cpp_parts_*` (E only), b0_up = the measure-0
+  cap bias of the up-going 0-0.2 band of the same run. A kappa-free *anchored* form (PREREG A5) uses production B's
+  down-going table cells times the same-run U/D: G''_anc = F_table(+|c|) x [us1/(1+b0_up)] / [s1/(1+b0_down)].
+
+### 17.2 A pending-test bias in production B (found while building)
+With `--reanchor`, the copy-0 pending test cannot see the re-anchored copies (they are rotated onto each copy's own bent
+primary). A paired `--pend-all` twin drops nothing by construction; the mcup production-physics runs use it (+6% CPU).
+Size in production B's convention: 16.8.
+
+### 17.3 Closure and coverage (field free, `out/closure_*.md`)
+* Pre-registered gate on the first sample C1 (1.6e6): **FAILED** (row 0.15 low, ln sum U/sum D = -0.027 +- 0.011; two cells
+  beyond 3 sigma). The scorer alone on 2.4e7 isotropic lines through the production code path closes at row 0.15 to
+  1.0000 +- 0.0029. The pre-registered replication C2 did not reproduce the deficit (U/D 1.013 +- 0.015 vs 0.955 +- 0.017),
+  so C1 is classified a fluctuation (post hoc classification, rule fixed before C2). The pool C1 + C2 + C3 (4.43e6) passes
+  all four criteria; closure systematic carried on the up-going cells: 0.75% (cos Z -0.05) and 1.44% (-0.15).
+* Coverage: no up-going weight at rows 0.05/0.15 comes from injection beyond 40 deg (0.00%; 99.9% within 25 / 36 deg).
+  Row 0.25 loses 7-11% in a 40-deg patch (10-deg cap): not measured here.
+
+### 17.4 Production and gates
+Pilot + production 1.92e6 primaries, 21.5 core-h, production-B physics plus `--upgoing --pend-all`. G1 (kappa) and G2
+(down-going cells vs the table's production-B cells) pass; the direct estimator is therefore the pre-registered verdict
+estimator. This run's absolute down-going horizon level is ~3% above production B below 0.4 GeV (about 2 sigma for
+correlated cells; not the pending loss, 16.8).
+
+### 17.5 Verdict on the up-going cells (pre-registered statistic: species-mean ln rho, rho = MC / engine factor_3d, az-mean)
+sigma = jackknife (+) convention (|f_b - 1|/2, v2h err_Cpp, closure). v2i/v2h = c_up.
+
+| cos Z | E | ln rho_h (v2h = v2j) | ln rho_i (v2i) | outcome | anchored cross-check: ln rho_h / ln rho_i |
+|---|---|---|---|---|---|
+| -0.05 | 0.10-0.16 | -0.020 +- 0.030 | +0.067 +- 0.030 | A | -0.033 / +0.054 (+- 0.027) |
+| -0.05 | 0.16-0.25 | +0.006 +- 0.034 | +0.083 +- 0.034 | A | -0.037 / +0.041 (+- 0.025) |
+| -0.05 | 0.25-0.40 | +0.001 +- 0.038 | +0.050 +- 0.038 | D | -0.038 / +0.011 (+- 0.035) |
+| **-0.05** | **0.10-0.40** | **-0.004 +- 0.028** | **+0.067 +- 0.028** | **A** | -0.036 / +0.035 (+- 0.026): D |
+| -0.15 | 0.10-0.16 | +0.032 +- 0.029 | +0.062 +- 0.029 | A (MC above both) | -0.015 / +0.015 |
+| -0.15 | 0.16-0.25 | +0.008 +- 0.037 | +0.041 +- 0.037 | D | -0.020 / +0.013 |
+| -0.15 | 0.25-0.40 | -0.012 +- 0.033 | +0.010 +- 0.033 | D | -0.028 / -0.007 |
+| **-0.15** | **0.10-0.40** | **+0.009 +- 0.030** | **+0.038 +- 0.030** | **D** | -0.021 / +0.007 (+- 0.027): D |
+
+E bins 3-7 (0.40-3.98 GeV, where v2h = v2i): ln rho_h between -0.050 and +0.078, all within 1.5 sigma (outcome D).
+
+**Reading.** At cos Z -0.05 below 0.4 GeV the MC sits at the v2h (= v2j) level (-0.4 +- 2.8%) and 6.9% above v2i (2.4
+sigma): the engine's two up-going errors (the E_off v4 multigeneration excess, about +8%, and the opposite one) cancel
+within about 3%; **c_up should not be applied (v2j is right)**. The kappa-free anchored form, which inherits the ~3%
+down-going offset of 17.4, puts the MC 3.6% below v2h and 3.5% above v2i (both 1.4 sigma). The up-going level at
+-0.05 below 0.4 GeV is therefore v2h x (0.96-1.00); c_up (0.92) is too strong by a factor 2 or more. At -0.15 the difference
+(c_up 0.97) is below the resolution.
+
+### 17.6 U/D at |cos Z| 0.05 / 0.15 against Honda solmin/solmax + Bartol fmin/fmax (species mean; flag = ln distance beyond the envelope)
+
+| |cos Z| | E [GeV] | envelope | (i) MC/MC same run | (ii) MC up / v2j down | (iii) v2h | v2i | v2j |
+|---|---|---|---|---|---|---|---|
+| 0.05 | 0.11-0.16 | 1.043-1.067 | 1.052 +- 0.021 (in) | 1.063 (in) | 1.082 (+.014) | 0.996 (-.046) | 1.086 (+.017) |
+| 0.05 | 0.16-0.25 | 1.026-1.050 | 1.035 +- 0.018 (in) | 1.084 (+.032) | 1.082 (+.030) | 0.999 (-.026) | 1.078 (+.026) |
+| 0.05 | 0.25-0.40 | 1.024-1.044 | 1.044 +- 0.028 (in) | 1.080 (+.034) | 1.083 (+.037) | 1.028 (in) | 1.079 (+.033) |
+| 0.05 | 0.40-0.63 | 1.006-1.012 | 1.043 +- 0.036 (+.030) | 1.034 (+.021) | 1.056 (+.042) | 1.035 (+.023) | 1.043 (+.030) |
+| 0.05 | 0.63-1.0 | 0.991-1.015 | 1.030 +- 0.031 (+.015) | 1.030 (+.014) | 1.034 (+.018) | 1.017 (+.002) | 1.017 (+.002) |
+| 0.05 | 1.0-2.5 | 0.977-0.988 | 0.997 +- 0.052 (+.009) | 1.023 (+.035) | 1.044 (+.056) | 1.031 (+.043) | 1.031 (+.043) |
+| 0.15 | 0.11-0.16 | 1.203-1.319 | 1.153 +- 0.030 (-.042) | 1.203 (in) | 1.162 (-.035) | 1.130 (-.063) | 1.165 (-.032) |
+| 0.15 | 0.16-0.25 | 1.141-1.209 | 1.117 +- 0.028 (-.021) | 1.148 (in) | 1.144 (in) | 1.104 (-.033) | 1.139 (-.002) |
+| 0.15 | 0.25-0.40 | 1.095-1.140 | 1.070 +- 0.038 (-.023) | 1.087 (-.007) | 1.104 (in) | 1.077 (-.016) | 1.100 (in) |
+| 0.15 | 0.40-0.63 | 1.033-1.063 | 1.060 +- 0.043 (in) | 1.030 (-.003) | 1.061 (in) | 1.045 (in) | 1.048 (in) |
+| 0.15 | 0.63-1.0 | 0.980-1.012 | 0.986 +- 0.043 (in) | 1.005 (in) | 1.033 (+.021) | 1.016 (+.004) | 1.016 (+.004) |
+| 0.15 | 1.0-2.5 | 0.980-0.986 | 0.939 +- 0.055 (-.043) | 0.985 (in) | 1.037 (+.050) | 1.024 (+.037) | 1.024 (+.037) |
+
+The same-run MC U/D is inside the envelope at |cos Z| 0.05 below 0.4 GeV and within 0.03 + 2 sigma everywhere at 0.1-0.25
+GeV (pre-stated reading: the MC agrees with Honda/Bartol on U/D; the v2i miss is an up-going table defect, namely c_up). At
+|cos Z| 0.15, 0.11-0.16 GeV the MC, v2h and v2j agree (1.15-1.17) and sit 3-4% below Honda solmax (MC 1.4 sigma): not resolved.
+
+### 17.7 E-W of the up-going cells (`out/prod_P1+P2.md`)
+a1/a0, species x E-bin mean (0.10-1 GeV): cos Z -0.05 MC 0.474, Honda 0.489, engine v2h 0.517; cos Z -0.15 MC 0.593, Honda
+0.618, engine 0.708 [m]. The MC removes the engine's up-going E-W excess (+0.06-0.14 in v2h/v2i/v2j, 13.4/14.4); its phases
+are within ~5-10 deg of Honda, the engine's up to ~15 deg off at -0.15; the mu+/mu- ordering (nue, antinumu above numu,
+antinue) is Honda's, with the larger MC fan-out at 0.4-1 GeV known from the down-going side. Down-going rows of the same run:
+0.011 / 0.026 below Honda (as the table's MC cells).
+
+### 17.8 Production B's pending loss (paired, 1.2e5 primaries)
+0.19 +- 0.19% of s1 at cos Z 0.05, 0.10-0.16 GeV; < 0.03% elsewhere; 0.04% of all s1 [m]. Negligible: no correction of the
+down-going table cells is needed. (`--pend-all` stays advisable for production runs with `--reanchor`.)
+
+### 17.9 Proposed rows 8/9 (cos Z -0.15 / -0.05), E bins 0-7 (`out/mcup_rows_P1+P2.npz`, sha256 19819ee9...4f18)
+factor_3d convention (multiply by `hybrid_correction` for `factor`). Options for the PM:
+(a) `factor_3d_mc` (full MC cells; per-cell relative error 4.5-5.4% at -0.15 and 6.5-7.6% at -0.05 for 0.1-0.4 GeV,
+9-22% at 1.6-4 GeV), (b) `factor_3d_mclevel_v2hpattern` (MC az-mean level x v2h azimuth pattern; level errors 3.5-4.6%
+per species below 0.4 GeV), (c) the anchored level with either pattern. MC level / v2h, species mean, E bins 0-7:
+cos Z -0.15: 1.032 1.009 0.989 0.983 0.990 0.968 0.951 0.978; -0.05: 0.980 1.008 1.002 0.991 1.013 0.975 1.006 1.082.
+Minimal alternative: keep v2j and replace err_upcorr (8-13% at -0.05) by the MC-engine difference, about 3-4%.
+
+### 17.10 Not established
+Why C1 fluctuated at 3.5 sigma; the 3% direct-anchored difference (a down-going level offset of 2 sigma); cos Z -0.15
+(resolution); cos Z -0.25 (needs a 50-deg patch); 0.4-4 GeV (resolution); common MC artefacts that cancel in U/D but not in
+levels (pion threshold 0.234 GeV, PM note; kor/gf and err_Cpp taken from v2h); solar epoch phi0 = 0.55 GV assumed.
+Reproduce: `$W/runs/mcup/HANDBACK.md` sec. 9.
+
+### 17.11 PM review and decision (2026-11-12)
+
+* **PM checks:**
+  * `test_upgoing.py` rerun by the PM: 34 passed.
+  * The proposed-rows file was re-read and the numbers recomputed independently:
+    * the stored v2h rows equal the table's rows 8/9;
+    * the direct MC level / v2h ratios (17.9) and the anchored ratios are reproduced;
+    * the az-mean of the full MC cells equals the stored level exactly;
+    * the mean a1/a0 (E bins 0-4) is MC 0.474 / 0.593 vs v2h 0.517 / 0.708 at cos Z -0.05 / -0.15.
+  * The diff of `scoring.py` was read: `crossing2` takes the far root only for an origin above the sphere moving inward, and the
+    shared `_locate_at` keeps `locate` unchanged.
+  * Option-off bit identity was taken from the agent's paired fixed-seed run (0 arrays differ); not rerun by the PM.
+* **Science reading:**
+  * At cos Z -0.05, 0.10-0.40 GeV, the pre-registered direct estimator gives MC/v2h = -0.4 +- 2.8% and excludes v2i at 2.4 sigma.
+    The engine's up-going horizon cells carry two errors that cancel to about 3%. v2j's choice (c_up only as an error) is
+    confirmed.
+  * The same-run U/D is inside the Honda/Bartol envelope at |cos Z| 0.05 below 0.4 GeV. v2i's U/D miss was its c_up.
+  * The MC removes the engine's up-going E-W excess (an open item since ext1).
+  * **Caveat: the closure gate failed on its first sample** (row 0.15, -2.7 +- 1.1%, 14/20 groups low). The scorer alone closes to
+    0.3%, the pre-specified replication did not reproduce the deficit, and the pooled closure passes. Classifying C1 as a
+    fluctuation is post hoc. Its size is carried as a systematic: 1.44% at -0.15, 0.75% at -0.05.
+  * The direct and anchored estimators differ by about 3% below 0.4 GeV, and by up to 7-10% at 1.6-4 GeV. This is unexplained
+    (this run's down-going level is 2 sigma above production B); it is carried as an error (below).
+* **PM decision:**
+  * Build **v2k** = v2j with rows 8/9 (cos Z -0.15 / -0.05), E bins 0-7, replaced by the full MC cells (option (a), the
+    pre-registered direct estimator). This mirrors the source rule of rows 10/11 (MC below 3.98 GeV).
+  * Error model, mirroring the MC cells of rows 10/11, plus:
+    * the closure systematic;
+    * half the direct-anchored difference;
+    * the common soft-pion bias as an error on all four MC horizon rows (16.8; no correction is applied until the MC threshold
+      is fixed).
+  * Option (b) was rejected because it keeps the engine's E-W excess. The minimal option (v2j with a smaller err_upcorr) was
+    rejected for the same reason.
+* **Also scheduled:** the MC pion-threshold fix in `tools/mc3d/shower.py`, as an opt-in, metadata-recorded option. Production B
+  and mcup stay reproducible with the legacy threshold.
+* **Open:**
+  * U/D at |cos Z| 0.15, 0.11-0.16 GeV sits 3-4% below Honda solmax for the MC, v2h and v2j alike.
+  * cos Z -0.25 needs a 50-deg patch.
+  * The MC's E-W fan-out above Honda at 0.4-1 GeV.
+  * CPU was 33.9 of 40 core-h.

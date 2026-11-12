@@ -314,8 +314,8 @@ class NestedCaps:
         Only the **first** (near) root is taken.  For a straight ray whose
         origin is above the ground sphere this is the only physical crossing:
         ``r(s)`` has a single minimum, so a ray with ``dr/ds > 0`` never comes
-        back.  Up-going neutrinos therefore never register -- see the note in
-        ``DualCapScorer``.
+        back.  Up-going neutrinos therefore never register here -- see the note
+        in ``DualCapScorer`` and :meth:`crossing2` for the opt-in second root.
         """
         b = r[0] * u[0] + r[1] * u[1] + r[2] * u[2]
         c = r[0] * r[0] + r[1] * r[1] + r[2] * r[2] - self.r_e * self.r_e
@@ -341,6 +341,45 @@ class NestedCaps:
         h = self.crossing(r, u)
         if h is None:
             return None
+        return self._locate_at(h, u)
+
+    def crossing2(self, r, u):
+        """Second (far) ground-sphere crossing of the ray -- the **exit**
+        point -- or ``None``.
+
+        It exists only for a ray whose origin is above the ground sphere and
+        which enters it (two distinct positive roots): the straight neutrino
+        then leaves the Earth at the far root, **up-going** in the local frame
+        there.  An up-going neutrino at the site with ``|cos Z| = c`` entered
+        the Earth at the point ``Q`` at angular distance ``2 arcsin(c)``, where
+        its local zenith cosine was also ``c`` (the chord is symmetric).  A ray
+        whose origin is inside the sphere, which moves away from it, grazes it
+        (``disc = 0``) or misses it has no second root here (an origin inside
+        the sphere has a single positive root, which :meth:`crossing` takes).
+        """
+        b = r[0] * u[0] + r[1] * u[1] + r[2] * u[2]
+        c = r[0] * r[0] + r[1] * r[1] + r[2] * r[2] - self.r_e * self.r_e
+        disc = b * b - c
+        if disc <= 0.0 or c <= 0.0 or b >= 0.0:
+            return None
+        s = -b + disc ** 0.5
+        return (r[0] + s * u[0], r[1] + s * u[1], r[2] + s * u[2])
+
+    def locate2(self, r, u):
+        """:meth:`locate` at the second root (:meth:`crossing2`): ``(i0,
+        cos_zenith, azimuth_deg, cos_incidence)`` with ``cos_zenith < 0``
+        (up-going arrival in the local frame of the exit point), or ``None``.
+        The azimuth is that of the arrival direction ``-u`` projected on the
+        local horizontal (the side the neutrino comes from), as for
+        down-going neutrinos."""
+        h = self.crossing2(r, u)
+        if h is None:
+            return None
+        return self._locate_at(h, u)
+
+    def _locate_at(self, h, u):
+        """Cap index, local cos zenith / azimuth of the arrival direction and
+        ``|cos|`` at the crossing point ``h`` (on the ground sphere)."""
         n = (h[0] ** 2 + h[1] ** 2 + h[2] ** 2) ** 0.5
         nx, ny, nz = h[0] / n, h[1] / n, h[2] / n
         ca = nx * self.axis[0] + ny * self.axis[1] + nz * self.axis[2]
@@ -407,7 +446,12 @@ class DualCapScorer:
     its own production side (the root we take) and once, up-going, under the
     detector.  That needs a second injection patch at the antipode and the
     *second* root; milestone 2b therefore reports down-going bins only, and
-    ``cos Z < 0`` is empty by construction rather than by physics.
+    ``cos Z < 0`` is empty by construction rather than by physics.  (The 3D
+    driver ``sky3d`` has an opt-in second-root tally, ``--upgoing``, using
+    :meth:`NestedCaps.crossing2`; the far-side showers of the near-horizon
+    up-going rows, 5.7 / 17.3 deg from the site at ``|cos Z|`` 0.05 / 0.15,
+    lie inside the ordinary injection patch, so no antipodal patch is needed
+    there.)
 
     Three auxiliary tallies (milestone 2b), all keyed off ``begin_shower``:
 
