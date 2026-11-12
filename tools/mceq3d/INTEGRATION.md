@@ -1582,3 +1582,130 @@ Reproduce: `$W/runs/mcup/HANDBACK.md` sec. 9.
   * cos Z -0.25 needs a 50-deg patch.
   * The MC's E-W fan-out above Honda at 0.4-1 GeV.
   * CPU was 33.9 of 40 core-h.
+
+## 18. Candidates v2k and v2l: v2j with the MC up-going near-horizon rows (2026-11-12, CANDIDATE)
+
+File: `$W/runs/v2k/out/kamioka_3D_v2k.npz` (label `kamioka_3D_v2k`, status `candidate`), format unchanged (new arrays only).
+Builder: `tools/mceq3d/build_table_v2.py build-v2k` / `gates-v2k` (`$W/runs/v2k/out/gates.md`). Inputs, read only: v2j
+(`a99adaa6...09ac2d`) and `$W/runs/mcup/out/mcup_rows_P1+P2.npz` (`19819ee9...4f18`). `build-v2i` / `build-v2j` rebuild v2i / v2j
+bit-identically (all arrays except `build_date`, `code_git_rev`; `runs/v2k/work/rebuild_check.txt`).
+
+### 18.1 Definition (PM decision 17.11)
+* Rows 8 / 9 (cos Z -0.15 / -0.05), E bins 0-7 (< 3.98 GeV): `factor_3d` = `factor_3d_mc`, the full MC cells (direct estimator) of
+  mcup; `factor` = `factor_3d` x `hybrid_correction` (mcup's `hybrid_correction_rows` equals the table's, bit for bit).
+* `source` = 4 on those cells ("MC up-going, second-root scorer, run mcup"), added to `source_codes`. `Tabulated3DModel` does not
+  read `source`, so no change in `src/`.
+* Every other cell is bit-identical to v2j in every array (rows 10/11 central values included). `corr_v2j`, `corr_fb`,
+  `corr_cup` are carried unchanged and do not describe the new cells (`corr_v2k_note`). v2j values are kept as `*_v2j`.
+
+### 18.2 Error terms of the new cells
+mcup's `factor_3d_mc_err_rel` is exactly sqrt(jk^2 + err_conv^2 + err_Cpp^2 + err_f40^2 + err_closure^2) (reproduced from the run's
+jk files to 2e-16: `runs/v2k/scripts/d1_decomp.py`, `logs/d1_decomp.log`; err_f40 is 1.3e-5 at most, not exactly 0). The per-cell
+jackknife jk is stored as `mcup_jk_cell_rel`. `err_v1c_rel` of the MC cells of rows 10/11 is reproduced to 4e-16 by
+sqrt(jk^2 + sigma_ref^2 + sigma_model^2) (`G_err_total` = jackknife (+) the reference-shape systematic sigma_ref(E) = 2.0-5.5%;
+`scripts/d2_v1c_check.py`); the same recipe is mirrored. Rows 9 <- 10, 8 <- 11 (same species, E, azimuth).
+
+| term | rows 8 / 9, E bins 0-7 |
+|---|---|
+| `err_v1c_rel` | sqrt(jk^2 + sigma_ref^2 + sigma_model^2); sigma_ref, sigma_model of the mirrored down-going cell; no sigma_R |
+| `err_Cpp_rel` | mcup `err_Cpp_rel` (= v2h value of rows 10/11, azimuth mean) |
+| `err_capb_rel` | mcup `err_conv_rel` = abs((1+b1_up)/(1+b0_up) - 1)/2, per E bin; no 3 sigma_b0 term (b0 jackknife is inside jk) |
+| `err_horizon_rel` | v2j value of the mirrored down-going cell |
+| `err_engine_spread_rel`, `err_upcorr_rel` | 0 |
+| `err_hybrid_rel` | unchanged |
+| `err_mcup_rel` (new) | sqrt(err_closure^2 + (0.5 abs(ln direct level - ln anchored level))^2); err_closure = 0.0144 (-0.15), 0.0075 (-0.05) |
+| `err_softpi_rel` (new) | rows 8-11: abs cos Z 0.05: E0 0.021, E1 0.017; 0.15: E0 0.014, E1 0; E >= 2: 0 (mgfix i6 "V0 truth"; error only) |
+
+`factor_error` = `factor` x sqrt(sum of the nine err_*_rel^2); cells with no change keep the v2j value (rows 10/11 E0-1 change by
+err_softpi only). Note: the `note` string of the mcup file quotes the closure systematic as 0.0095 / 0.018 (C1+C2, PREREG A3);
+the array (C1+C2+C3) and the hand-back have 0.0144 / 0.0075. The array is used.
+Median relative factor_error, v2j -> v2k, species and azimuth median, rows -0.05 / -0.15: E0 0.278 -> 0.237 / 0.260 -> 0.235;
+E1 0.264 -> 0.246 / 0.234 -> 0.226; E4 0.148 -> 0.161 / 0.127 -> 0.096; E6 0.154 -> 0.222 / 0.121 -> 0.119; E7 0.062 -> 0.262 /
+0.055 -> 0.140 (MC statistics at 2.5-4 GeV; the engine's E7 cells had a small error).
+
+### 18.3 Gates (`out/gates.md`, all PASS)
+Protected sha256 unchanged (v1c, v2h, v2, v2i, corrections_v2i, v2j, corrections_v2j, mcup rows); factor == factor_3d x
+hybrid_correction exactly; rows 8/9 E 0-7 factor_3d == factor_3d_mc exactly and factor == factor_mc; rows 10/11 factor, factor_3d
+bit-identical to v2j; every cell outside rows 8/9 x E 0-7 bit-identical to v2j in all 21 grid arrays (factor_error also outside the
+err_softpi cells); error quadrature closes to 6.7e-16; the az-mean / v2h table of 17.9 is reproduced to 3 decimals (the geometric
+species mean gives the brief's numbers, the arithmetic mean the numbers printed in 17.9).
+
+### 18.4 External check (x1-x5 on Pv2k; expectation written into gates.md before the run)
+Flag counts (outside the envelope by > 0.03 in ln, a1/a0 beyond Honda by > 0.05, phase > 15 deg), P1 / Pv2h / Pv2i / Pv2j / Pv2k:
+H/V 9 / 12 / 7 / 7 / 7; a1/a0 12 / 16 / 16 / 16 / 5; flavour 16 / 6 / 5 / 6 / 5; level 130 / 27 / 23 / 26 / 27; nu/nubar 49 / 20 / 20 /
+20 / 17; phase 2 / 2 / 2 / 2 / 0; U/D has no flag in any product.
+* Down-going: Pv2k == Pv2j exactly (max ratio deviation 0). Up-going |cos Z| > 0.2: exactly equal.
+* E-W a1/a0, species mean over 0.11-1 GeV, up-going rows (Honda / Pv2j / Pv2k): -0.05: 0.490 / 0.515 / 0.470; -0.15: 0.618 / 0.705 / 0.590.
+* U/D excess over the nearest envelope edge, Pv2k against 17.6 column (ii) (|cos Z| 0.05, six bands: in, +.032, +.034, +.021, +.014,
+  +.035; 0.15: in, in, -.007, -.003, in, in): Pv2k 0.05: +.001, +.027, +.034, +.025, +.007, +.036; 0.15: -.004, +.000, -.005, -.001,
+  +.000, +.002. Agreement within 0.007 (daemonflux x table product with the daemonflux spectral shape inside each band, against
+  table-cell tallies). The |cos Z| 0.15, 1.0-2.5 GeV band was +0.037 in Pv2j and is inside in Pv2k.
+* Other changes (all in the up-going |cos Z| 0-0.3 band): 19 flags gone (12 a1/a0, 2 phase at 2.5-10, 5 level / flavour / nu-nubar
+  ones), 3 new at the threshold (nue a1/a0 1.0-2.5 GeV 0.057, antinue level 1.0-2.5 -0.034, antinumu level 0.11-0.16 +0.031).
+  Causes: the new cells move the up-going level by the 17.9 ratios (-5 to +8%) and the MC azimuth pattern replaces the engine's.
+  nue/antinue up-going at 0.40-0.63 and 1.0-2.5 GeV gets worse (+0.049 -> +0.078, +0.065 -> +0.094): not understood, MC statistics
+  of the species ratio per cell are 10-20%.
+
+### 18.5 Not established
+The 3% direct-anchored difference (17.10), the closure fluctuation, the soft-pion threshold bias (carried as an error, not corrected),
+cos Z -0.25 (not measured; remains engine), E >= 3.98 GeV up-going (engine). Rows 8/9 E7 (2.5-4 GeV) now carry 14-26% errors.
+
+### 18.6 Reproduce
+```
+source $W/runs/dbv142/env.sh; export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 MCEQ3D_CACHE=$W/mceq3d_cache
+cd $R; taskset -c 0-3 $PY tools/mceq3d/build_table_v2.py build-v2k      # -> runs/v2k/out/kamioka_3D_v2k.npz
+taskset -c 0-3 $PY tools/mceq3d/build_table_v2.py gates-v2k            # -> runs/v2k/out/gates.md
+cd $W/runs/v2k; for x in x1_eval_products.py:Pv2k x2_analyze.py x3_summarize.py x4_tables.py x5_near_horizon.py; do ...; done
+pytest tests with DAEMONFLUX_3D_TABLE_V1/_V2H/_V2I/_V2J/_V2K set
+```
+sha256 v2k `ea0b2bfeedf334daf58df08eae1ad2e5277213bfa451383ec003f87d4188a9c6`.
+
+### 18.7 v2l: v2k with E bins 6-7 of rows 8/9 reverted to the engine (PM rule: error sizes)
+File: `$W/runs/v2k/out/kamioka_3D_v2l.npz` (label `kamioka_3D_v2l`, candidate), sha256 `783017585a938bd8379477c89001c7030ffb25c1d11a034ca57e576cf10afd28`;
+v2k is unchanged (`ea0b2bfe...a9c6`). Builder: `build-v2l` / `gates-v2l` (same code path as v2k, `MC_NE = {"v2k": 8, "v2l": 6}`); gates
+`$W/runs/v2k/out/gates_v2l.md`, all PASS.
+* **Reason (PM decision, by error size, not by flags).** Non-hybrid median relative errors, MC (v2k) against engine (v2j), E0-E7: row -0.05 MC
+  .099 .105 .111 .108 .143 .142 .222 .261, engine .182 .166 .129 .124 .126 .165 .153 .062; row -0.15 MC .091 .096 .077 .068 .077 .088 .119 .139,
+  engine .151 .112 .085 .088 .091 .104 .120 .055. With one split energy the MC is at least as precise in 11 of 12 (row, E) bins for E0-E5
+  (0.10-1.58 GeV) and removes the engine's E-W excess, which lives below 1 GeV. At E6-E7 it is 1.0-4.7x noisier and the engine has no
+  demonstrated bias there.
+* **Definition.** Rows 8/9, E bins 0-5: the v2k MC cells (source 4, errors as 18.2). Rows 8/9, E bins 6-7: the v2j cells, every array equal to v2j
+  (source 3; `err_softpi` and `err_mcup` are 0 there). All other cells as v2k and v2j. `v2l_note` is stored in the file.
+* **Gates beyond v2k:** rows 8/9 E 6-7 equal v2j in every grid array; rows 8/9 E 0-5 equal v2k in factor, factor_3d, factor_error, the nine err terms and
+  source; v2i, v2j and v2k rebuild bit-identically (only `build_date`, and `code_git_rev` for v2i/v2j, differ).
+* **External check** (`$W/runs/v2k/ext_v2l/`, expectation written into `out/gates.md` before the run). Flag counts P1 / v2h / v2i / v2j / v2k / v2l: a1/a0 12/16/16/16/5/7;
+  phase 2/2/2/2/0/2; H/V 9/12/7/7/7/7; flavour 16/6/5/6/5/5; level 130/27/23/26/27/27; nu/nubar 49/20/20/20/17/17; U/D none. Against Pv2k: the six 2.5-10 GeV flags (4 a1/a0,
+  2 phase, 1 level antinue) return as in Pv2j; the two 1.0-2.5 GeV flags of Pv2k (nue a1/a0, antinue level) vanish; nue/antinue up 1.0-2.5 GeV +0.094 -> +0.056.
+  Down-going, up-going |cos Z| > 0.2 and all 0.11-1 GeV fluxes equal Pv2k exactly. U/D at |cos Z| 0.05, 1.0-2.5 GeV: Pv2j +.043, Pv2k +.036, Pv2l +.030 (0.15: +.037, +.002, +.019);
+  this is outside the expected Pv2k-Pv2j interval because the MC/v2h ratio of rows -0.05 is 0.975 at E5 but 1.006 at E6 (arithmetic): reverting E6 lowers the up-going flux.
+* The 0.11-1 GeV a1/a0 gains of v2k are kept (the E-W excess lives there).
+
+### 18.8 Note on the table of 17.9
+The species means of the table in 17.9 (MC level / v2h) are arithmetic means over the four species. The v2k brief used the geometric mean (the pre-registered ln rho statistic);
+the two differ by up to 0.011 (E6 at cos Z -0.05: 1.006 arithmetic, 0.995 geometric; E7 1.082 / 1.081; row -0.15 up to 0.002). `gates-v2k` reproduces both exactly.
+
+### 18.9 PM review (2026-11-12)
+
+* **PM checks:**
+  * sha256 of v1c, v2h, v2j, v2k and v2l recomputed.
+  * Identities recomputed independently, all exact:
+    * factor = factor_3d x hybrid_correction;
+    * rows 8/9: E0-5 equal v2k and E6-7 equal v2j (factor, factor_3d, factor_error);
+    * every other cell equals v2k, which equals v2j outside rows 8/9 E0-7;
+    * the nine-term quadrature closes to 6.7e-16.
+  * daemonflux tests rerun with all six table env vars: 60 passed, 1 skipped.
+  * The added lines are <= 88 characters.
+* **Choice of the split:** E0-5 MC and E6-7 engine is a PM rule set from error sizes. It was written down before v2l's external check.
+  * The MC/v2h step between E5 and E6 at cos Z -0.05 (0.975 -> 1.006 in the arithmetic mean) is within the E5 MC level error
+    (about 6%).
+* **The engine-reference-shape term:** sigma_ref is mirrored from the MC cells of rows 10/11 (the same reference convention).
+* **Status:**
+  * **v2l is the recommended candidate.** It supersedes v2j.
+  * v2k is kept as the all-MC (E0-7) comparison variant.
+  * v1c is unchanged, and nothing in `src/daemonflux` changed (Tabulated3DModel does not read `source`).
+* **Open:**
+  * The direct-vs-anchored level of the MC up-going rows, carried as err_mcup.
+  * The soft-pion bias, carried as err_softpi until the MC threshold fix (run pithr) has been validated.
+  * U/D at |cos Z| 0.15, 0.11-0.16 GeV, 3-4% below Honda solmax.
+  * cos Z -0.25 and E >= 1.58 GeV up-going are still engine cells.
+  * nue/antinue up-going at 0.4-0.63 GeV.

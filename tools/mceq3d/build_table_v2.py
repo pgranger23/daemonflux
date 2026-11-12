@@ -24,8 +24,21 @@
     python build_table_v2.py gates-v2j identities and errors of v2j vs v2h and v2i
                                        -> $W/runs/v2j/out/gates.md (section "builder")
 
-``$V2_OUTDIR`` redirects the output directory of build-v2i / build-v2j (reproducibility
-checks); the default is the run directory of the table.
+    python build_table_v2.py build-v2k
+                                       $W/runs/v2k/out/kamioka_3D_v2k.npz = v2j with the
+                                       up-going rows cos Z -0.15/-0.05, E bins 0-7,
+                                       replaced by the MC cells of run mcup (source 4;
+                                       refuses to overwrite)
+    python build_table_v2.py build-v2l
+                                       $W/runs/v2k/out/kamioka_3D_v2l.npz = v2k with
+                                       rows 8/9 E bins 6-7 reverted to v2j cells
+                                       (same code path, MC_NE["v2l"] = 6)
+    python build_table_v2.py gates-v2l gates of v2l (vs v2j, v2k) -> out/gates_v2l.md
+    python build_table_v2.py gates-v2k identities and errors of v2k vs v2j, v2h, mcup
+                                       -> $W/runs/v2k/out/gates.md (section "builder")
+
+``$V2_OUTDIR`` redirects the output directory of build-v2i / build-v2j / build-v2k
+(reproducibility checks); the default is the run directory of the table.
 
 Draft documentation: ``$W/runs/v2h/INTEGRATION_13_draft.md`` (INTEGRATION.md section
 13), ``$W/runs/v2i/INTEGRATION_14_draft.md`` (section 14, v2i).
@@ -1263,6 +1276,507 @@ def cmd_gates_v2j():
     print("\n".join(L))
 
 
+# ----------------------------------------------------------------------------- v2k
+V2K = os.path.join(W, "runs", "v2k", "out")
+MCUP_ROWS = os.path.join(W, "runs", "mcup", "out", "mcup_rows_P1+P2.npz")
+MCUP_ROWS_SHA256 = "19819ee9fef5be3533e3562da425b3569223714a1b9557163506e3ebaee34f18"
+V2K_SHA256 = "ea0b2bfeedf334daf58df08eae1ad2e5277213bfa451383ec003f87d4188a9c6"
+V2J_SHA256 = "a99adaa6485ab6e8118b949cdd5174bfbc8bc0e83b0fba539add51e3bd09ac2d"
+CORR_V2J_SHA256 = "ab858d7be9bf8cba7923ce30fc3c620a7f228d3f533904c609bc4c51e5737fc8"
+#: rows 8/9 (cos Z -0.15 / -0.05), E bins 0-7 become MC cells; mirrored down-going rows
+UP_MC = (8, 9)
+DN_MIRROR = {8: 11, 9: 10}
+NE_MC = 8
+#: number of MC up-going E bins (rows 8/9) per candidate; v2l reverts E 6-7 to v2j
+MC_NE = {"v2k": 8, "v2l": 6}
+SRC_MCUP = 4
+#: soft-pion threshold bias of the MC (mgfix i6 "V0 truth"), per |cos Z| row and E bin
+SOFTPI = {0.05: (0.021, 0.017), 0.15: (0.014, 0.0)}
+SOFTPI_ROWS = {10: 0.05, 9: 0.05, 11: 0.15, 8: 0.15}
+PROV_V2L = (
+    "Kamioka 3D factor v2l = v2k with rows 8/9 (cos Z -0.15/-0.05) E bins 6-7 "
+    "(1.58-3.98 GeV) reverted to the v2j engine cells: every array there equals v2j "
+    "(source 3). Reason (PM rule, error sizes): the MC is at least as precise as the "
+    "engine for E bins 0-5 in 11 of 12 (row, E) bins and removes the engine's E-W "
+    "excess below 1 GeV, but is 1.0-4.7x noisier at E 6-7 where the engine has no "
+    "demonstrated bias. E bins 0-5 are the v2k MC cells, errors as v2k. "
+)
+V2K_TERMS = V2I_TERMS + ("err_mcup_rel", "err_softpi_rel")
+SOURCE_CODE_MCUP = (
+    "; 4 = MC up-going, second-root scorer, run mcup (E < 3.98 GeV, cos Z -0.15/-0.05)"
+)
+PROV_V2K = (
+    "Kamioka 3D factor v2k = v2j with the up-going near-horizon rows cos Z -0.15 / "
+    "-0.05 (table rows 8 / 9), E bins 0-7 (< 3.98 GeV) replaced by the full MC cells "
+    "of run mcup (second-root up-going scorer, production-B physics; direct "
+    "estimator, $W/runs/mcup/out/mcup_rows_P1+P2.npz): factor_3d = factor_3d_mc, "
+    "factor = factor_3d x hybrid_correction (unchanged, equal to mcup's "
+    "hybrid_correction_rows), source 4. Every other cell is bit-identical to v2j in "
+    "every central array. Errors of the MC cells (rows 8/9, E 0-7): err_v1c_rel = "
+    "sqrt(jk^2 + sigma_ref^2 + sigma_model^2) with jk = per-cell MC jackknife of mcup "
+    "(reconstructed from factor_3d_mc_err_rel minus its conv, Cpp, f40 and closure "
+    "terms), sigma_ref and sigma_model of the mirrored down-going cell (rows 8 <- 11, "
+    "9 <- 10; the same decomposition as err_v1c_rel of rows 10/11); err_Cpp_rel = "
+    "mcup err_Cpp_rel; err_capb_rel = mcup err_conv_rel = |f_b,up - 1|/2; "
+    "err_horizon_rel = v2j value of the mirrored down-going cell; "
+    "err_engine_spread_rel = err_upcorr_rel = 0; err_hybrid_rel unchanged; new "
+    "err_mcup_rel = sqrt(closure^2 + (0.5 ln(direct level / anchored level))^2); new "
+    "err_softpi_rel on the four MC horizon rows 8-11 (soft-pion threshold bias, no "
+    "correction applied). factor_error = factor x sqrt(err_v1c_rel^2 + err_Cpp_rel^2 "
+    "+ err_engine_spread_rel^2 + err_horizon_rel^2 + err_hybrid_rel^2 + "
+    "err_capb_rel^2 + err_upcorr_rel^2 + err_mcup_rel^2 + err_softpi_rel^2). Tool: "
+    "tools/mceq3d/build_table_v2.py build-v2k; doc: INTEGRATION.md section 18 (draft "
+    "$W/runs/v2k/INTEGRATION_18_draft.md). v2j provenance follows. "
+)
+ERR_MCUP_NOTE = (
+    "rows 8/9 (cos Z -0.15/-0.05), E bins 0-7, per species and E bin, azimuth "
+    "independent: sqrt(err_closure^2 + (0.5 |ln factor_3d_mc_level - ln "
+    "factor_3d_anchored_level|)^2); err_closure = pooled field-free closure "
+    "systematic of mcup (array err_closure_rel: 0.0144 at -0.15, 0.0075 at -0.05; the "
+    "note string of the mcup file quotes 0.0095/0.018, the C1+C2 value of PREREG A3, "
+    "and is superseded); 0 elsewhere"
+)
+ERR_SOFTPI_NOTE = (
+    "MC soft-pion threshold bias carried as an error, no correction (INTEGRATION "
+    "16.8; runs/mgfix/logs/i6_report.log, 'V0 truth'): |cos Z| 0.05 rows (9, 10): E0 "
+    "0.021, E1 0.017; |cos Z| 0.15 rows (8, 11): E0 0.014, E1 0; E >= 2: 0; 0 on all "
+    "other rows"
+)
+ERR_V1C_NOTE_V2K = (
+    "rows 8/9 E bins 0-7 (source 4): sqrt(jk^2 + sigma_ref^2 + sigma_model^2); jk = "
+    "per-cell jackknife of the mcup MC cell, sigma_ref (G_down sigma_ref[E, cos Z "
+    "band]) and sigma_model_rel of the mirrored down-going cell (8 <- 11, 9 <- 10), "
+    "which is the content of err_v1c_rel of rows 10/11 (G_err_total = jackknife (+) "
+    "sigma_ref, (+) sigma_model); other cells as v2j"
+)
+ERR_CAPB_NOTE_V2K = (
+    "rows 10/11: as v2i (E bins 0-6, sqrt((|f_b - 1|/2)^2 + (3 sigma_b0)^2)); rows "
+    "8/9 E bins 0-7 (source 4): mcup err_conv_rel = |(1 + b1_up)/(1 + b0_up) - 1|/2 "
+    "(per E bin, species and azimuth independent; no 3 sigma_b0 term, the b0 "
+    "jackknife is inside jk); 0 elsewhere"
+)
+ERR_CPP_NOTE_V2K = (
+    "rows 8/9 E bins 0-7 (source 4): mcup err_Cpp_rel (v2h err_Cpp_rel of rows "
+    "10/11, azimuth mean); other cells as v2h"
+)
+ERR_HOR_NOTE_V2K = (
+    "rows 8/9 E bins 0-7 (source 4): v2j err_horizon_rel of the mirrored down-going "
+    "cell (8 <- 11, 9 <- 10, same species, E, azimuth); other cells as v2j. "
+)
+
+
+def _v2k_pieces(j, m, gd, ne=NE_MC):
+    """Per-cell new central values and error terms (rows 8/9, E 0-7); asserts."""
+    assert [int(x) for x in m["table_cosz_index"]] == list(UP_MC)
+    assert list(m["species"]) == list(j["species"])
+    f3d = m["factor_3d_mc"][:, :ne]  # (4, ne, 2, 12) rows [8, 9]
+    hyb = m["hybrid_correction_rows"][:, :ne]
+    assert np.array_equal(hyb, j["hybrid_correction"][:, :ne, list(UP_MC)])
+    cell = m["factor_3d_mc_err_rel"][:, :ne]
+    conv = m["err_conv_rel"][None, :ne, None]
+    cpp = m["err_Cpp_rel"][:, :ne]
+    f40 = m["err_f40_rel"][None, :ne]
+    clos = m["err_closure_rel"][None, None, :]
+    sys_u = np.sqrt(conv**2 + cpp**2 + f40**2 + clos**2)[..., None]
+    jk2 = cell**2 - sys_u**2
+    assert jk2.min() > -1e-14
+    jk = np.sqrt(np.maximum(jk2, 0.0))
+    sig_ref = gd["sigma_ref"]  # (E, coarse cos Z band)
+    v1c = np.zeros_like(jk)
+    hor = np.zeros_like(jk)
+    for n, r in enumerate(UP_MC):
+        rm = DN_MIRROR[r]
+        sref = sig_ref[None, :ne, rm - 10, None]
+        smod = j["sigma_model_rel"][:, :ne, rm]
+        v1c[:, :, n] = np.sqrt(jk[:, :, n] ** 2 + sref**2 + smod**2)
+        hor[:, :, n] = j["err_horizon_rel"][:, :ne, rm]
+    # err_v1c_rel of rows 10/11 is reproduced exactly by the same recipe
+    for r in (10, 11):
+        rec = np.sqrt(
+            (gd["G_err"][:, :ne, r - 10] / gd["G"][:, :ne, r - 10]) ** 2
+            + sig_ref[None, :ne, r - 10, None] ** 2
+            + j["sigma_model_rel"][:, :ne, r] ** 2
+        )
+        assert np.abs(rec / j["err_v1c_rel"][:, :ne, r] - 1).max() < 1e-12
+    capb = np.broadcast_to(m["err_conv_rel"][None, :ne, None, None], jk.shape)
+    cppu = np.broadcast_to(cpp[..., None], jk.shape)
+    lvl = np.abs(np.log(
+            m["factor_3d_mc_level"][:, :ne] / m["factor_3d_anchored_level"][:, :ne]
+        ))
+    mcup = np.sqrt(clos**2 + (0.5 * lvl) ** 2)
+    return dict(
+        f3d=f3d,
+        hyb=hyb,
+        jk=jk,
+        v1c=v1c,
+        hor=hor,
+        capb=capb,
+        cpp=cppu,
+        mcup=np.broadcast_to(mcup[..., None], jk.shape),
+        lvl=lvl,
+    )
+
+
+def _build_mc_up(tag):
+    """Build kamioka_<tag>.npz (v2k: MC rows 8/9 E 0-7; v2l: E 0-5, E 6-7 as v2j)."""
+    ne = MC_NE[tag]
+    out = os.path.join(os.environ.get("V2_OUTDIR", V2K), "kamioka_3D_%s.npz" % tag)
+    if os.path.exists(out):
+        raise FileExistsError(out)
+    pj = os.path.join(V2J, "kamioka_3D_v2j.npz")
+    for p, ref in ((pj, V2J_SHA256), (MCUP_ROWS, MCUP_ROWS_SHA256)):
+        if sha(p) != ref:
+            raise RuntimeError(f"sha256 differs from {ref}: {p}")
+    j = np.load(pj, allow_pickle=False)
+    m = np.load(MCUP_ROWS, allow_pickle=False)
+    gd = np.load(INPUTS["G_down"], allow_pickle=True)
+    pc = _v2k_pieces(j, m, gd, ne)
+    shp = j["factor"].shape
+    up = list(UP_MC)
+    d = {k: j[k] for k in j.files}
+    for k in ("factor", "factor_error", "factor_3d", "source"):
+        d[k + "_v2j"] = j[k]
+    for k in ("err_v1c_rel", "err_Cpp_rel", "err_capb_rel", "err_horizon_rel"):
+        d[k + "_v2j"] = j[k]
+    f3d = j["factor_3d"].copy()
+    f3d[:, :ne, up] = pc["f3d"]
+    fac = f3d * j["hybrid_correction"][..., None]
+    assert np.array_equal(fac[:, :ne, up], m["factor_mc"][:, :ne])
+    src = j["source"].copy()
+    src[:ne, up] = SRC_MCUP
+    err = {t: j[t].copy() for t in V2I_TERMS}
+    err["err_v1c_rel"][:, :ne, up] = pc["v1c"]
+    err["err_Cpp_rel"][:, :ne, up] = pc["cpp"]
+    err["err_capb_rel"][:, :ne, up] = pc["capb"]
+    err["err_horizon_rel"][:, :ne, up] = pc["hor"]
+    err["err_engine_spread_rel"][:, :ne, up] = 0.0
+    err["err_upcorr_rel"][:, :ne, up] = 0.0
+    err["err_mcup_rel"] = np.zeros(shp)
+    err["err_mcup_rel"][:, :ne, up] = pc["mcup"]
+    err["err_softpi_rel"] = np.zeros(shp)
+    touched = np.zeros(shp, bool)
+    touched[:, :ne, up] = True
+    for r, c in SOFTPI_ROWS.items():
+        for ie, v in enumerate(SOFTPI[c]):
+            err["err_softpi_rel"][:, ie, r] = v
+    touched |= err["err_softpi_rel"] != 0
+    rel2 = sum(err[t] ** 2 for t in V2K_TERMS)
+    ferr = np.where(touched, fac * np.sqrt(rel2), j["factor_error"])
+    assert np.all(np.isfinite(fac)) and np.all(fac > 0) and np.all(np.isfinite(ferr))
+    sc = str(j["source_codes"]) + SOURCE_CODE_MCUP
+    d.update(
+        factor=fac,
+        factor_error=ferr,
+        factor_3d=f3d,
+        source=src,
+        source_codes=sc,
+        label="kamioka_3D_%s" % tag,
+        status="candidate",
+        provenance=(PROV_V2K if tag == "v2k" else PROV_V2L) + str(j["provenance"]),
+        build_date=datetime.now().isoformat(timespec="seconds"),
+        code_git_rev=git_rev(),
+        err_mcup_note=ERR_MCUP_NOTE,
+        err_softpi_note=ERR_SOFTPI_NOTE,
+        err_v1c_note_v2k=ERR_V1C_NOTE_V2K,
+        err_capb_note_v2j=str(j["err_capb_note"]),
+        err_capb_note=ERR_CAPB_NOTE_V2K,
+        err_Cpp_note_v2k=ERR_CPP_NOTE_V2K,
+        err_horizon_note_v2j=str(j["err_horizon_note"]),
+        err_horizon_note=ERR_HOR_NOTE_V2K + str(j["err_horizon_note"]),
+        corr_v2k_note=(
+            "corr_v2j / corr_fb / corr_cup are carried unchanged from v2j; they do "
+            "not describe rows 8/9 E bins 0-7 (source 4), where factor_3d = "
+            "factor_3d_mc of run mcup"
+        ),
+        input_sha256_v2j=sha(pj),
+        input_sha256_mcup_rows=sha(MCUP_ROWS),
+        mcup_note=str(m["note"][0]),
+        mcup_err_closure_rel=m["err_closure_rel"],
+        mcup_jk_cell_rel=pc["jk"],
+        mcup_ln_direct_over_anchored=pc["lvl"],
+        mcup_factor_3d_mc_level=m["factor_3d_mc_level"],
+        mcup_factor_3d_anchored_level=m["factor_3d_anchored_level"],
+    )
+    if tag == "v2l":
+        d["v2l_note"] = (
+            "rows 8/9: E bins 0-5 are the v2k MC cells (source 4), E bins 6-7 are the "
+            "v2j engine cells (every array equal to v2j, source 3); the err_*_note "
+            "strings that say E bins 0-7 refer to v2k and apply to E bins 0-5 here"
+        )
+    for t in V2K_TERMS:
+        d[t] = err[t]
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+    np.savez(out, **d)
+    print("wrote", out, sha(out))
+
+
+def cmd_build_v2k():
+    _build_mc_up("v2k")
+
+
+def cmd_build_v2l():
+    _build_mc_up("v2l")
+
+
+#: protected inputs of v2k (PROTECTED_SHA plus v2j, its corrections and the mcup rows)
+PROTECTED_SHA_V2K = dict(
+    PROTECTED_SHA,
+    v2j=(os.path.join(V2J, "kamioka_3D_v2j.npz"), V2J_SHA256),
+    corrections_v2j=(os.path.join(V2J, "corrections_v2j.npz"), CORR_V2J_SHA256),
+    mcup_rows=(MCUP_ROWS, MCUP_ROWS_SHA256),
+)
+#: az-mean / v2h table of INTEGRATION 17.9, E bins 0-7: geometric species mean (the
+#: pre-registered ln rho statistic, as in the v2k brief) and arithmetic species mean
+#: (as printed in INTEGRATION 17.9 / the mcup report)
+T179 = {
+    "geometric": {
+        9: (0.980, 1.006, 1.001, 0.990, 1.013, 0.975, 0.995, 1.081),
+        8: (1.032, 1.008, 0.988, 0.982, 0.990, 0.968, 0.951, 0.976),
+    },
+    "arithmetic": {
+        9: (0.980, 1.008, 1.002, 0.991, 1.013, 0.975, 1.006, 1.082),
+        8: (1.032, 1.009, 0.989, 0.983, 0.990, 0.968, 0.951, 0.978),
+    },
+}
+
+
+def _gates_mc_up(tag):
+    ne = MC_NE[tag]
+    L = [f"# {tag} gates (builder)", ""]
+    ok = True
+    L += ["## Protected files (sha256 must be unchanged; a mismatch is a STOP)", ""]
+    for k, (pp, ref) in PROTECTED_SHA_V2K.items():
+        good = sha(pp) == ref
+        ok &= good
+        L.append(f"- {k}: {sha(pp)} -> {'PASS' if good else 'FAIL (STOP)'}")
+        if not good:
+            print("\n".join(L))
+            raise RuntimeError(f"protected file changed: {pp}")
+    pk = os.environ.get("V2_TABLE", os.path.join(V2K, f"kamioka_3D_{tag}.npz"))
+    n = np.load(pk, allow_pickle=False)
+    j = np.load(PROTECTED_SHA_V2K["v2j"][0], allow_pickle=False)
+    h = np.load(PROTECTED_SHA_V2K["v2h"][0], allow_pickle=False)
+    m = np.load(MCUP_ROWS, allow_pickle=False)
+    L += ["", f"table {pk}", f"sha256 {sha(pk)}", ""]
+
+    def gate(name, val, good):
+        nonlocal ok
+        ok &= bool(good)
+        L.append(f"- {name}: {val} -> {'PASS' if good else 'FAIL'}")
+
+    shp = n["factor"].shape
+    mc = np.zeros(shp, bool)
+    mc[:, :ne, list(UP_MC)] = True
+    dn = np.zeros(shp, bool)
+    dn[:, :, 10:12] = True
+    sp = np.zeros(shp, bool)
+    for r, c in SOFTPI_ROWS.items():
+        sp[:, :, r] = n["err_softpi_rel"][:, :, r] != 0
+    L += ["## Identities", ""]
+    hy = n["factor_3d"] * n["hybrid_correction"][..., None]
+    gate(
+        "factor == factor_3d x hybrid_correction (max abs diff)",
+        float(np.abs(n["factor"] - hy).max()),
+        np.array_equal(n["factor"], hy),
+    )
+    gate(
+        f"rows 8/9 E 0-{ne - 1}: factor_3d == factor_3d_mc (mcup) exactly",
+        "equal",
+        np.array_equal(n["factor_3d"][:, :ne, list(UP_MC)], m["factor_3d_mc"][:, :ne]),
+    )
+    gate(
+        f"rows 8/9 E 0-{ne - 1}: factor == mcup factor_mc exactly; "
+        "hybrid_correction == hybrid_correction_rows",
+        "equal",
+        np.array_equal(n["factor"][:, :ne, list(UP_MC)], m["factor_mc"][:, :ne])
+        and np.array_equal(
+            n["hybrid_correction"][:, :ne, list(UP_MC)],
+            m["hybrid_correction_rows"][:, :ne],
+        ),
+    )
+    gate(
+        f"source == 4 on rows 8/9 E 0-{ne - 1}, == v2j elsewhere",
+        "",
+        bool(np.all(n["source"][:ne, [8, 9]] == SRC_MCUP))
+        and np.array_equal(n["source"][:, :8], j["source"][:, :8])
+        and np.array_equal(n["source"][:, 10:], j["source"][:, 10:])
+        and np.array_equal(n["source"][ne:], j["source"][ne:])
+        and "4 = MC up-going" in str(n["source_codes"]),
+    )
+    for k in ("factor", "factor_3d"):
+        gate(
+            f"rows 10/11, all E: {k} bit-identical to v2j",
+            "equal",
+            np.array_equal(n[k][dn], j[k][dn]),
+        )
+    ngrid = 0
+    bad = []
+    for k in j.files:
+        a = j[k]
+        if a.ndim >= 3 and a.shape[:3] == (4, shp[1], shp[2]):
+            tm = mc[..., 0].reshape(mc.shape[:3] + (1,) * (a.ndim - 3))
+            if k == "factor_error":
+                tm = tm | sp[..., 0].reshape(sp.shape[:3] + (1,) * (a.ndim - 3))
+            msk = ~np.broadcast_to(tm, a.shape)
+            ngrid += 1
+            if not np.array_equal(a[msk], n[k][msk]):
+                bad.append(k)
+        elif k not in n.files:
+            bad.append(k + " (missing)")
+        elif a.dtype.kind in "fiub" and k != "source" and not np.array_equal(a, n[k]):
+            bad.append(k)
+    gate(
+        f"every cell outside rows 8/9 x E 0-{ne - 1} (factor_error also outside the "
+        f"err_softpi cells) bit-identical to v2j, all {ngrid} grid arrays (+ non-grid "
+        f"numeric arrays); differing: {bad or 'none'}",
+        "",
+        not bad,
+    )
+    gate(
+        "err_softpi_rel nonzero only on rows 8-11, E 0-1; err_mcup_rel only on rows "
+        f"8/9 E 0-{ne - 1}",
+        "",
+        bool(np.all(n["err_softpi_rel"][:, 2:] == 0))
+        and bool(np.all(n["err_softpi_rel"][:, :, :8] == 0))
+        and bool(np.all(n["err_softpi_rel"][:, :, 12:] == 0))
+        and bool(np.all(n["err_mcup_rel"][~mc] == 0))
+        and bool(np.all(n["err_mcup_rel"][mc] > 0)),
+    )
+    gate(
+        f"rows 8/9 E 0-{ne - 1}: err_engine_spread_rel == 0 and err_upcorr_rel == 0",
+        "",
+        bool(np.all(n["err_engine_spread_rel"][mc] == 0))
+        and bool(np.all(n["err_upcorr_rel"][mc] == 0)),
+    )
+    s2 = sum(n[t] ** 2 for t in V2K_TERMS)
+    dd = float(np.abs((n["factor_error"] / n["factor"]) ** 2 / s2 - 1).max())
+    gate(
+        "max |(factor_error/factor)^2 / sum(err_*_rel^2) - 1| over all cells, 9 "
+        "terms (limit 1e-12)",
+        f"{dd:.2e}",
+        dd <= 1e-12,
+    )
+    if tag == "v2l":
+        k = np.load(os.path.join(V2K, "kamioka_3D_v2k.npz"), allow_pickle=False)
+        gate(
+            "v2k sha256 unchanged",
+            sha(os.path.join(V2K, "kamioka_3D_v2k.npz"))[:12],
+            sha(os.path.join(V2K, "kamioka_3D_v2k.npz")) == V2K_SHA256,
+        )
+        r67 = np.zeros(shp, bool)
+        r67[:, 6:8, [8, 9]] = True
+        r05 = np.zeros(shp, bool)
+        r05[:, :6, [8, 9]] = True
+        bad67 = []
+        for x in j.files:
+            if j[x].ndim >= 3 and j[x].shape[:3] == shp[:3]:
+                mk = r67[..., 0].reshape(shp[:3] + (1,) * (j[x].ndim - 3))
+                mk = np.broadcast_to(mk, j[x].shape)
+                if not np.array_equal(j[x][mk], n[x][mk]):
+                    bad67.append(x)
+        gate(
+            "rows 8/9 E 6-7: every grid array of v2j equal to v2l (factor, factor_3d, "
+            f"factor_error, all err terms, source); differing: {bad67 or 'none'}",
+            "",
+            not bad67
+            and np.array_equal(j["source"][6:8, 8:10], n["source"][6:8, 8:10]),
+        )
+        bad05 = [
+            x
+            for x in list(V2K_TERMS) + ["factor", "factor_3d", "factor_error"]
+            if not np.array_equal(k[x][r05], n[x][r05])
+        ]
+        gate(
+            "rows 8/9 E 0-5: factor, factor_3d, factor_error and all 9 err terms "
+            f"equal to v2k; differing: {bad05 or 'none'}",
+            "",
+            not bad05
+            and np.array_equal(k["source"][:6, 8:10], n["source"][:6, 8:10]),
+        )
+        gate(
+            "err_mcup_rel and err_softpi_rel are 0 on rows 8/9 E 6-7",
+            "",
+            bool(np.all(n["err_mcup_rel"][r67] == 0))
+            and bool(np.all(n["err_softpi_rel"][r67] == 0)),
+        )
+    gate(
+        "label / status",
+        f"{n['label']} / {n['status']}",
+        str(n["label"]) == f"kamioka_3D_{tag}" and str(n["status"]) == "candidate",
+    )
+    # az-mean of the new rows / v2h, species mean, vs INTEGRATION 17.9
+    L += ["", "## az-mean of rows 8/9 / v2h (species mean) vs INTEGRATION 17.9", ""]
+    L += [
+        "| row cos Z | mean | "
+        + " | ".join(f"E{k}" for k in range(ne))
+        + " | max dev |",
+        "|---|---|" + "---|" * (ne + 1),
+    ]
+    for r, lab in ((9, "-0.05"), (8, "-0.15")):
+        q = (
+            n["factor_3d"][:, :ne, r].mean(-1)
+            / h["factor_3d"][:, :ne, r].mean(-1)
+        )
+        for kind, v in (
+            ("geometric", np.exp(np.log(q).mean(0))),
+            ("arithmetic", q.mean(0)),
+        ):
+            dev = float(np.abs(np.round(v, 3) - np.array(T179[kind][r])[:ne]).max())
+            L.append(
+                f"| {lab} | {kind} | "
+                + " | ".join(f"{x:.3f}" for x in v)
+                + f" | {dev:.3f} |"
+            )
+            gate(
+                f"row {lab}, {kind} species mean equals the table to 3 decimals",
+                dev,
+                dev < 1e-9,
+            )
+    L += [
+        "",
+        "Relative factor_error (median / max over species x azimuth), v2j -> v2k",
+        "",
+        "| row cos Z | "
+        + " | ".join(f"E{k} {E_EDGES[k]:.2f}-{E_EDGES[k + 1]:.2f}" for k in range(8))
+        + " |",
+        "|---|" + "---|" * 8,
+    ]
+    for r, lab in ((9, "-0.05"), (8, "-0.15"), (10, "+0.05"), (11, "+0.15")):
+        cells = []
+        for k in range(8):
+            q = {
+                t: x["factor_error"][:, k, r] / x["factor"][:, k, r]
+                for t, x in (("j", j), ("k", n))
+            }
+            cells.append(
+                " -> ".join(f"{np.median(q[t]):.3f}/{q[t].max():.3f}" for t in "jk")
+            )
+        L.append(f"| {lab} | " + " | ".join(cells) + " |")
+    L += ["", f"Median of each term (rows 8/9, E 0-{ne - 1}, species and azimuth)", ""]
+    L += ["| term | row -0.15 | row -0.05 |", "|---|---|---|"]
+    for t in V2K_TERMS:
+        L.append(
+            f"| {t} | "
+            + " | ".join(f"{np.median(n[t][:, :ne, r]):.4f}" for r in (8, 9))
+            + " |"
+        )
+    L += ["", f"**Builder gates overall: {'PASS' if ok else 'FAIL'}**", ""]
+    gname = "gates.md" if tag == "v2k" else f"gates_{tag}.md"
+    out = os.environ.get("V2_GATES", os.path.join(V2K, gname))
+    if os.path.exists(out):
+        raise FileExistsError(out)
+    open(out, "w").write("\n".join(L))
+    print("\n".join(L))
+
+
+def cmd_gates_v2k():
+    _gates_mc_up("v2k")
+
+
+def cmd_gates_v2l():
+    _gates_mc_up("v2l")
+
+
 if __name__ == "__main__":
     {
         "regress": cmd_regress,
@@ -1272,4 +1786,8 @@ if __name__ == "__main__":
         "gates-v2i": cmd_gates_v2i,
         "build-v2j": cmd_build_v2j,
         "gates-v2j": cmd_gates_v2j,
+        "build-v2k": cmd_build_v2k,
+        "gates-v2k": cmd_gates_v2k,
+        "build-v2l": cmd_build_v2l,
+        "gates-v2l": cmd_gates_v2l,
     }[sys.argv[1]]()
