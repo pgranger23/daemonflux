@@ -74,7 +74,8 @@ the three-dimensional cascade with its neutrinos laid on the primary's line. So 
 put on the 3D flux itself, with like-for-like yields:
 
 - **(a) Zenith shape, like for like (gated).** Solver with kernels built from the Monte
-  Carlo's own event pools (`/home/pigrange/mc3d_work/pools`), so both use the same events.
+  Carlo's own event pools (the directory the reference run reads,
+  `/home/pigrange/mc3d_work/pools_fix`; see Corrections), so both use the same events.
   r = Φ_solver / s_MC per cell, divided by its solid-angle-weighted mean over the ten cos Z
   bins of the same species and energy band. Pass: at least 95% of cells within
   max(2%, 2σ_MC) of 1; and for each cos Z row, the mean over species and bands below 1 GeV
@@ -100,3 +101,16 @@ are regenerated at 10^6 events and the gate is re-run.
 ## Decision point 1
 
 After C1 the PI decides on C2. G1.1 or G1.3(a) failing after one diagnosis cycle stops the phase.
+
+## Corrections
+
+- 2026-11-18, before any G1.3 run or solver output existed. G1.3(a) named the pool
+  directory `/home/pigrange/mc3d_work/pools`. That is the pre-fix pool set (above 80 GeV
+  its n, pbar and nbar events were generated as protons, `tools/mc3d/MILESTONE3_RESULTS.md`
+  section 0.1). The reference run, like every physics run since 2026-10-11, reads
+  `pools_fix`. The gate's content, "the Monte Carlo's own event pools", is unchanged; only
+  the path is corrected.
+- 2026-11-18, same status. The reference run uses production B's primary model
+  (`--model GSFG:GH`) and `--thresholds chain`. The solver run of G1.3 uses the same
+  primary spectrum, taken from `tools/mc3d/primaries.py`. G1.1 keeps H3a in both MCEq and
+  the solver; the primary model only sets the initial condition.
