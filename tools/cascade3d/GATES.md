@@ -114,3 +114,21 @@ After C1 the PI decides on C2. G1.1 or G1.3(a) failing after one diagnosis cycle
   (`--model GSFG:GH`) and `--thresholds chain`. The solver run of G1.3 uses the same
   primary spectrum, taken from `tools/mc3d/primaries.py`. G1.1 keeps H3a in both MCEq and
   the solver; the primary model only sets the initial condition.
+
+## Results log
+
+Result files are under `/home/pigrange/mc3d_work/runs/native3d/` (`c0/gates/`, `c1/gates/`).
+
+- **G0.1: PASS** (2026-11-18). Rebuilt `int_m` and `dec_m` equal MCEq's exactly (relative
+  difference 0), PHYS and REF. Command: `gates/g0_1.py`.
+- **G0.2: FAIL** (2026-11-18, reproduced twice). 1502 of 4678 gated entries differ by more
+  than 0.5%, up to 100%. All failures are at low parent energy: pions above 10 GeV and
+  kaons above 100 GeV pass (largest deviation 0.036% and 0.055%).
+  Diagnosis: MCEq's decay tables treat the parent as ultra-relativistic (momentum set equal
+  to total energy, ultra-relativistic muon polarisation) and use rounded masses; our kernels
+  use exact kinematics, as the Monte Carlo does. With MCEq's approximations switched on in
+  our code, 0 of 4572 analytic entries differ by more than 0.5% (largest 0.012%).
+  Independent check: the plateau of MCEq's π+ → ν_μ column gives a parent momentum equal to
+  T + m to four digits at every energy, 20% above the true momentum at T = 0.11 GeV and
+  0.9% above at 0.89 GeV.
+  The gate is not redefined. How it is treated is the PI's decision. Command: `gates/g0_2.py`.
