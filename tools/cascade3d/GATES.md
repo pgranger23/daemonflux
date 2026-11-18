@@ -114,6 +114,19 @@ After C1 the PI decides on C2. G1.1 or G1.3(a) failing after one diagnosis cycle
   (`--model GSFG:GH`) and `--thresholds chain`. The solver run of G1.3 uses the same
   primary spectrum, taken from `tools/mc3d/primaries.py`. G1.1 keeps H3a in both MCEq and
   the solver; the primary model only sets the initial condition.
+- 2026-11-19, after the reference run and before any solver output was compared with it.
+  The Notation section takes σ_MC from the per-primary squared sums, "cross-checked against
+  the spread over independent seeds". The cross-check fails: the squared-sum error is 3.4
+  times smaller than the spread over the ten runs, because the 12 azimuthal copies of a
+  primary are correlated. σ_MC of a cell is therefore the chunk-spread estimate
+  (`*_err_task` in `c1/mcref/mcref_fieldfree.npz`; its ratio to the seed spread is 0.99 and
+  the ten runs scatter about their mean with rms 0.98 in its units). For the row means of
+  G1.3(a), σ is the spread over the ten runs of the row mean itself, divided by √10, which
+  includes the correlation between cells. Both are wider than the squared sums would give;
+  they were fixed without sight of any solver output.
+- 2026-11-19, same status. For like-for-like in G1.3 the solver's initial condition is the
+  reference run's: GSF proton and neutron fluxes (`primaries.py`, `GSFG:GH`, energy
+  convention "total"), kinetic energy per nucleon from 1 to 1000 GeV, nothing outside.
 
 ## Results log
 
