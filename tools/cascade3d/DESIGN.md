@@ -219,7 +219,10 @@ largest up-scatter distance (exact: nothing exists above).
 
 **Sinks**: their emissivity receives every child bin, including up-scatter, and is
 read once at the end of the march. **Push**: in blocks of 16 child bins; a block above
-k + (largest sink up-scatter distance, 7 bins for PHYS) is skipped with `lax.cond`.
+k + (largest sink up-scatter distance, 7 bins for PHYS) is skipped with `lax.cond`;
+only parents with at least one interaction (resp. decay) channel and children that
+receive a channel enter the contraction (cycle 2b; the dropped terms are exact
+zeros: results unchanged to 1e-13, cold cost -8%).
 
 **Neutrinos** (`assemble.py`): not transported. Intensity at any node = line-of-sight
 integral of the emissivity upstream along its chain (trapezoid on the sub-points of the

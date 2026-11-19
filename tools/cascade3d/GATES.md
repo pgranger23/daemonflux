@@ -295,6 +295,42 @@ Result files are under `/home/pigrange/mc3d_work/runs/native3d/` (`c0/gates/`, `
     redefined.
   - Cost of one solve in the configuration of G1.5 (not the gate's run): 11.9
     core-minutes, 5.0 GB; G1.5 allows 10 and 8.
+- **Solver cycle 2b: cost, a diagnostic near the horizon, G1.0 to G1.2 re-run on the
+  final code (2026-11-19; results in `c1/cycle2b/`, author's report
+  `c1/WP12_CYCLE2B_REPORT.md`).** Decided by the manager inside the PI's "Continue", bounded
+  at 8 core-h (used: about 8). No numerical setting was changed.
+  - Adopted: the push contraction is restricted to the parents that have channels and the
+    children that receive one (the terms dropped are exact zeros). Acceptance, fixed
+    before the change: every stored quantity of the four base runs within 1e-9 relative
+    of the cycle-2 file, zeros staying zero. Met: worst 1.0e-13 (recomputed by the
+    manager); before and after on the same code are identical. The 90 unit tests of
+    `tools/cascade3d` pass (re-run by the manager).
+  - G1.0 to G1.2 re-run in full on the final code: **G1.0 PASS** (1.4e-7), **G1.1 FAIL**
+    and **G1.2 FAIL**, with the numbers of the second cycle. The 19 runs of G1.2 reproduce
+    the second cycle's fluxes to 3e-11, except the altitude doubling of part C (8e-8):
+    that run of the second cycle was made before the levels below the top were included
+    in the doubling (335 levels then, 341 in the committed code). `G1.1.md` now prints the
+    settings read from the run's own objects (loss step 5 g/cm²).
+  - Diagnostic, not adopted: a ground layer of levels (10, 30, 100, 300 m) on the Monte
+    Carlo-matched set, base and the four doublings. It does not bring the muon cells
+    inside 0.5%: largest moves at cos Z = 0.05 are +1.74% (altitude grid), −0.76% (line
+    family), +0.65% (L), +0.80% (ray sampling), against +0.72%, −3.19%, +2.29%, +1.07%
+    on the default grid; and the base itself moves by +14% at cos Z = 0.05, 0.112 GeV.
+    The ground muon flux near the horizon below about 0.4 GeV is therefore not converged
+    on either grid, with loss on. Neutrinos do not see it: the ground layer moves the
+    neutrino cells of G1.1 by at most 4e-6 and the G1.3 cells by 1e-5, and under the
+    doublings the G1.3 cells stay within 0.16%. A second candidate (tangent lines passed
+    through below 2 km) was not run, for the budget.
+  - Cost of one solve in the configuration of G1.5, cold, on four cores while the node
+    was shared with the reference re-run: 15.3 core-minutes before the change and 14.0
+    after (−8%), 5.0 GB; a second solve in the same process 12.4. The same code before
+    the change measured 11.9 in the second cycle on a quieter node. G1.5 is measured as
+    written by the agent that runs G1.3; the expectation is that it fails.
+- **Freeze (2026-11-19).** The settings and the code state are written to
+  `RESULTS_C1.md`, before any solver output is compared with the Monte Carlo. G1.3 to
+  G1.5 go ahead with G1.1 and G1.2 on record as failed: the PI's "Continue" covers G1.1;
+  G1.2 failing again after it, on ground muons near the horizon only, is carried forward
+  on the manager's reading of the same decision and is reported to the PI as such.
 
 ## Decisions of the PI
 

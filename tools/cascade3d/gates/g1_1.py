@@ -74,7 +74,20 @@ def solve_case(pop, loss):
     t = time.time()
     out = sv.solve()
     gf = A.ground_fluxes(sv, out)
-    return gf, ks, float(np.max(out["res"])), time.time() - t, r.summary()
+    summ = r.summary()
+    summ.update(settings_of(sv, r))
+    return gf, ks, float(np.max(out["res"])), time.time() - t, summ
+
+
+def settings_of(sv, r):
+    """Numerical settings read from the run's own objects (for the header)."""
+    lev = r.levels
+    dh = np.diff(lev)
+    return {"n_levels": int(lev.size), "dh_min_km": float(dh.min() / 1e5),
+            "dh_max_km": float(dh.max() / 1e5), "n_sub": r.n_sub,
+            "dX_max": r.dX_max, "n_sweeps": sv.n_sweeps, "gamma0": sv.gamma0,
+            "n_up": sv.n_up, "projection": sv.projection, "k_top": sv.k_top,
+            "r_e_km": float(r.r_e / 1e5), "lines": int(r.Nl), "nodes": int(r.N)}
 
 
 def euler_limit(pop, loss_s, i, q):
@@ -109,10 +122,8 @@ def main(argv):
     os.makedirs(RES, exist_ok=True)
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
     lines = ["# Gate G1.1: straight-ahead limit against MCEq", "", GATE, "",
-             "Solver settings (frozen defaults, `DESIGN.md`): levels 0.4 km to 50 km, "
-             "1 km to 70 km, 3 km to the top (plus layer boundaries); n_sub 4; "
-             "dX_max 10 g/cm2; "
-             "6 Jacobi sweeps; gamma0 2.", ""]
+             "Solver settings: printed per case below, read from the run's own "
+             "`Rays` and `Solver` objects.", ""]
     summary = {}
     all_ok = True
     for pop in pops:
@@ -165,7 +176,13 @@ def main(argv):
                       "", f"Worst cell: {worst[0]:+.3%} ({worst[1][0]}, cos Z "
                       f"{worst[1][1]:g}, E = {worst[1][2]:.3g} GeV).  Same-bin "
                       f"residual max {res:.1e}.  Solve {t:.0f} s.  "
-                      f"**{'PASS' if ok else 'FAIL'}**",
+                      f"**{'PASS' if ok else 'FAIL'}**", "",
+                      "Settings of this run: " + ", ".join(
+                          f"{k_} {v_}" for k_, v_ in summ.items()
+                          if k_ in ("n_levels", "dh_min_km", "dh_max_km", "n_sub",
+                                    "dX_max", "n_sweeps", "gamma0", "n_up",
+                                    "projection", "k_top", "r_e_km", "lines",
+                                    "nodes")) + ".",
                       ""]
             if diag:
                 lines += ["Not a gate: against MCEq's step-converged estimates, (a) "

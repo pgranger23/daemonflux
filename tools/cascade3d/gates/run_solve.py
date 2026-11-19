@@ -119,6 +119,8 @@ def main(argv=None):
                     help="zero the top intensity above this kinetic energy [GeV]")
     ap.add_argument("--family-refine", type=int, default=1)
     ap.add_argument("--out", default=None)
+    ap.add_argument("--warm", action="store_true",
+                    help="also time a second (compiled) solve in the same process")
     args = ap.parse_args(argv)
     w0, c0 = time.time(), cpu()
     r, ks = build(args)
@@ -131,6 +133,18 @@ def main(argv=None):
     cells = A.cell_averages(sv, out)
     w3, c3 = time.time(), cpu()
     rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024.0 ** 2
+    warm = {}
+    if args.warm:
+        # second solve in the same process (compiled), solve + assembly
+        w4, c4 = time.time(), cpu()
+        out2 = sv.solve()
+        out2["res"].block_until_ready()
+        A.ground_fluxes(sv, out2)
+        A.cell_averages(sv, out2)
+        w5, c5 = time.time(), cpu()
+        warm = {"warm_wall_s": w5 - w4, "warm_cpu_s": c5 - c4,
+                "peak_rss_GB_after_warm":
+                    resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024.0 ** 2}
     cost = {"setup_wall_s": w1 - w0, "setup_cpu_s": c1 - c0,
             "solve_wall_s": w2 - w1, "solve_cpu_s": c2 - c1,
             "assemble_wall_s": w3 - w2, "assemble_cpu_s": c3 - c2,
@@ -138,6 +152,7 @@ def main(argv=None):
             "peak_rss_GB": rss, "affinity": sorted(os.sched_getaffinity(0)),
             "W": sv.W, "res_max": float(np.max(out["res"])), "k_top": sv.k_top,
             "k_up": sv.k_up, "up_res": [float(x) for x in np.asarray(out["up_res"])]}
+    cost.update(warm)
     cost.update(r.summary())
     cost.update(vars(args))
     print(json.dumps(cost, indent=1), flush=True)

@@ -557,6 +557,15 @@ class Solver:
         n_sweeps, gamma0, dl = self.n_sweeps, self.gamma0, self.dl
         sink_child = jnp.asarray(np.arange(nC) >= nT)
         up_reach = self.up_reach
+        # push restricted to the parents that have channels of each kind and to the
+        # children that receive any channel (the rest are exact zeros)
+        int_par = jnp.asarray(np.unique(self.ch_p[self.ch_kind == KS.KIND_INT]))
+        dec_par = jnp.asarray(np.unique(self.ch_p[self.ch_kind == KS.KIND_DEC]))
+        c_used = np.unique(self.ch_c)
+        all_children = c_used.size == nC
+        c_idx = jnp.asarray(c_used)
+        c_up = np.unique(self.ch_c[self.ch_c < nT])
+        c_up_idx = jnp.asarray(c_up)
         midx = jnp.arange(nE)
 
         def dense(vals_ch, mask_int):
@@ -667,16 +676,21 @@ class Solver:
             mask = jnp.where(sink_child[:, None], True, midx[None] < k)
             Ai = lam[:, None] * F_T * rho_n[None]
             Ad = dec[:, None] * F_T
-            Ycat = jnp.concatenate([Y_int, Y_dec], axis=1) * mask[:, None, :]
-            Acat = jnp.concatenate([Ai, Ad], axis=0)
+            Ycat = jnp.concatenate([Y_int[:, int_par], Y_dec[:, dec_par]],
+                                   axis=1) * mask[:, None, :]
+            Acat = jnp.concatenate([Ai[int_par], Ad[dec_par]], axis=0)
+            if not all_children:
+                Ycat = Ycat[c_idx]
             # blocks of child bins; a block entirely above k + up_reach gets nothing
             for m0 in range(0, nE, _PUSH_BLOCK):
                 m1 = min(m0 + _PUSH_BLOCK, nE)
 
                 def add(Sa, m0=m0, m1=m1):
                     blk = jnp.einsum("cpm,pn->cmn", Ycat[:, :, m0:m1], Acat)
-                    return jax.lax.dynamic_update_slice_in_dim(
-                        Sa, Sa[:, m0:m1] + blk, m0, axis=1)
+                    if all_children:
+                        return jax.lax.dynamic_update_slice_in_dim(
+                            Sa, Sa[:, m0:m1] + blk, m0, axis=1)
+                    return Sa.at[c_idx, m0:m1].add(blk)
 
                 S_acc = jax.lax.cond(m0 <= k + up_reach, add, lambda Sa: Sa, S_acc)
             if angular:
@@ -693,9 +707,10 @@ class Solver:
                 # collected for the next pass (linear: solve() re-marches the low
                 # bins with this source and zero top flux)
                 mup = (midx[None, :K_up] > k).astype(Ai.dtype)
-                Yu = jnp.concatenate([Y_int[:nT, :, :K_up], Y_dec[:nT, :, :K_up]],
+                Yu = jnp.concatenate([Y_int[c_up_idx][:, int_par, :K_up],
+                                      Y_dec[c_up_idx][:, dec_par, :K_up]],
                                      axis=1) * mup[:, None, :]
-                S_up = S_up + jnp.einsum("cpm,pn->cmn", Yu, Acat)
+                S_up = S_up.at[c_up_idx].add(jnp.einsum("cpm,pn->cmn", Yu, Acat))
                 if angular and KA > 0:
                     mu_a = mup[:, :KA]
                     Gi = G_int[:nT, :, :, :KA] * mu_a[:, None, None, :]
