@@ -107,3 +107,25 @@ None.
   at most 2.5e-4 in the G1.3 cells and 1.0e-4 in the zenith-normalised cells. A fix is
   proposed (`c1/diag_straight/proposed.diff`) and not applied; G1.3 to G1.5 run on the
   code state of section 1.
+
+## 4. Gates G1.3 to G1.5 on the frozen state
+
+Run 2026-11-19 by an agent that wrote neither the solver nor the kernel sets; recomputed by
+the manager from the stored cells. Details: `GATES.md`, Results log.
+
+| Gate | Verdict | Numbers | Where |
+|---|---|---|---|
+| G1.3(a) | **FAIL** | 377 of 400 cells within max(2%, 2 sigma_MC); 380 needed. The ten row means below 1 GeV are inside (-0.73% to +0.53%) | `c1/g13/G1.3.md` |
+| G1.3(b) | trigger fired | level above 5% in 4 of 40 (species, band); nu_e at 0.10 to 0.16 GeV +5.08 +- 0.49% | `c1/g13/G1.3.md` |
+| G1.3(c) | reported | 10^5-event kernels: 379 of 400; level -1.4% to +0.8% against the pool kernels, shape within 0.36% | `c1/g13/G1.3.md` |
+| G1.3(d) | reported | no valid number in the row cos Z 0 to 0.1 (section 3); rows 0.1 to 1: mean +0.17%, rms 3.5% | `c1/g13/G1.3.md`, `c1/g13/supp/` |
+| G1.4 | PASS | half-sample sets within 0.479% (0.5% allowed) | `c1/g13/G1.4.md` |
+| G1.5 | **FAIL** | 13.23 core-minutes (10 allowed), 5.38 GB (8 allowed) | `c1/g13/g15/G1.5.md` |
+
+After the diagnosis cycle (`GATES.md`, Results log; `c1/g13/manager/`): the count criterion
+of G1.3(a) is failed by an exactly right solver in four cases of ten with this reference, so
+377 does not separate a correct solver from a wrong one; the shape difference common to the
+ten runs is 0.4% rms (below 1.1% at 2 sigma) below 1 GeV for cos Z 0.1 to 1, below 3.1% in
+the row cos Z 0 to 0.1, and below 5.9% from 1 to 10 GeV. The level offset of G1.3(b) is the
+same in the straight-ahead solve against `t` as in the 3D solve against `s`, and the same
+for the four species. The verdicts above stand as written.

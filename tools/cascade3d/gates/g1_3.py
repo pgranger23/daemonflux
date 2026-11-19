@@ -115,7 +115,7 @@ def load_ref(path):
 
 
 def load_solver(path, ref):
-    """Solver cells (4, n_band, n_cosz) in the reference species order; edges checked."""
+    """Solver cells (4, n_band, n_cosz), reference species order; edges checked."""
     z = np.load(path, allow_pickle=False)
     be, ce = np.asarray(z["cell_band_edges"]), np.asarray(z["cell_cosz_edges"])
     if be.shape != ref["e_band_edges_GeV"].shape or not np.allclose(
@@ -187,7 +187,8 @@ def part_a(sol, ref):
     trig = np.abs(rbar - 1.0) > TRIGGER_B
     return {"r": r, "rn": rn, "rbar": rbar, "sigma": sig, "tol": tol, "pull": pull,
             "inside": inside, "zero": zero, "n_cells": n_cells, "n_inside": n_in,
-            "n_needed": int(np.ceil(FRAC_MIN * n_cells - 1e-9)), "count_ok": bool(count_ok),
+            "n_needed": int(np.ceil(FRAC_MIN * n_cells - 1e-9)),
+            "count_ok": bool(count_ok),
             "row_bands": ib, "rows": rows, "rows_runs": rows_k, "rows_sigma": rows_sig,
             "rows_tol": rows_tol, "rows_ok": rows_ok, "pass": ok,
             "b_trigger": trig, "b_any": bool(trig.any()), "n_runs": int(n_runs)}
@@ -206,11 +207,12 @@ def part_d(sol3, solsa, ref):
     tol = np.maximum(TOL_CELL, 2.0 * sig)
     inside = np.abs(q - 1.0) <= tol
     return {"q": q, "solver_ratio": sol3 / solsa, "mc_ratio": st, "sigma": sig,
-            "inside": inside, "n_inside": int(np.nansum(inside)), "n_cells": int(q.size)}
+            "inside": inside, "n_inside": int(np.nansum(inside)),
+            "n_cells": int(q.size)}
 
 
 def caps_check(ref):
-    """s[cap 2] / s[cap 3] - 1 per band and row, sigma from the runs (correlated caps)."""
+    """s[cap 2]/s[cap 3] - 1 per band and row, sigma from the runs (correlated caps)."""
     a, b = ref["s"][2], ref["s"][CAP]
     q = _ratio(a, b)
     qk = np.array([_ratio(x, y) for x, y in zip(ref["s_runs"][:, 2],
@@ -314,7 +316,8 @@ def special_lines(label, ref, cols):
     """``cols``: list of (header, array (4, nb, nz), fmt)."""
     be, ce = ref["e_band_edges_GeV"], ref["cosz_edges"]
     lines = [f"Cells reported one by one, {label}:", "",
-             "| species | band [GeV] | cos Z | " + " | ".join(h for h, _, _ in cols) + " |",
+             "| species | band [GeV] | cos Z | " + " | ".join(h for h, _,
+                                                              _ in cols) + " |",
              "|---|---|---|" + "---|" * len(cols)]
     for b, j in special_cells(ref):
         for i, q in enumerate(SPECIES):
@@ -322,7 +325,8 @@ def special_lines(label, ref, cols):
             for _h, arr, fmt in cols:
                 v = arr[i, b, j]
                 vals.append("n/a" if not np.isfinite(v) else format(v, fmt))
-            lines.append(f"| {q} | {be[b]:.3g}-{be[b + 1]:.3g} | {ce[j]:.1f}-{ce[j + 1]:.1f} | "
+            lines.append(f"| {q} | {be[b]:.3g}-{be[b + 1]:.3g} | "
+                         f"{ce[j]:.1f}-{ce[j + 1]:.1f} | "
                          + " | ".join(vals) + " |")
     return lines + [""]
 
@@ -336,7 +340,8 @@ def block_a(label, a, ref):
          f"Row means over the four species and the bands "
          f"{be[a['row_bands'][0]]:.3g}-{be[a['row_bands'][-1] + 1]:.3g} GeV "
          f"({4 * len(a['row_bands'])} cells), sigma from the {a['n_runs']} runs:", "",
-         "| cos Z | row mean - 1 | sigma | tolerance | inside |", "|---|---|---|---|---|"]
+         "| cos Z | row mean - 1 | sigma | tolerance | inside |",
+         "|---|---|---|---|---|"]
     for j in range(len(ce) - 1):
         L.append(f"| {ce[j]:.1f}-{ce[j + 1]:.1f} | {a['rows'][j] - 1:+.4f} | "
                  f"{a['rows_sigma'][j]:.4f} | {a['rows_tol'][j]:.4f} | "
@@ -410,7 +415,8 @@ def report(res, ref, args, inputs, cmd):
           f"- cells inside: {a['n_inside']} of {a['n_cells']} (needed {a['n_needed']})",
           f"- rows inside: {int(a['rows_ok'].sum())} of {len(a['rows_ok'])}",
           f"- (b) trigger: {'YES' if a['b_any'] else 'no'} "
-          f"(mean r - 1 from {np.min(a['rbar']) - 1:+.4f} to {np.max(a['rbar']) - 1:+.4f})",
+          f"(mean r - 1 from {np.min(a['rbar']) - 1:+.4f} to "
+          f"{np.max(a['rbar']) - 1:+.4f})",
           ""]
     L += ["## (a), (b): pool kernels (gated)", ""]
     L += block_a("pool2000", a, ref)
@@ -434,7 +440,8 @@ def report(res, ref, args, inputs, cmd):
         L.append("")
         L += special_lines("fresh1e5", ref, [("normalised r", c["rn"], ".4f"),
                                             ("(rn-1)/sigma", c["pull"], "+.2f"),
-                                            ("rn fresh - rn pool", res["c_minus_pool_rn"],
+                                            ("rn fresh - rn pool",
+                                             res["c_minus_pool_rn"],
                                              "+.4f")])
     if "d" in res:
         d = res["d"]
@@ -447,12 +454,14 @@ def report(res, ref, args, inputs, cmd):
         L += _fmt_table(d["q"], ref, ".4f", "q = (Phi_3D/Phi_straight)/(s/t)",
                         d["inside"])
         L += special_lines("(d)", ref, [("q", d["q"], ".4f"),
-                                        ("solver 3D/straight", d["solver_ratio"], ".4f"),
+                                        ("solver 3D/straight", d["solver_ratio"],
+                                         ".4f"),
                                         ("MC s/t", d["mc_ratio"], ".4f"),
                                         ("sigma(s/t) rel", d["sigma"], ".4f")])
     cp = res["caps"]
     be = ref["e_band_edges_GeV"]
-    L += ["## Not gates", "", "### Caps of the reference: s(7.5 deg) / s(10 deg) - 1", "",
+    L += ["## Not gates", "", "### Caps of the reference: s(7.5 deg) / s(10 deg) - 1",
+          "",
           f"chi2 / ndf of the cell pulls: {cp['chi2']:.1f} / {cp['ndf']}.  Per band "
           "(weighted over species and cos Z):", "",
           "| band [GeV] | deviation | sigma |", "|---|---|---|"]
@@ -463,14 +472,15 @@ def report(res, ref, args, inputs, cmd):
     L += _fmt_table(cp["pull"], ref, "+.2f", "Cap pull (s2/s3 - 1)/sigma")
     dg = res["diag"]
     L += ["### Normalisation and binning diagnostics (pool2000)", "",
-          f"- mean of r over all species and bands: {dg['rbar_mean']:.4f}, rms about it "
-          f"{dg['rbar_rms_about_mean']:.4f}, range {dg['rbar_min']:.4f} to "
+          f"- mean of r over all species and bands: {dg['rbar_mean']:.4f}, rms about "
+          f"it {dg['rbar_rms_about_mean']:.4f}, range {dg['rbar_min']:.4f} to "
           f"{dg['rbar_max']:.4f} (a constant factor shows as a common offset with a "
           "small rms)",
           f"- chi2 of the shape pulls: {dg['chi2_shape'][0]:.1f} over "
           f"{dg['chi2_shape'][1]} cells",
-          f"- rn as a power of cos Z (bin centres): exponent {dg['cosz_power']:+.4f} +- "
-          f"{dg['cosz_power_sigma']:.4f} (a missing or extra factor cos Z gives -1 or +1)"]
+          f"- rn as a power of cos Z (bin centres): exponent {dg['cosz_power']:+.4f} "
+          f"+- {dg['cosz_power_sigma']:.4f} (a missing or extra factor cos Z gives "
+          "-1 or +1)"]
     for k, v in dg["shifts"].items():
         L.append(f"- reference shifted by one bin ({k}): chi2 {v['chi2_shifted']:.1f} "
                  f"against {v['chi2_unshifted']:.1f} unshifted, over {v['n']} cells")
@@ -497,7 +507,8 @@ def main(argv=None):
         print("INPUT ERROR:", exc, file=sys.stderr)
         return 2
     res = evaluate(ref, pool, fresh, straight)
-    inputs = {"reference": (args.ref, sha(args.ref)), "pool2000 solve": (args.pool, sha(args.pool))}
+    inputs = {"reference": (args.ref, sha(args.ref)),
+              "pool2000 solve": (args.pool, sha(args.pool))}
     if args.fresh:
         inputs["fresh1e5 solve"] = (args.fresh, sha(args.fresh))
     if args.straight:

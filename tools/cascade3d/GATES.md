@@ -405,6 +405,95 @@ Result files are under `/home/pigrange/mc3d_work/runs/native3d/` (`c0/gates/`, `
   first run plus `meta_muon_clock`, no empty cell in the 10 degree cap, 52 fallback
   (group, stratum) pairs per run as in the first run. The comparison of the two
   references (the clock's effect) is kept with the manager until G1.3 has run.
+- **G1.3 and G1.5 (2026-11-19; the same independent agent, after the reference was
+  complete; report `c1/WP14_REPORT.md`, results `c1/g13/G1.3.md`, `G1.3.json`,
+  `c1/g13/g15/G1.5.md`).** `gates/g1_3.py` ran unchanged (sha256 `2c8a2edd55cca63b...`,
+  checked by the manager) on `c1/mcref2/mcref2_fieldfree.npz`, 10 degree cap. The count,
+  the row means and the levels below were recomputed by the manager with a separate script
+  (`c1/g13/manager/recheck_g13.py`) and agree.
+  - **G1.3(a) FAIL.** 377 of the 400 cells are within max(2%, 2 sigma_MC) of 1; 380 are
+    needed. The second condition is met: the ten row means below 1 GeV differ from 1 by
+    -0.73% to +0.53%, each inside max(1%, 2 sigma). Cells outside, by species (nu_e,
+    anti-nu_e, nu_mu, anti-nu_mu): 2, 12, 3, 6; by band from 0.10 GeV up: 3, 4, 2, 2, 0, 1,
+    1, 7, 1, 2; by cos Z row from the horizon up: 2, 1, 3, 1, 1, 6, 3, 2, 2, 2. The largest:
+    2.51 to 3.98 GeV, cos Z 0 to 0.1, anti-nu_e +46% (3.1 sigma) and anti-nu_mu +42%
+    (4.2 sigma). The 2% floor is the tolerance in 46 cells; elsewhere it is 2 sigma_MC
+    (median sigma_MC per band: 1.0% at 0.10 GeV to 11% at 6.3 to 10 GeV).
+  - **G1.3(b): the trigger fired.** The mean of r - 1 per species and band is above 5% in 4
+    of the 40: nu_e at 0.10 to 0.16 GeV, +5.08 +- 0.49%; anti-nu_e at 2.51 to 3.98 GeV,
+    +7.4 +- 4.3%; nu_e at 6.31 to 10 GeV, +10.9 +- 8.9%; anti-nu_mu at 6.31 to 10 GeV,
+    +6.7 +- 2.7% (errors from the ten runs). The solver is above the Monte Carlo in 36 of
+    the 40: by +4.2 to +5.1% in the four species at 0.10 to 0.16 GeV, +2.8 to +3.3% at 0.16
+    to 0.25 GeV, -0.5 to +2.2% from 0.25 to 1 GeV (errors 0.2 to 1.4%), and -1.5 to +11%
+    above 1 GeV (errors 0.8 to 9%).
+  - G1.3(c), reported: with the 10^5-event kernels 379 of 400, ten rows of ten, and the
+    trigger fires as well. Levels against the pool kernels: -1.4% to +0.8%; normalised
+    shape within 0.36%.
+  - G1.3(d), reported: (3D / straight-ahead) against s/t. Frozen code: 349 of 400 inside
+    the tolerance of (a); the row cos Z 0 to 0.1 has no valid number (straight-ahead
+    defect, entry above); rows 0.1 to 1: mean +0.17%, rms 3.5%. Supplement with the
+    bounded interpolation, in the diagnostic copy and not the frozen code: 373 of 400; row
+    cos Z 0 to 0.1 below 1 GeV -4.5% on average. With the bound the count of (a) is 377
+    as well.
+  - Not gates: the 7.5 and 10 degree caps of the reference agree (chi2 467.5 for 400
+    cells); no shift by one bin and no factor cos Z between solver and reference (fitted
+    power of cos Z -0.006 +- 0.0015); the quadrature of the cell mean in the lowest cos Z
+    bin is good to 4e-4.
+  - **G1.5 FAIL.** One cold solve of the G1.3(a) configuration in a fresh process on four
+    cores: 13.23 core-minutes (user 710.5 s, system 83.6 s; 10 allowed), peak memory
+    5.38 GB (8 allowed), 5 min 13 s elapsed. Load average of the node 5.3 before, 9.6
+    after. A second solve in the same process: 12.20 core-minutes (not the gate).
+    `gates/g1_5.py` is the agent's; the manager corrected its reading of the elapsed time
+    (the result file shows "None" there) and checked that the edited script rebuilds the
+    stored result file from the stored measurement, that cell and the paths apart.
+  - After the run, lines over 88 characters in `gates/g1_3.py`, `g1_4.py` and
+    `test_g1_3.py` were wrapped. The syntax trees are identical to the versions that ran,
+    two docstrings of `g1_3.py` apart; the quoted gate texts keep their long lines.
+    `g1_3.py` is now sha256 `7531abb540b8af99...`; the version that ran is in commit `512a119`.
+- **Diagnosis cycle after G1.3, parts A and B (2026-11-19, manager; scripts and outputs in
+  `c1/g13/manager/`).** The gate text gives one diagnosis cycle to a failed G1.3(a) and to
+  a fired trigger of (b). Nothing was changed in the solver, and no gate is redefined.
+  - A, on the count of (a). The error model of the reference holds: the spread of the ten
+    runs squared over sigma_MC squared, averaged over the cells, is 0.996 +- 0.024. With
+    it, a solver that is exactly right was put through the gate 4000 times: it gives 380.8
+    +- 4.8 cells inside for Gaussian errors and 379.5 +- 18 when the ten runs are
+    resampled, and it reaches 380 in 62% and 60% of the cases. **The count criterion as
+    written by the manager is failed by a perfect solver four times in ten**; 377 is
+    inside that distribution (24% and 36% of the cases give 377 or fewer). The chi2 of the
+    400 cells is 489.5 against 423 +- 54 expected (p = 0.06 Gaussian, 0.28 resampled); the
+    rms of (r - 1)/sigma is 1.105 against 1.03 expected. This says the count does not
+    discriminate; it does not turn the verdict into a pass.
+  - A, what the data do bound. The part of the shape difference that is common to the ten
+    runs (noise subtracted, error by jackknife over the runs): below 1 GeV and cos Z 0.1
+    to 1 (180 cells), rms 0.41%, below 1.06% at 2 sigma; with the lowest row (200 cells)
+    below 1.3%; the lowest row alone below 3.1%; 1 to 10 GeV below 5.9%, where the noise
+    is 7.4%. Per species below 1 GeV, cos Z 0.1 to 1: below 1.2%, 2.2%, 0.9%, 1.4%. The row
+    means show a small tilt: +0.3 to +0.5% for cos Z 0.1 to 0.6, -0.4 to -0.7% for 0.6
+    to 1.
+  - B, on the level of (b). Flux summed over cos Z 0.1 to 1, the four species together,
+    solver / Monte Carlo - 1 per band from 0.10 GeV up, in %: the 3D solve against `s`,
+    +4.8, +2.9, +1.0, +1.1, +1.4, +2.4, +1.8, +1.2, +1.8, +1.9 (errors 0.2 to 0.5 below
+    1 GeV, 0.3 to 2.1 above); the straight-ahead solve against `t`, +4.9, +3.1, +0.7,
+    +1.3, +1.5, +1.8, +1.7, +0.9, +1.8, +1.8. Their ratio run by run differs from 1 by
+    at most 0.6 +- 0.4%. **The level offset is the same in the straight-ahead and in the
+    3D calculation: it is in the yields they share, not in the angular transport, and it
+    cancels in a ratio of 3D to straight-ahead.** It is the same for the four species
+    ((nu_mu + anti-nu_mu)/(nu_e + anti-nu_e), solver over Monte Carlo: +0.6 +- 1.2% in
+    the lowest band), so its origin is upstream of the muon decay, and it depends little
+    on cos Z (lowest band: +5.4% inclined, +3.8% vertical).
+  - Excluded as the cause: kernel statistics (10^5-event kernels: +4.6% in the lowest
+    band), the Monte Carlo's muon clock (the reference has the corrected one), hadron
+    energy loss (none on either side), a cause in the muon chain alone (flavour ratio).
+    The builder's prior estimates (`c1/LIKE_FOR_LIKE.md`, section 3) do not add up to +5%.
+- **The muon clock's effect, from the two references (2026-11-19, manager;
+  `c1/mcref2/CLOCK_PAIR.md`, `CLOCK_NOTE.md`).** Opened after G1.3 had run. Corrected
+  clock over legacy clock, field free, 0.10 to 1 GeV, the four species together: `s`
+  +0.84 +- 0.30%, `t` +0.34 +- 0.22% (nu_e and anti-nu_e +1.4 +- 0.6% in `s`). The
+  quantity the product table uses, s/t, moves by less than 0.3%, 0.5% and 0.8% (value plus
+  2 sigma) in cos Z 0.6 to 1, 0.3 to 0.6 and 0.1 to 0.3; per cell the two runs agree
+  within noise. The row cos Z 0 to 0.1 is bounded only at 3 to 11%, and the field-on and
+  up-going cases are not covered by the pair. The first run was not compared with the
+  solver.
 
 ## Decisions of the PI
 

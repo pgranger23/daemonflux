@@ -54,7 +54,8 @@ def evaluate(a, b, tol=TOL):
 def table(arr, be, ce, title, flag=None, fmt="+.4f"):
     L = []
     for i, q in enumerate(SPECIES):
-        L += [f"{title}, {q} (rows: band [GeV]; columns: cos Z bin; bold = outside)", "",
+        L += [f"{title}, {q} (rows: band [GeV]; columns: cos Z bin; bold = outside)",
+              "",
               "| band | " + " | ".join(f"{ce[j]:.1f}-{ce[j + 1]:.1f}"
                                      for j in range(len(ce) - 1)) + " |",
               "|---|" + "---|" * (len(ce) - 1)]

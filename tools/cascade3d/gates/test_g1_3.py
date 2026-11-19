@@ -59,8 +59,10 @@ def make_ref(sol, D, sig_run=0.03, seed=1, n_runs=10, t_ratio=None, zero=None,
     out.update(species=np.array(list(G.SPECIES)), e_band_edges_GeV=BAND,
                cosz_edges=COSZ, cap_theta_deg=caps,
                cap_area_cm2=2 * np.pi * 6.371e8 ** 2 * (1 - np.cos(np.radians(caps))),
-               n_primaries=np.array(10 ** 7), n_primaries_per_run=np.full(n_runs, 10 ** 6),
-               meta_normalisation=np.array("synthetic"), meta_cosz=np.array("synthetic"))
+               n_primaries=np.array(10 ** 7), n_primaries_per_run=np.full(n_runs,
+                                                                          10 ** 6),
+               meta_normalisation=np.array("synthetic"),
+               meta_cosz=np.array("synthetic"))
     return out
 
 
@@ -184,7 +186,8 @@ def _save(path, d):
 def _solver_file(path, cells):
     np.savez(path, cell_band_edges=BAND, cell_cosz_edges=COSZ,
              cost_json=np.array('{"ks": "synthetic", "total_cpu_s": 60, '
-                                '"peak_rss_GB": 1.0, "r_earth": 6371, "straight": false}'),
+                                '"peak_rss_GB": 1.0, "r_earth": 6371, '
+                                '"straight": false}'),
              **{f"cell_{q}": cells[i] for i, q in enumerate(G.SPECIES)})
 
 
@@ -196,7 +199,8 @@ def test_cli_end_to_end(tmp_path):
     _save(tmp_path / "ok.npz", make_ref(sol, np.ones_like(sol)))
     D = np.broadcast_to(1.0 + 0.04 * (CC - 0.5), sol.shape)
     _save(tmp_path / "bad.npz", make_ref(sol, D, sig_run=0.005))
-    common = ["--pool", str(tmp_path / "pool.npz"), "--fresh", str(tmp_path / "fresh.npz"),
+    common = ["--pool", str(tmp_path / "pool.npz"), "--fresh",
+              str(tmp_path / "fresh.npz"),
               "--straight", str(tmp_path / "straight.npz"), "--outdir", str(tmp_path)]
     assert G.main(["--ref", str(tmp_path / "ok.npz"), "--name", "ok"] + common) == 0
     assert G.main(["--ref", str(tmp_path / "bad.npz"), "--name", "bad"] + common) == 1
@@ -211,17 +215,20 @@ def test_input_checks(tmp_path):
     d = make_ref(sol, np.ones_like(sol))
     d["species"] = np.array(["numu", "antinumu", "nue", "antinue"])
     _save(tmp_path / "sp.npz", d)
-    assert G.main(["--ref", str(tmp_path / "sp.npz"), "--pool", str(tmp_path / "pool.npz"),
+    assert G.main(["--ref", str(tmp_path / "sp.npz"), "--pool",
+                   str(tmp_path / "pool.npz"),
                    "--outdir", str(tmp_path)]) == 2
     d = make_ref(sol, np.ones_like(sol))
     d["cap_theta_deg"] = np.array([2.5, 5.0, 10.0, 7.5])
     _save(tmp_path / "cap.npz", d)
-    assert G.main(["--ref", str(tmp_path / "cap.npz"), "--pool", str(tmp_path / "pool.npz"),
+    assert G.main(["--ref", str(tmp_path / "cap.npz"), "--pool",
+                   str(tmp_path / "pool.npz"),
                    "--outdir", str(tmp_path)]) == 2
     d = make_ref(sol, np.ones_like(sol))
     d["cosz_edges"] = np.linspace(-1, 0, 11)
     _save(tmp_path / "cz.npz", d)
-    assert G.main(["--ref", str(tmp_path / "cz.npz"), "--pool", str(tmp_path / "pool.npz"),
+    assert G.main(["--ref", str(tmp_path / "cz.npz"), "--pool",
+                   str(tmp_path / "pool.npz"),
                    "--outdir", str(tmp_path)]) == 2
 
 
