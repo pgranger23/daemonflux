@@ -203,3 +203,17 @@ Result files are under `/home/pigrange/mc3d_work/runs/native3d/` (`c0/gates/`, `
   1° above the horizon and up-going directions at 15 and 30 km. Cost of one angular solve
   on the default grid, synthetic kernels: 9.8 core-minutes, 4.7 GB (G1.5, to be measured on
   the real kernel set, allows 10 and 8); with 192 ground lines 17.5 core-minutes, 7.1 GB.
+
+## Decisions of the PI
+
+- **2026-11-19, after the report of G1.0 to G1.2 (interim use of decision point 1).** The PI
+  was given the failed G1.1 and G1.2, the manager's check, and three recommendations, and
+  answered "Continue". The manager reads this as acceptance of the three:
+  1. C1 continues. G1.1 stays on record as failed and is not redefined.
+  2. The solver's error for loss-off muons near the horizon below 0.3 GeV is documented as
+     a known limit of an unphysical configuration; no grid nodes are spent on it.
+  3. Next: a second solver cycle (near-vertical angular grid, up-scatter into transported
+     species, cost), the Monte Carlo-matched kernel sets, the freeze of rule 4, then G1.3
+     and G1.4 by an agent that wrote neither.
+  After the second cycle G1.0 to G1.2 are re-run in full, as written. The comparison with
+  step-converged MCEq is reported next to G1.1 and is not a gate.
