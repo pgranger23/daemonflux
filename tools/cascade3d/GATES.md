@@ -234,6 +234,27 @@ Result files are under `/home/pigrange/mc3d_work/runs/native3d/` (`c0/gates/`, `
   within 6.2e-5 for neutrinos (0.1 to 100 GeV, cos Z 1, 0.25, 0.05). Straight ahead, the
   two half-sample sets differ by up to 0.6% per bin at 1 to 10 GeV (G1.4 allows 0.5% per
   cell; not yet run).
+- **Monte Carlo muon clock, acceptance met (2026-11-19, not a gate; decision of the PI
+  below).** `tools/mc3d` has the opt-in clock `converged`: the step is shortened until
+  the muon loses at most 5% of its momentum, the proper time of a step is the mean of
+  1/(βγ) for a momentum linear in the path, the decay point inside a step is the inverse
+  of the same law, and the energy there gets the mid-point correction of a full step.
+  - Acceptance as written, `gates/mc_muon_clock_check.py 4000 converged`: largest
+    deviation 0.07% over the 160 entries, against 0.2% (`c1/review/mc_muon_clock_converged.md`).
+    Two earlier schemes failed it and the criterion was not changed: trapezoid rule 0.28%,
+    logarithmic mean 0.25%. The cause was the decay point, which both still interpolated
+    linearly inside the step.
+  - Default unchanged. The check table of the default clock is byte-identical to the one
+    made with the code before the change (largest deviation 9.19%). A run of 60 000
+    primaries with the reference's options gives the same bits with the code at af178e2
+    and with the new code and no switch, in every array of the 62 output files; only the
+    run-time entries differ (`c1/mcref2/pilot/CMP_before_vs_legacy.txt`).
+  - Tests: `tools/mc3d/test_muclock.py` (17: defaults, run signature, the default clock
+    pinned to numbers from af178e2, both transports against a fine integration within
+    0.2% in path and kinetic energy, scalar against vectorised). All 171 tests of
+    `tools/mc3d` pass.
+  - Cost, same pilot: 588 CPU s with the switch against 531 without (1.11). The re-run of
+    the reference is therefore about 27 core-h, not 25.
 
 ## Decisions of the PI
 

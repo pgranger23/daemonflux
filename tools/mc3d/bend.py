@@ -222,10 +222,13 @@ def dedx_air(e_tot):
 
 _MU_DX_MAX = 30.0          # g/cm2 of energy loss per step (shower._MU_DX_MAX)
 _MU_DS_BEND = 5.0e5        # 5 km cap with the field on (shower._MU_DS_CAP)
+_MU_CLOCK_DP = 0.05        # converged clock (shower._MU_CLOCK_DP)
+_MU_CLOCK_GUESS = 0.9      # converged clock (shower._MU_CLOCK_GUESS)
+_MU_CLOCK_IT = 4           # converged clock (shower._MU_CLOCK_IT)
 
 
 def transport_muons(pdg, e_tot, r, u, t_target, field, energy_loss=True,
-                    dtheta_max=0.05, max_steps=4000):
+                    dtheta_max=0.05, max_steps=4000, clock="legacy"):
     """Transport muon segments (rows) to decay / ground / escape / stop.
 
     ``pdg`` 13 (mu-) or -13 (mu+), ``e_tot`` [GeV], ``t_target`` the proper
@@ -236,8 +239,17 @@ def transport_muons(pdg, e_tot, r, u, t_target, field, energy_loss=True,
     step-start ``beta gamma``, decay inside the step at the linearly
     interpolated point); the field rotates the direction about ``B_hat``.
 
+    ``clock`` is the decay clock of ``shower.MU_CLOCKS``: ``legacy`` (default,
+    every earlier run bit for bit) or ``converged`` (at most ``_MU_CLOCK_DP``
+    of the momentum lost per step, proper time from the logarithmic mean of
+    ``1 / (beta gamma)``, decay point from the inverse of the same law,
+    mid-point energy at the decay point).
+
     Returns ``(kind, r, u, e)`` arrays.
     """
+    if clock not in ("legacy", "converged"):
+        raise ValueError(f"unknown muon clock {clock!r}")
+    conv = bool(energy_loss) and clock == "converged"
     pdg = np.asarray(pdg)
     n = len(pdg)
     r = np.array(r, float).reshape(n, 3)
@@ -282,16 +294,61 @@ def transport_muons(pdg, e_tot, r, u, t_target, field, energy_loss=True,
         ds = np.where(at_bound, s_ex, ds)
         # boundary reached at the start of the step
         zero = s_ex <= 0.0
-        dt = ds / np.maximum(bg * ctau, 1e-30)
-        dec = (tacc[live] + dt >= tt[live]) & ~zero
+        if conv:
+            de1 = dedx_air(el)
+            de_max = _MU_CLOCK_DP * p * p / el      # dE = beta dp
+            # first guess from the local exponential atmosphere
+            # (shower._mu_clock_step); the loop enforces the cap exactly
+            dx_t = _MU_CLOCK_GUESS * de_max / de1
+            a_ln = -dhds / scale_height(h)          # d ln(rho) / ds
+            rh = np.maximum(rho, 1e-300)
+            qg = dx_t * a_ln / rh
+            flat = np.abs(qg) < 1e-6
+            with np.errstate(divide="ignore", invalid="ignore"):
+                ds_g = np.where(flat, dx_t / rh,
+                                np.log1p(np.maximum(qg, -1.0))
+                                / np.where(flat, 1.0, a_ln))
+            ds_g = np.where((rho > 1e-30) & (flat | (qg > -1.0)), ds_g, np.inf)
+            ds = np.minimum(ds, ds_g)
+            um = rotate(ul, bax, 0.5 * k * ds)
+            for _ in range(_MU_CLOCK_IT):
+                loss = de1 * chord_grammage(rl, um, np.maximum(ds, 0.0))
+                over = loss > de_max
+                if not np.any(over):
+                    break
+                ds = np.where(over, 0.8 * ds * de_max
+                              / np.maximum(loss, 1e-300), ds)
+                um = rotate(ul, bax, 0.5 * k * ds)
+            dXa = chord_grammage(rl, um, np.maximum(ds, 0.0))
+            enew_a = el - dedx_air(np.maximum(el - 0.5 * de1 * dXa, m)) * dXa
+            pn = np.sqrt(np.maximum(enew_a * enew_a - m * m, 0.0))
+            ps = np.maximum(p, 1e-9)
+            x = np.clip(1.0 - pn / ps, 0.0, 1.0 - 1e-9)
+            f = np.where(x > 1e-6, -np.log1p(-x) / np.maximum(x, 1e-300),
+                         1.0 + 0.5 * x)
+            dt = ds * m * f / (ps * ctau)
+            # a muon that ranges out inside the step stops (transport_muon)
+            dec = ((tacc[live] + dt >= tt[live]) & ~zero
+                   & (enew_a > m * 1.0005))
+        else:
+            dt = ds / np.maximum(bg * ctau, 1e-30)
+            dec = (tacc[live] + dt >= tt[live]) & ~zero
         # --- decays inside the step
         if np.any(dec):
             d = np.where(dec)[0]
             idx = live[d]
             frac = (tt[idx] - tacc[idx]) / np.maximum(dt[d], 1e-30)
+            if conv:        # inverse of the clock's linear-momentum law
+                xd = x[d]
+                frac = np.where(xd > 1e-6, -np.expm1(frac * np.log1p(-xd))
+                                / np.maximum(xd, 1e-300), frac)
             dsd = ds[d] * frac
             umd = rotate(ul[d], bax[d], 0.5 * k[d] * dsd)
-            if energy_loss:
+            if conv:
+                dX = chord_grammage(rl[d], umd, dsd)
+                emid = np.maximum(el[d] - 0.5 * de1[d] * dX, m)
+                e[idx] = np.maximum(el[d] - dedx_air(emid) * dX, m)
+            elif energy_loss:
                 dX = chord_grammage(rl[d], umd, dsd)
                 e[idx] = np.maximum(el[d] - dedx_air(el[d]) * dX, m)
             r[idx] = rl[d] + dsd[:, None] * umd
@@ -305,7 +362,9 @@ def transport_muons(pdg, e_tot, r, u, t_target, field, energy_loss=True,
         if np.any(go):
             g = np.where(go)[0]
             idx = live[g]
-            if energy_loss:
+            if conv:
+                enew = enew_a[g]
+            elif energy_loss:
                 dX = chord_grammage(rl[g], um[g], ds[g])
                 emid = np.maximum(el[g] - 0.5 * dedx_air(el[g]) * dX, m)
                 enew = el[g] - dedx_air(emid) * dX

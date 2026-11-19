@@ -182,7 +182,8 @@ def _thresholds_chain(e_nu_min):
 class Config:
     def __init__(self, collinear=True, bfield=None, energy_loss=True,
                  e_nu_min=0.1, decay_mode="kinematic", polarisation=True,
-                 max_particles=200000, thr_scheme="legacy"):
+                 max_particles=200000, thr_scheme="legacy",
+                 mu_clock="legacy"):
         self.collinear = bool(collinear)
         self.bfield = bfield
         self.energy_loss = bool(energy_loss)
@@ -192,6 +193,10 @@ class Config:
         self.max_particles = int(max_particles)
         self.thr_scheme = str(thr_scheme)
         self.thr = thresholds(e_nu_min, self.thr_scheme)
+        if mu_clock not in MU_CLOCKS:
+            raise ValueError(f"unknown muon clock {mu_clock!r}; "
+                             f"use one of {MU_CLOCKS}")
+        self.mu_clock = str(mu_clock)
 
 
 # ---------------------------------------------------------------------------
@@ -201,8 +206,27 @@ _MU_MAX_STEPS = 4000
 _MU_DX_MAX = 30.0        # g/cm2 of energy loss per step
 _MU_DS_CAP = 5.0e5       # 5 km cap when the field is on (bend resolution)
 
+#: muon decay clocks (``Config(mu_clock=)``, ``sky3d --muon-clock``,
+#: ``bend.transport_muons(clock=)``).  ``legacy`` is the default and
+#: reproduces every earlier run bit for bit: the proper time of a step is
+#: ``ds / (beta gamma c tau)`` with ``beta gamma`` of the *start* of the step,
+#: so a slowing muon ages too slowly (steps lose up to 30 g/cm2 of range) and
+#: decays late and at too low an energy -- up to 9% fewer neutrinos above
+#: 0.1 GeV per sub-GeV muon (``tools/cascade3d/gates/mc_muon_clock_check.py``,
+#: 2026-11-19).  ``converged`` shortens the step until the muon loses at most
+#: ``_MU_CLOCK_DP`` of its momentum in it and takes the proper time from the
+#: mean of ``1 / (beta gamma)`` over the step for a momentum linear in the
+#: path between its two ends (the logarithmic mean); the decay point inside a
+#: step is the inverse of that same law (the legacy clock interpolates it
+#: linearly) and the energy there gets the same mid-point correction as a
+#: full step.  Both clocks draw the same single variate per muon.
+MU_CLOCKS = ("legacy", "converged")
+_MU_CLOCK_DP = 0.05      # converged: largest relative momentum loss per step
+_MU_CLOCK_IT = 4         # converged: step reductions tried to reach it
+_MU_CLOCK_GUESS = 0.9    # converged: share of the cap aimed at by the first guess
 
-def _mu_step(h, dhds, s_left, l_dec, bend=False):
+
+def _mu_step(h, dhds, s_left, l_dec, bend=False, rho=None):
     """Muon step length.
 
     Adaptive on the *energy loss* (a fixed grammage per step) rather than on the
@@ -211,8 +235,11 @@ def _mu_step(h, dhds, s_left, l_dec, bend=False):
     Additional caps: 2 scale heights of altitude change (so the exact grammage
     integrator inside the step stays cheap), half a decay length (so the
     linear-in-ds decay point stays accurate) and, with the field on, 5 km.
+    ``rho``: the density at ``h`` when the caller has it (the converged clock
+    passes the scalar ``atm.rho_s``, several times cheaper than the default).
     """
-    rho = atm.density(h)
+    if rho is None:
+        rho = atm.density(h)
     ds = _MU_DX_MAX / rho if rho > 1e-30 else np.inf
     hs = atm.scale_height(h)
     if abs(dhds) > 1e-6:
@@ -221,6 +248,53 @@ def _mu_step(h, dhds, s_left, l_dec, bend=False):
     if bend:
         ds = min(ds, _MU_DS_CAP)
     return float(min(max(ds, 1.0e2), s_left))
+
+
+def _mu_clock_step(r, u, ds, e, p, ctau, h, dhds, rho):
+    """One step of the ``converged`` muon clock (see ``MU_CLOCKS``).
+
+    Returns ``(ds, e_new, dt, x)``: the step, shortened so that the muon
+    loses at most ``_MU_CLOCK_DP`` of its momentum, the energy at its end (the
+    mid-point rule of the legacy step), the proper time spent in it in units
+    of the lifetime and the relative momentum loss ``x`` over it.  ``h``,
+    ``dhds`` and ``rho`` are the altitude, its derivative along the path and
+    the density at the start.
+    """
+    m = M_MU
+    de1 = dedx_air(e)
+    de_max = _MU_CLOCK_DP * p * p / e           # dE = beta dp
+    # First guess of the capped step from the local exponential atmosphere, so
+    # that the exact grammage is as a rule integrated once per step; the loop
+    # below still enforces the cap with the exact grammage.
+    if rho > 1e-30:
+        dx_t = _MU_CLOCK_GUESS * de_max / de1
+        a = -dhds / atm.scale_height(h)         # d ln(rho) / ds
+        q = dx_t * a / rho
+        if abs(q) < 1e-6:
+            ds = min(ds, dx_t / rho)
+        elif q > -1.0:
+            ds = min(ds, float(np.log1p(q) / a))
+    dX = atm.grammage(r, u, ds)
+    for _ in range(_MU_CLOCK_IT):
+        if de1 * dX <= de_max:
+            break
+        ds *= 0.8 * de_max / (de1 * dX)
+        dX = atm.grammage(r, u, ds)
+    e_new = e - dedx_air(max(e - 0.5 * de1 * dX, m)) * dX
+    p_new = np.sqrt(max(e_new * e_new - m * m, 0.0))
+    # mean of 1/p over the step for p linear in s: -log(1 - x) / (x p)
+    x = min(max(1.0 - p_new / p, 0.0), 1.0 - 1e-9)
+    f = -np.log1p(-x) / x if x > 1e-6 else 1.0 + 0.5 * x
+    dt = ds * m * f / (p * ctau)
+    return ds, e_new, dt, x
+
+
+def _mu_clock_frac(frac, x):
+    """Fraction of a step's path at which the fraction ``frac`` of its proper
+    time has passed, for a momentum falling linearly by ``x`` over the step."""
+    if x > 1e-6:
+        return float(-np.expm1(frac * np.log1p(-x)) / x)
+    return frac
 
 
 def _boundary(r, u):
@@ -264,8 +338,13 @@ def transport_muon(rng, pdg, e_tot, r, u, cfg, stats=None):
     The field branch (``cfg.bfield``) is the scalar reference; the production
     path of milestone 3b is the vectorised ``bend.transport_muons``.  Its bend
     constant was ``2.998e-4`` rad/m/T/GeV (1000x too small for ``B`` in tesla)
-    until 2026-10-11; the branch had never been exercised."""
+    until 2026-10-11; the branch had never been exercised.
+
+    ``cfg.mu_clock`` selects the decay clock (``MU_CLOCKS``); without energy
+    loss the two clocks are the same."""
     m = M_MU
+    conv = (cfg.energy_loss
+            and getattr(cfg, "mu_clock", "legacy") == "converged")
     ctau = CTAU_CM[int(pdg)]
     t_target = -np.log(rng.random())            # in units of the lifetime
     if stats is not None:
@@ -287,22 +366,42 @@ def transport_muon(rng, pdg, e_tot, r, u, cfg, stats=None):
         dhds = float(np.dot(r, u)) / rn
         p = np.sqrt(max(e * e - m * m, 0.0))
         bg = p / m                                # beta*gamma
+        rho = atm.rho_s(h) if conv else None
         ds = _mu_step(h, dhds, s_bound, bg * ctau,
-                      bend=(not cfg.collinear) and cfg.bfield is not None)
-        # remaining proper time available over this step
-        dt = ds / max(bg * ctau, 1e-30)
+                      bend=(not cfg.collinear) and cfg.bfield is not None,
+                      rho=rho)
+        if conv:
+            ds, e_new, dt, x_mom = _mu_clock_step(r, u, ds, e, p, ctau, h,
+                                                  dhds, rho)
+            if e_new <= m * 1.0005:              # ranges out inside the step
+                if stats is not None:
+                    stats["sinv"] = sinv + ds / max(p, 1e-9)
+                return "stop", r + ds * u, u, m
+        else:
+            # remaining proper time available over this step
+            dt = ds / max(bg * ctau, 1e-30)
         if t_acc + dt >= t_target:
-            ds = ds * (t_target - t_acc) / max(dt, 1e-30)
+            if conv:
+                ds = ds * _mu_clock_frac((t_target - t_acc) / max(dt, 1e-30),
+                                         x_mom)
+            else:
+                ds = ds * (t_target - t_acc) / max(dt, 1e-30)
             r_dec = r + ds * u
             if stats is not None:
                 stats["sinv"] = sinv + ds / max(p, 1e-9)
-            if cfg.energy_loss:
+            if conv:
+                dX = atm.grammage(r, u, ds)
+                e_mid = max(e - 0.5 * dedx_air(e) * dX, m)
+                e = max(e - dedx_air(e_mid) * dX, m)
+            elif cfg.energy_loss:
                 e = max(e - dedx_air(e) * atm.grammage(r, u, ds), m)
             return "decay", r_dec, u, e
         t_acc += dt
         sinv += ds / max(p, 1e-9)
         r_new = r + ds * u
-        if cfg.energy_loss:
+        if conv:
+            e = e_new
+        elif cfg.energy_loss:
             dX = atm.grammage(r, u, ds)
             if dX > 0.0:
                 # midpoint correction so a large step is still accurate

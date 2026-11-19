@@ -168,7 +168,7 @@ class Options:
                  keep_reals=False, reanchor=False, mu_bend="full", crn=False,
                  primary_energy=None, mu_cf=False, primary_model="H3A",
                  resim_rmin=0.0, resim_groups=None, upgoing=False,
-                 thresholds="legacy"):
+                 thresholds="legacy", muon_clock="legacy"):
         self.cutoff = bool(cutoff)
         self.bend_primary = bool(bend_primary)
         self.muon_field = bool(muon_field)
@@ -227,6 +227,11 @@ class Options:
         if thresholds not in ("legacy", "chain"):
             raise ValueError("thresholds must be 'legacy' or 'chain'")
         self.thresholds = str(thresholds)
+        #: opt-in (2026-11-19): muon decay clock, ``legacy`` (default, every
+        #: earlier run) or ``converged`` (``shower.MU_CLOCKS``)
+        if muon_clock not in ("legacy", "converged"):
+            raise ValueError("muon_clock must be 'legacy' or 'converged'")
+        self.muon_clock = str(muon_clock)
 
     def signature(self):
         s = [self.cutoff, self.bend_primary, self.muon_field, self.r_thr,
@@ -244,6 +249,8 @@ class Options:
             s += [-2.0, 1.0]
         if self.thresholds != "legacy":         # existing manifests stay valid
             s += [-3.0, 1.0]
+        if self.muon_clock != "legacy":         # existing manifests stay valid
+            s += [-4.0, 1.0]
         return np.array(s, float)
 
     def needs_field(self):
@@ -562,7 +569,8 @@ def _init(cache, n_pool, e_nu_min, lat, lon, caps, model, opts, fieldgrid,
                                     xs="mceq", readonly=True)
     _CTX["cfg"] = Config(collinear=False, bfield=None, energy_loss=True,
                          e_nu_min=e_nu_min, decay_mode="kinematic",
-                         polarisation=True, thr_scheme=opts.thresholds)
+                         polarisation=True, thr_scheme=opts.thresholds,
+                         mu_clock=opts.muon_clock)
     _CTX["caps"] = NestedCaps(lat, lon, caps)
     _CTX["model"] = prim.primary_model(model)
     prim.ENERGY_CONVENTION = opts.primary_energy
@@ -1200,15 +1208,16 @@ def build_entries(prims, seed, grid, opts, fld, sitemap, e_nu_min,
                          _cat(M["u"], shape=(0, 3)))
         kind, rm, um, em = bend.transport_muons(
             mp, m_e, m_r, m_u, tt,
-            fld if (opts.muon_field and opts.mu_bend != "none") else None)
+            fld if (opts.muon_field and opts.mu_bend != "none") else None,
+            clock=opts.muon_clock)
         dec = kind == bend.MU_DECAY
         # the zero-field counterfactual (diagnostic): fate classes
         # 0 = decays with and without the field, 1 = only with it (saved
         # from the ground / escape), 2 = only without it (lost)
         dec0 = dec
         if opts.mu_cf and opts.muon_field:
-            kind0, rm0, um0, em0 = bend.transport_muons(mp, m_e, m_r, m_u, tt,
-                                                        None)
+            kind0, rm0, um0, em0 = bend.transport_muons(
+                mp, m_e, m_r, m_u, tt, None, clock=opts.muon_clock)
             dec0 = kind0 == bend.MU_DECAY
             if dec0.any():
                 pn0, en0, dn0 = bend.michel_decay(
@@ -1406,6 +1415,8 @@ def trace_replay_task(job):
         dd["m3b_opts"] = opts.signature()
         if opts.thresholds != "legacy":      # legacy outputs stay unchanged
             dd["thr_scheme"] = np.array([opts.thresholds])
+        if opts.muon_clock != "legacy":      # legacy outputs stay unchanged
+            dd["mu_clock"] = np.array([opts.muon_clock])
         sky._atomic_savez(tfile(outdir, tag, ti), dd, compressed=True)
         out.append((ti, float(meta[7])))
         if not opts.keep_cfiles:
@@ -1529,6 +1540,8 @@ def run(nshower, nproc, groups, theta_inj, caps, cache, opts, n_pool=2000,
            "field_model": np.array([opts.model]),
            "date": np.array([opts.date.isoformat()]),
            "thr_scheme": np.array([opts.thresholds])}
+    if opts.muon_clock != "legacy":          # legacy manifests stay unchanged
+        man["mu_clock"] = np.array([opts.muon_clock])
     sky._atomic_savez(mpath, man)
     fld = None
     if opts.needs_field():
@@ -1669,6 +1682,12 @@ def main(argv=None):
                     help="tracking-threshold scheme: legacy (default, all "
                          "earlier runs) or chain (keeps charged pions whose "
                          "muon-decay neutrino can exceed e_nu_min)")
+    ap.add_argument("--muon-clock", default="legacy",
+                    choices=("legacy", "converged"),
+                    help="muon decay clock: legacy (default, all earlier "
+                         "runs; beta*gamma of the start of each step) or "
+                         "converged (momentum loss capped per step, "
+                         "second-order proper time)")
     ap.add_argument("--merge-only", action="store_true")
     a = ap.parse_args(argv)
     if a.merge_only:
@@ -1682,7 +1701,7 @@ def main(argv=None):
                    primary_energy=a.primary_energy, mu_cf=a.mu_cf,
                    primary_model=a.model, resim_rmin=a.resim_rmin, keep_cfiles=not a.no_keep_cfiles,
                    resim_groups=a.resim_groups, upgoing=a.upgoing,
-                   thresholds=a.thresholds)
+                   thresholds=a.thresholds, muon_clock=a.muon_clock)
     alloc = None
     if a.alloc:
         d = np.load(a.alloc)
