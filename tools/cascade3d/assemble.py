@@ -121,3 +121,111 @@ def role_names(ks):
     """Species names by role (for reports)."""
     return {r: [str(s) for s, rr in zip(ks.species, ks.role) if rr == r]
             for r in (KS.ROLE_HADRON, KS.ROLE_LOSS, KS.ROLE_SINK)}
+
+
+# ------------------------------------------------------------ G1.3 cells
+#: Monte Carlo energy-band edges [GeV]: 0.1 x 10^(j/5), j = 0..10 (two MCEq bins each)
+G13_BAND_EDGES = tuple(0.1 * 10.0 ** (np.arange(11) / 5.0))
+#: Monte Carlo cos Z bin edges at the ground (down-going)
+G13_COSZ_EDGES = tuple(np.round(np.linspace(0.0, 1.0, 11), 10))
+G13_SPECIES = ("nue", "antinue", "numu", "antinumu")
+
+
+def ground_sink_table(solver, out):
+    """Sink intensities at the ground for every down-going direction available.
+
+    Returns ``(mu0, I)``: ``mu0`` ascending (the ground lines plus 0, the horizontal
+    node of the line tangent at h = 0, if present) and ``I`` (nE, nSink, n_mu0).
+    """
+    r = solver.rays
+    nodes = list(r.ground_node)
+    mu0 = list(r.ground_mu0)
+    hz = np.flatnonzero((r.node_level == 0) & (r.node_branch == 0))
+    if hz.size:
+        nodes.append(int(hz[0]))
+        mu0.append(0.0)
+    nodes, mu0 = np.array(nodes), np.array(mu0)
+    o = np.argsort(mu0)
+    nu = np.asarray(sink_intensity(solver, out["emis"]))[:, :, nodes[o]]
+    return mu0[o], nu
+
+
+def band_mean_bins(e_bins, values, e_lo, e_hi):
+    """Mean of dPhi/dE over [e_lo, e_hi] in the solver's bin convention.
+
+    The number in bin i is ``phi_i w_i`` (the yields count children in bins), so
+    the band mean is ``sum phi_i w_i / sum w_i`` over the bins inside the band; the
+    band edges must be bin edges (checked).
+    """
+    eb = np.asarray(e_bins)
+    i0 = int(np.argmin(np.abs(eb - e_lo)))
+    i1 = int(np.argmin(np.abs(eb - e_hi)))
+    if abs(eb[i0] / e_lo - 1) > 1e-6 or abs(eb[i1] / e_hi - 1) > 1e-6:
+        raise ValueError("band edges must be energy-bin edges")
+    w = np.diff(eb)[i0:i1]
+    v = np.asarray(values)[..., i0:i1]
+    return np.sum(v * w, axis=-1) / np.sum(w)
+
+
+def cosz_mean(mu0, values, lo, hi):
+    """Mean over cos Z in [lo, hi] of an intensity tabulated at ascending ``mu0``.
+
+    Quadrature: the shape-preserving piecewise-cubic (PCHIP) interpolant through
+    all tabulated directions, integrated exactly over the bin; ``values``
+    (..., n_mu0).  Third order for smooth intensities; the bin edges should be
+    tabulated directions (they are: ground lines and the horizontal node).
+    """
+    from scipy.interpolate import PchipInterpolator
+
+    f = PchipInterpolator(np.asarray(mu0), np.asarray(values), axis=-1,
+                          extrapolate=False)
+    return f.integrate(lo, hi) / (hi - lo)
+
+
+def cell_averages(solver, out, species=G13_SPECIES, band_edges=G13_BAND_EDGES,
+                  cosz_edges=G13_COSZ_EDGES, energy="bins"):
+    """Solver flux averaged over the Monte Carlo cells of gate G1.3.
+
+    Parameters
+    ----------
+    energy : {"bins", "loglog"}
+        Band mean in the bin convention (``band_mean_bins``, default) or by
+        log-log interpolation between bin centres (``band_average``).
+
+    Returns
+    -------
+    dict
+        ``species`` -> array (n_band, n_cosz) of mean dN/dE [1/(GeV cm2 s sr)]
+        over the band (neutrino energy) and mean specific intensity over the cos Z
+        bin's solid angle (2 pi d cos Z, azimuth summed then divided by 2 pi
+        Delta cos Z: i.e. the mean intensity per sr); rows in ascending band
+        order (``band_edges``), columns in ascending cos Z (``cosz_edges``).  Also
+        ``band_edges``, ``cosz_edges``.
+    """
+    ks = solver.ks
+    names = list(ks.species)
+    mu0, nu = ground_sink_table(solver, out)
+    res = {"band_edges": np.asarray(band_edges),
+           "cosz_edges": np.asarray(cosz_edges), "mu0": mu0}
+    for sp in species:
+        I = nu[:, solver.Sk.index(names.index(sp)), :]       # (nE, n_mu0)
+        res[sp] = cell_table(mu0, I, ks.e_bins, ks.e_grid, band_edges, cosz_edges,
+                             energy)
+    return res
+
+
+def cell_table(mu0, I, e_bins, e_grid, band_edges=G13_BAND_EDGES,
+               cosz_edges=G13_COSZ_EDGES, energy="bins"):
+    """Cell means (n_band, n_cosz) of an intensity table ``I`` (nE, n_mu0).
+
+    See :func:`cell_averages`; this is its pure part (tested on analytic tables).
+    """
+    ang = np.stack([cosz_mean(mu0, I, lo, hi)                # (n_cosz, nE)
+                    for lo, hi in zip(cosz_edges[:-1], cosz_edges[1:])])
+    rows = []
+    for lo, hi in zip(band_edges[:-1], band_edges[1:]):
+        if energy == "bins":
+            rows.append(band_mean_bins(e_bins, ang, lo, hi))
+        else:
+            rows.append(band_average(e_grid, ang, lo, hi))
+    return np.array(rows)

@@ -36,7 +36,8 @@ import jax  # noqa: E402
 import jax.numpy as jnp  # noqa: E402
 
 N3 = os.environ.get("N3", "/home/pigrange/mc3d_work/runs/native3d")
-OUT = os.path.join(N3, "c1", "gates", "G1.0.md")
+OUTDIR = os.environ.get("C3D_OUTDIR", os.path.join(N3, "c1", "cycle2"))
+OUT = os.path.join(OUTDIR, "gates", "G1.0.md")
 TOL_C = 1e-6
 EPS = 1e-4
 

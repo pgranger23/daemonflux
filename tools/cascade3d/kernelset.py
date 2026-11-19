@@ -389,7 +389,7 @@ def synthetic_angular(ks, L=32, e_cut=3.0e3, pt0=0.35, pt0_dec=0.1, channels="in
 
 # ------------------------------------------------------------------- toys
 def toy_cascade(lam_p=90.0, dec_c=1.0 / 4.0e5, phi_top=1.0, g=0.25, kappa=2.0, L=32,
-                law="vmf", dec_g=1.0, dec_kappa=None, dedx_c=0.0):
+                law="vmf", dec_g=1.0, dec_kappa=None, dedx_c=0.0, c_loss=False):
     """Two-generation toy: P (bin 1) -> C (bin 0) -> nu (bin 0).
 
     P: hadron, interaction length ``1/lam_p``... given as ``lam_p`` [g/cm^2], no decay,
@@ -398,7 +398,8 @@ def toy_cascade(lam_p=90.0, dec_c=1.0 / 4.0e5, phi_top=1.0, g=0.25, kappa=2.0, L
     vMF(kappa)`` (von Mises-Fisher, density ``exp(kappa cos theta)`` per solid angle,
     moments ``i_l(kappa)/i_0(kappa)``), or isotropic if ``law == "iso"``.  C -> nu:
     one neutrino per decay, straight ahead if ``dec_g == 1`` else ``dec_g delta +
-    (1 - dec_g) vMF(dec_kappa)``.
+    (1 - dec_g) vMF(dec_kappa)``.  ``c_loss``: C is a loss species (transported on
+    the loss points; with ``dedx_c = 0`` the physics is the same as for a hadron).
 
     The energy grid has two bins of equal width so that the yields are plain
     multiplicities.
@@ -410,7 +411,8 @@ def toy_cascade(lam_p=90.0, dec_c=1.0 / 4.0e5, phi_top=1.0, g=0.25, kappa=2.0, L
     w = np.diff(e_bins)
     names = np.array(["P", "C", "nu"])
     nE = 2
-    role = np.array([ROLE_HADRON, ROLE_HADRON if dedx_c == 0 else ROLE_LOSS,
+    role = np.array([ROLE_HADRON,
+                     ROLE_LOSS if (dedx_c > 0 or c_loss) else ROLE_HADRON,
                      ROLE_SINK])
     active = np.array([[False, True], [True, False], [True, False]])
     inv_lambda = np.array([[0.0, 1.0 / lam_p], [0.0, 0.0], [0.0, 0.0]])

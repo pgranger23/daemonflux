@@ -18,7 +18,11 @@ loss on, full family: base and the four doublings, G1.1 cells.
 Every run is a separate ``run_solve.py`` process (cost and memory per run are
 recorded in its npz).  Usage::
 
-    taskset -c 0-3 $PY tools/cascade3d/gates/g1_2.py [A] [B]
+    taskset -c 0-3 $PY tools/cascade3d/gates/g1_2.py [A] [B] [C]
+
+Part C (cycle 2): the Monte Carlo-matched set pool2000 (L = 32, loss on, R = 6371
+km): the four doublings on the G1.1 cells and on the G1.3 cell averages; its base
+run is the G1.5 cost configuration; L = 16 as a diagnostic.
 """
 
 import json
@@ -30,8 +34,9 @@ import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 N3 = os.environ.get("N3", "/home/pigrange/mc3d_work/runs/native3d")
-RUNS = os.path.join(N3, "c1", "g12")
-OUT = os.path.join(N3, "c1", "gates", "G1.2.md")
+OUTDIR = os.environ.get("C3D_OUTDIR", os.path.join(N3, "c1", "cycle2"))
+RUNS = os.path.join(OUTDIR, "g12")
+OUT = os.path.join(OUTDIR, "gates", "G1.2.md")
 REF = os.path.join(N3, "c1", "ref", "mceq_g11_PHYS_losson.npz")
 QUANT = ("numu", "antinumu", "nue", "antinue", "mu")
 COSZ = (1.0, 0.75, 0.5, 0.25, 0.15, 0.05)
@@ -47,7 +52,7 @@ VARIANTS = {
     "levels2": ["--levels-refine", "2"],
     "family2": ["--family-refine", "2"],
     "L2": ["--L", "64"],
-    "sampling2": ["--n-sub", "8", "--dX-max", "5"],
+    "sampling2": ["--n-sub", "8", "--dX-max", "2.5"],
 }
 
 
@@ -88,6 +93,22 @@ def compare(base, var):
     rel = vv / vb - 1
     i = np.unravel_index(np.argmax(np.abs(rel)), rel.shape)
     return float(rel[i]), (QUANT[i[0]], COSZ[i[1]], float(E[i[2]]))
+
+
+def compare_g13(base, var):
+    """Largest move of the G1.3 cell averages (reported, not gated here)."""
+    a, b = np.load(base), np.load(var)
+    if "cell_nue" not in a.files or "cell_nue" not in b.files:
+        return None
+    worst = (0.0, None)
+    be, ce = a["cell_band_edges"], a["cell_cosz_edges"]
+    for q in ("nue", "antinue", "numu", "antinumu"):
+        r = b[f"cell_{q}"] / a[f"cell_{q}"] - 1
+        i = np.unravel_index(np.argmax(np.abs(r)), r.shape)
+        if abs(r[i]) > abs(worst[0]):
+            worst = (float(r[i]), (q, float(be[i[0]]), float(be[i[0] + 1]),
+                                   float(ce[i[1]]), float(ce[i[1] + 1])))
+    return worst
 
 
 def main(argv):
@@ -138,6 +159,18 @@ def main(argv):
             lines.append(f"| {tag} | {m:+.2e} | {w[0]}, {w[1]:g}, {w[2]:.3g} | "
                          f"{'yes' if ok else 'NO'} |")
             summary[f"B_{tag}"] = m
+        lines += ["", "Reported, not gated (stage B gates them with the real "
+                  "kernels): largest move of the G1.3 cell averages "
+                  "(`assemble.cell_averages`, 4 species x 10 bands x 10 cos Z bins).",
+                  "", "| change | largest move | cell (species, band GeV, cos Z) |",
+                  "|---|---|---|"]
+        for tag in ("levels2", "family2", "L2", "sampling2"):
+            w = compare_g13(os.path.join(RUNS, "B_base.npz"),
+                            os.path.join(RUNS, f"B_{tag}.npz"))
+            if w is not None and w[1] is not None:
+                c = w[1]
+                lines.append(f"| {tag} | {w[0]:+.2e} | {c[0]}, {c[1]:.3g}-{c[2]:.3g}, "
+                             f"{c[3]:g}-{c[4]:g} |")
         ok_r = res < 1e-4
         ok_all &= ok_r
         lines += ["", f"Sweep residual, largest over bins: {res:.1e} "
@@ -152,6 +185,54 @@ def main(argv):
                       f"cell "
                       f"ratio - 1 = {m:+.3f} ({w[0]}, cos Z {w[1]:g}, {w[2]:.3g} GeV).",
                       ""]
+    if "C" in parts:
+        ksd = os.path.join(N3, "kernels", "mc")
+        own = os.path.join(N3, "c1", "cycle2", "kernels")
+        base_args = ["MC", "losson", "--r-earth", "6371", "--ks",
+                     os.path.join(ksd, "ks_mc_pool2000_L32_losson.npz")]
+        varc = {"levels2": VARIANTS["levels2"], "family2": VARIANTS["family2"],
+                "sampling2": VARIANTS["sampling2"]}
+        base = run("C_base", base_args)
+        vals = []
+        for tag in ("levels2", "family2", "L2", "sampling2"):
+            if tag == "L2":
+                args = base_args[:-1] + [os.path.join(
+                    own, "ks_mc_pool2000_L64_losson.npz")]
+            else:
+                args = base_args + varc[tag]
+            p = run(f"C_{tag}", args)
+            vals.append((tag, compare(base, p), compare_g13(base, p)))
+        l16 = run("C_L16", base_args[:-1] + [os.path.join(
+            own, "ks_mc_pool2000_L16_losson.npz")])
+        cost = cells(base)[2]
+        res = float(np.max(cells(base)[3]))
+        lines += ["## C. Monte Carlo-matched set pool2000 (L = 32), loss on, "
+                  "R = 6371 km, full family", "",
+                  "G1.1 cells (5 quantities x 6 directions x 0.1-100 GeV) and the "
+                  "G1.3 cell averages (4 species x 10 bands x 10 cos Z bins).", "",
+                  "| change | G1.1 cells: largest move | where | G1.3 cells: largest "
+                  "move | where | within 0.5% |", "|---|---|---|---|---|---|"]
+        for tag, (m, w), g13 in vals:
+            okc = abs(m) <= TOL and (g13 is None or abs(g13[0]) <= TOL)
+            ok_all &= okc
+            gtxt = ("n/a", "") if g13 is None else (
+                f"{g13[0]:+.2e}", f"{g13[1][0]}, {g13[1][1]:.3g}-{g13[1][2]:.3g} GeV, "
+                f"cos Z {g13[1][3]:g}-{g13[1][4]:g}")
+            lines.append(f"| {tag} | {m:+.2e} | {w[0]}, {w[1]:g}, {w[2]:.3g} | "
+                         f"{gtxt[0]} | {gtxt[1]} | {'yes' if okc else 'NO'} |")
+            summary[f"C_{tag}"] = [m, None if g13 is None else g13[0]]
+        m16, w16 = compare(base, l16)
+        g16 = compare_g13(base, l16)
+        lines += ["", f"Diagnostic: L = 16 instead of 32 moves the G1.1 cells by "
+                  f"{m16:+.2e} ({w16[0]}, cos Z {w16[1]:g}, {w16[2]:.3g} GeV) and the "
+                  f"G1.3 cells by {g16[0]:+.2e} ({g16[1]}).",
+                  f"Sweep residual {res:.1e}; up-scatter pass sizes "
+                  f"{cost.get('up_res')}.  Base run (the G1.5 configuration): "
+                  f"{cost['nodes']} nodes, {cost['loss_points']} loss points, "
+                  f"k_top {cost.get('k_top')}, {cost['total_cpu_s'] / 60:.1f} core-min "
+                  f"(user+sys incl. compilation), {cost['peak_rss_GB']:.1f} GB, "
+                  f"wall {cost['total_wall_s'] / 60:.1f} min on cores "
+                  f"{cost['affinity']}.", ""]
     lines += ["Per-run cost (CPU = user + sys of the process, peak RSS):", "",
               "| run | nodes | loss points | core-min | peak GB |",
               "|---|---|---|---|---|"]
@@ -163,6 +244,7 @@ def main(argv):
     lines += ["", f"## Result: **{'PASS' if ok_all else 'FAIL'}**", "",
               f"Command: `taskset -c {pinned()} $PY tools/cascade3d/gates/g1_2.py "
               f"{' '.join(parts)}`", ""]
+    os.makedirs(os.path.dirname(OUT), exist_ok=True)
     with open(OUT, "w") as fh:
         fh.write("\n".join(lines))
     with open(OUT.replace(".md", ".json"), "w") as fh:

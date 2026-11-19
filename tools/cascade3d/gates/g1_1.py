@@ -7,10 +7,12 @@ G1.2 checks it numerically) with the frozen default settings, and the ground flu
 numu, antinumu, nue, antinue and mu+ + mu- are compared with MCEq's
 (``$N3/c1/ref/mceq_g11_*.npz``) in every MCEq bin from 0.1 to 100 GeV.
 
-Diagnosis (not part of the gate decision): when present, the Euler-step study
-``$N3/c1/diag/euler_*.npz`` (``euler_refine.py``: MCEq's own matrices marched with
-2, 4, 8, 16 times finer steps) is used to estimate MCEq's step-converged value and the
-solver is compared with it as well.
+Diagnosis (not part of the gate decision): the solver is also compared with two
+estimates of MCEq's step-converged value, ``$N3/c1/diag/euler_*.npz``
+(``euler_refine.py``) and ``$N3/c1/review/mceq_step_*.npz`` (``mceq_step_check.py``).
+
+Output directory: ``$C3D_OUTDIR`` (default ``$N3/c1/cycle2``): ``gates/G1.1.md`` and
+``g11/g11_<pop>_<loss>.npz`` (rows in the order of the ``cos_z`` key).
 
 Usage::
 
@@ -36,8 +38,10 @@ import rays  # noqa: E402
 import solver as S  # noqa: E402
 
 N3 = ME.N3
-OUT = os.path.join(N3, "c1", "gates", "G1.1.md")
-RES = os.path.join(N3, "c1", "g11")
+OUTDIR = os.environ.get("C3D_OUTDIR", os.path.join(N3, "c1", "cycle2"))
+OUT = os.path.join(OUTDIR, "gates", "G1.1.md")
+RES = os.path.join(OUTDIR, "g11")
+REVIEW = os.path.join(N3, "c1", "review")
 TOL = {False: 0.003, True: 0.02}
 
 GATE = """**G1.1 Straight-ahead limit against MCEq (gated).** Same database, population,
@@ -90,9 +94,20 @@ def euler_limit(pop, loss_s, i, q):
     return 2 * b - a, ns
 
 
+def review_limit(pop, loss_s, i, q):
+    """Step limit of the independent check (``gates/mceq_step_check.py``) or None."""
+    f = os.path.join(REVIEW, f"mceq_step_{pop}_{loss_s}.npz")
+    if not os.path.exists(f):
+        return None
+    z = np.load(f)
+    key = f"{q}_limit_{i}"
+    return z[key] if key in z.files else None
+
+
 def main(argv):
     pops = argv[1:] or ["PHYS", "REF"]
     os.makedirs(RES, exist_ok=True)
+    os.makedirs(os.path.dirname(OUT), exist_ok=True)
     lines = ["# Gate G1.1: straight-ahead limit against MCEq", "", GATE, "",
              "Solver settings (frozen defaults, `DESIGN.md`): levels 0.4 km to 50 km, "
              "1 km to 70 km, 3 km to the top (plus layer boundaries); n_sub 4; "
@@ -107,9 +122,11 @@ def main(argv):
             z = np.load(ME.ref_path(pop, loss))
             E = ks.e_grid
             sel = np.flatnonzero((E >= 0.1 - 1e-9) & (E <= 100.0 + 1e-6))
+            # rows in the order of the cos_z key that labels them
+            rows = [int(np.flatnonzero(np.isclose(gf["mu0"], c))[0])
+                    for c in z["cos_z"]]
             np.savez(os.path.join(RES, f"g11_{pop}_{ls}.npz"), e_grid=E,
-                     cos_z=z["cos_z"], **{q: gf[q] for q in A.QUANTITIES},
-                     mu0=gf["mu0"])
+                     cos_z=z["cos_z"], **{q: gf[q][rows] for q in A.QUANTITIES})
             tab = ["| quantity | " + " | ".join(f"cos Z {c:g}" for c in z["cos_z"])
                    + " |", "|---" * (1 + len(z["cos_z"])) + "|"]
             worst = (0.0, None)
@@ -124,11 +141,18 @@ def main(argv):
                     if abs(rel[m]) > abs(worst[0]):
                         worst = (rel[m], (q, c, E[sel][m]))
                     lim, ns = euler_limit(pop, ls, i, q)
-                    if lim is not None:
-                        rl = gf[q][j][sel] / lim[sel] - 1
-                        rm = z[q][i][sel] / lim[sel] - 1
-                        mm = int(np.argmax(np.abs(rl)))
-                        diag.append((q, c, rl[mm], E[sel][mm], rm[mm], ns))
+                    rv = review_limit(pop, ls, i, q)
+                    if lim is not None or rv is not None:
+                        out = [q, c]
+                        for L_ in (lim, rv):
+                            if L_ is None:
+                                out += [None, None, None]
+                                continue
+                            rl = gf[q][j][sel] / L_[sel] - 1
+                            rm = z[q][i][sel] / L_[sel] - 1
+                            mm = int(np.argmax(np.abs(rl)))
+                            out += [rl[mm], E[sel][mm], rm[mm]]
+                        diag.append(tuple(out))
                 tab.append("| " + " | ".join(row) + " |")
             ok = abs(worst[0]) <= TOL[loss]
             all_ok &= ok
@@ -144,16 +168,23 @@ def main(argv):
                       f"**{'PASS' if ok else 'FAIL'}**",
                       ""]
             if diag:
-                lines += ["Diagnosis against MCEq's step-converged estimate "
-                          "(first-order "
-                          "Richardson on the two finest Euler refinements):", "",
-                          "| quantity | cos Z | solver / limit - 1 (worst) | E [GeV] | "
-                          "MCEq ref / limit - 1 there | refinements |",
-                          "|---|---|---|---|"
-                          "---|---|"]
-                for q, c, a, e, b, ns in diag:
-                    lines.append(f"| {q} | {c:g} | {a:+.2e} | {e:.3g} | {b:+.2e} | "
-                                 f"{ns} |")
+                lines += ["Not a gate: against MCEq's step-converged estimates, (a) "
+                          "this project's (`euler_refine.py`: MCEq's matrices, steps / "
+                          "2..16, Richardson on the two finest) and (b) the "
+                          "independent check (`mceq_step_check.py`: MCEq's solver, "
+                          "steps / 4 and / 16). Worst cell of 0.1 to 100 GeV.", "",
+                          "| quantity | cos Z | solver/limit(a) - 1 | E | ref/limit(a) "
+                          "- 1 | solver/limit(b) - 1 | E | ref/limit(b) - 1 |",
+                          "|---|---|---|---|---|---|---|---|"]
+
+                def fmt(x, f):
+                    return "n/a" if x is None else format(x, f)
+
+                for q, c, a1, e1, b1, a2, e2, b2 in diag:
+                    lines.append(f"| {q} | {c:g} | {fmt(a1, '+.2e')} | "
+                                 f"{fmt(e1, '.3g')} | {fmt(b1, '+.2e')} | "
+                                 f"{fmt(a2, '+.2e')} | {fmt(e2, '.3g')} | "
+                                 f"{fmt(b2, '+.2e')} |")
                 lines.append("")
     lines += [f"## Result: **{'PASS' if all_ok else 'FAIL'}**", "",
               f"Command: `taskset -c {pinned()} $PY tools/cascade3d/gates/g1_1.py "

@@ -255,6 +255,46 @@ Result files are under `/home/pigrange/mc3d_work/runs/native3d/` (`c0/gates/`, `
     `tools/mc3d` pass.
   - Cost, same pilot: 588 CPU s with the switch against 531 without (1.11). The re-run of
     the reference is therefore about 27 core-h, not 25.
+- **Second solver cycle: G1.0 to G1.2 re-run in full, as written (2026-11-19; results in
+  `c1/cycle2/gates/`, author's report `c1/WP12_CYCLE2_REPORT.md`).** Changes of the cycle:
+  extra passes for up-scatter into transported species; Legendre moments of the
+  piecewise-linear interpolant in μ at each level; 48 ground lines uniform in zenith
+  angle; loss step 5 g/cm² (was 10); an error in the mid-point of the loss step
+  corrected; highest bin marched set from the primaries; L = 32. The 18 unit tests pass
+  (re-run by the manager), among them the three-dimensional toy (worst +0.05% over 11
+  points).
+  - **G1.0: PASS.** `jax.jvp` against a finite difference 1.4e-7; CPU over wall 2.60 on
+    4 pinned cores.
+  - **G1.1: FAIL**, unchanged in substance. Neutrinos inside in the four cases (worst
+    −0.28% loss off, −0.30% loss on). Muons, loss on: worst +2.035% (PHYS) and +2.028%
+    (REF), vertical, 0.141 GeV, against 2%. Muons, loss off: worst +101% at cos Z = 0.05,
+    0.112 GeV, against 0.3%. Not a gate, against step-converged MCEq: neutrinos within
+    1.5e-4 (loss off) and 1.1e-3 (loss on), loss-on muons within 0.79%, loss-off muons
+    within 0.07% at the vertical, 0.65% at cos Z = 0.25 (0.02% and 0.17% against the
+    manager's own step limit) and still +30% at cos Z = 0.05, 0.112 GeV (the limit
+    documented under the PI's decision of this date, point 2).
+    The header of `G1.1.md` gives the loss step as 10 g/cm²; the run used 5 (the label
+    in the script was not updated).
+  - **G1.2: FAIL as a whole.** Largest move of a cell under each doubling, against 0.5%:
+    - A, straight ahead, loss on: inside (at most 0.02%). Loss off: altitude grid −20.3%
+      (muons, cos Z = 0.05, 0.112 GeV), ray sampling 0.11%.
+    - B, synthetic angular kernels, G1.1 cells: inside under the four doublings
+      (altitude grid 0.03%, line family 0.27%, L 0.05%, ray sampling 0.42%). In the first
+      cycle the family and L moved cells by 8% and 30%.
+    - C, the Monte Carlo-matched kernel set (`pool2000`). G1.3 cells (four neutrino
+      species, ten bands, ten cos Z bins): inside, at most 0.16% (altitude grid 0.02%,
+      line family 0.16%, L 0.08%, ray sampling 0.05%). G1.1 neutrino cells: inside, at
+      most 0.38% (ν_e, vertical, 71 GeV, under the L doubling). G1.1 muon cells: outside
+      at cos Z = 0.05 (altitude grid +0.72%, 3 cells of 180; line family −3.19%, 7 cells;
+      L +2.29%, 8 cells; ray sampling +1.07%, 6 cells), up to 0.7 GeV, and in one cell at
+      cos Z = 0.15 below 0.2 GeV. Recomputed by the manager from the stored solver
+      outputs (`c1/cycle2/g12/C_*.npz`).
+    - Same-bin sweep residual 4.5e-7 (1.5e-8 on the real set), against 1e-4.
+    What fails is therefore muons at the ground near the horizon below 0.7 GeV, with and
+    without loss; every neutrino cell of G1.1 and G1.3 is inside. The gate is not
+    redefined.
+  - Cost of one solve in the configuration of G1.5 (not the gate's run): 11.9
+    core-minutes, 5.0 GB; G1.5 allows 10 and 8.
 
 ## Decisions of the PI
 

@@ -144,7 +144,7 @@ def reference_nu(h_d, mu_d, n_seg=60, n_gl=16):
 
 # ------------------------------------------------------------------ solver
 def solver_nu(levels_dh=0.5, n_ground=48, n_sub=4, L=32, refine_family=1,
-              refine_levels=1):
+              refine_levels=1, **toy_kw):
     """Same quantities from cascade3d."""
     import assemble
     import grid
@@ -167,7 +167,9 @@ def solver_nu(levels_dh=0.5, n_ground=48, n_sub=4, L=32, refine_family=1,
                                 extra_mu0=tuple(mu0) + grid.G13_COSZ_EDGES, r_e=R)
     fam = grid.LineFamily(fam.mu0, np.concatenate([fam.h_tangent, ht]), r_e=R)
     ry = rays.Rays(atm, lev, fam, n_sub=n_sub)
-    ks = K.toy_cascade(lam_p=LAM, dec_c=1.0 / DC, phi_top=1.0, g=G, kappa=KAPPA, L=L)
+    kw = dict(lam_p=LAM, dec_c=1.0 / DC, phi_top=1.0, g=G, kappa=KAPPA, L=L)
+    kw.update(toy_kw)
+    ks = K.toy_cascade(**kw)
     sv = S.Solver(ry, ks)
     out = sv.solve()
     nu = np.asarray(assemble.sink_intensity(sv, out["emis"]))[0, 0]  # bin 0
@@ -199,6 +201,23 @@ def test_toy3d():
     assert np.all(np.abs(rel) < TOL), rel
 
 
+def test_loss_parent_angular_decay():
+    """Angular law on a channel whose parent is a loss species (muon -> nu path).
+
+    C decays with 0.3 delta + 0.7 vMF(kappa = 3).  C as a hadron (segment transport;
+    its moments validated by ``test_toy3d``) and C as a loss species (loss points,
+    dedx = 0: the same physics) must agree; the angular law must matter.
+    Measured (2026-11-19): agreement 2.2e-5; the law changes the 11 points by
+    -17% to +114%.
+    """
+    had, _ = solver_nu(dec_g=0.3, dec_kappa=3.0)
+    los, _ = solver_nu(dec_g=0.3, dec_kappa=3.0, c_loss=True)
+    fwd, _ = solver_nu(c_loss=True)
+    rel = np.abs(los / had - 1)
+    assert rel.max() < 2e-3, rel
+    assert np.max(np.abs(los / fwd - 1)) > 0.01
+
+
 def main():
     ref, sol, summ, t_ref, t_sol = compare()
     rel = sol / ref - 1
@@ -219,7 +238,8 @@ def main():
               f"Time: reference {t_ref:.0f} s, solver {t_sol:.0f} s.", "",
               f"Command: `taskset -c {pinned()} $PY tools/cascade3d/test_toy3d.py`"]
     n3 = os.environ.get("N3", "/home/pigrange/mc3d_work/runs/native3d")
-    path = os.path.join(n3, "c1", "gates", "TOY3D.md")
+    outdir = os.environ.get("C3D_OUTDIR", os.path.join(n3, "c1", "cycle2"))
+    path = os.path.join(outdir, "gates", "TOY3D.md")
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w") as fh:
         fh.write("\n".join(lines) + "\n")

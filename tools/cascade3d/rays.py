@@ -101,7 +101,7 @@ class Rays:
         Number of length buckets for the scans over loss points.
     """
 
-    def __init__(self, atm, levels, family, n_sub=4, dX_max=10.0, n_buckets=4):
+    def __init__(self, atm, levels, family, n_sub=4, dX_max=5.0, n_buckets=8):
         self.atm = atm
         self.levels = np.asarray(levels, float)
         self.family = family

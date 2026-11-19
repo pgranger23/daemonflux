@@ -112,6 +112,21 @@ def _expj(S0, S1, r0, r1, x, ds):
     return ds * jnp.where(pos, ex, lin)
 
 
+def _is_exact_zero(x):
+    """True if ``x`` is concrete and identically zero (False under tracing)."""
+    try:
+        return not bool(jnp.any(x != 0))
+    except Exception:  # tracer (jvp/vjp/jit): run the pass, it adds zero anyway
+        return False
+
+
+def _rel_change(d, tot):
+    """max over rows of max|d| / max|tot| (rows: all axes but the last)."""
+    dm = jnp.max(jnp.abs(d), axis=-1)
+    tm = jnp.max(jnp.abs(tot), axis=-1)
+    return jnp.max(jnp.where(tm > 0, dm / jnp.where(tm > 0, tm, 1.0), 0.0))
+
+
 def _safe_ratio(num, den):
     ok = den > 0
     return jnp.where(ok, num / jnp.where(ok, den, 1.0), 1.0)
@@ -139,6 +154,43 @@ def _lagrange4(x):
     w2 = -x * (x - 1.0) * (x - 3.0) / 2.0
     w3 = x * (x - 1.0) * (x - 2.0) / 6.0
     return jnp.stack([w0, w1, w2, w3], axis=-1)
+
+
+def _hat_weights(r, L):
+    """W[level, slot, l] = int hat_slot(mu) P_l(mu) dmu over [-1, 1] (numpy).
+
+    hat functions of the piecewise-linear interpolation in mu between the sorted
+    nodes of each level (``r.lev_node``, ascending mu); beyond the extreme nodes the
+    interpolant is constant.  Gauss-Legendre per interval, exact for degree L + 1.
+    """
+    nl, M = r.lev_node.shape
+    W = np.zeros((nl, M, L + 1))
+    x, wq = np.polynomial.legendre.leggauss(L // 2 + 3)
+    t, wt = 0.5 * (x + 1.0), 0.5 * wq
+    mu_all = np.concatenate([r.node_mu, [0.0]])
+    for e in range(nl):
+        valid = r.lev_node[e] < r.N
+        mu = mu_all[r.lev_node[e][valid]]
+        n = mu.size
+        # interior intervals
+        a, b = mu[:-1], mu[1:]
+        d = b - a
+        pts = a[:, None] + d[:, None] * t[None, :]           # (n-1, q)
+        P = KS.legendre_table(pts, L)                         # (L+1, n-1, q)
+        wl = (d[:, None] * wt[None, :]) * (1.0 - t)[None, :]  # left node weight
+        wr = (d[:, None] * wt[None, :]) * t[None, :]
+        Wl = np.einsum("liq,iq->il", P, wl)
+        Wr = np.einsum("liq,iq->il", P, wr)
+        We = np.zeros((n, L + 1))
+        We[:-1] += Wl
+        We[1:] += Wr
+        # constant extension to -1 and +1
+        for idx, lo, hi in ((0, -1.0, mu[0]), (n - 1, mu[-1], 1.0)):
+            if hi - lo > 0:
+                pe = lo + (hi - lo) * t
+                We[idx] += (KS.legendre_table(pe, L) * (hi - lo) * wt).sum(axis=1)
+        W[e, :n] = We
+    return W
 
 
 def _range_tables(ks, loss_idx, n_fine=40, n_ext=6):
@@ -192,7 +244,17 @@ class Solver:
     gamma0 : float
         Pre-whitening exponent of the energy interpolation of loss species.
     k_top : int, optional
-        Highest bin marched (default: the last bin).
+        Highest bin marched (default: highest bin with a non-zero top intensity plus
+        the largest up-scatter distance; exact, nothing exists above).
+    projection : {"hat", "trapezoid"}
+        Legendre moments at a level: exact moments of the piecewise-linear (in mu)
+        interpolant of the node values ("hat", default; no aliasing of high l on a
+        coarse node set), or trapezoid weights times P_l at the nodes (stage A).
+    n_up : int
+        Extra passes for up-scatter into transported species (child bin above the
+        parent bin; exact decay kinematics on a kinetic-energy grid).  Each pass
+        re-marches bins 0..k_up with the up-scatter of the previous pass as source;
+        ``solve()["up_res"]`` gives the size of each pass.
     store_nodes : bool
         Keep the transported intensities at all nodes for every bin (memory!).
     quad_source : bool
@@ -201,16 +263,20 @@ class Solver:
     """
 
     def __init__(self, rays, ks, n_sweeps=6, gamma0=2.0, k_top=None,
-                 store_nodes=False, quad_source=True):
+                 store_nodes=False, quad_source=True, n_up=3, projection="hat"):
         ks.validate()
         self.rays, self.ks = rays, ks
         self.n_sweeps = int(n_sweeps)
         self.gamma0 = float(gamma0)
         self.store_nodes = bool(store_nodes)
         self.quad_source = bool(quad_source)
+        if projection not in ("hat", "trapezoid"):
+            raise ValueError("projection must be 'hat' or 'trapezoid'")
+        self.projection = projection
         nE = ks.nE
         self.nE = nE
-        self.k_top = nE - 1 if k_top is None else int(k_top)
+        self.n_up = int(n_up)
+        self._k_top_arg = k_top
         role = ks.role
         # species lists (kernel-set indices)
         self.H = [s for s in range(ks.nS) if role[s] == KS.ROLE_HADRON]
@@ -253,11 +319,30 @@ class Solver:
             if m.size:
                 reach = max(reach, int((m - kk).max()))
         self.up_reach = reach
+        # up-scatter into transported children: highest child bin that receives it
+        k_hi = -1
+        for j in keep:
+            if ks.role[ks.ch_child[j]] == KS.ROLE_SINK:
+                continue
+            m, kk = np.nonzero(np.tril(ks.Y[j], -1))
+            if m.size:
+                k_hi = max(k_hi, int(m.max()))
+        self.k_up = k_hi                 # -1: none
+        self.K_up = k_hi + 1
+        # highest bin marched: nothing exists above the primaries plus the reach
+        if self._k_top_arg is None:
+            top = np.flatnonzero(np.any(np.asarray(ks.phi_top)[self.T] > 0, axis=0))
+            kphi = int(top.max()) if top.size else nE - 1
+            self.k_top = min(nE - 1, kphi + reach)
+        else:
+            self.k_top = int(self._k_top_arg)
         self._setup_geometry()
         self._setup_loss()
-        self._step_fwd = jax.jit(self._make_step(angular=False), donate_argnums=1)
-        self._step_ang = (jax.jit(self._make_step(angular=True), donate_argnums=1)
-                          if self.nA else None)
+        self._steps = {}
+        for ang in ((False, True) if self.nA else (False,)):
+            for up in ((False, True) if self.K_up > 0 else (False,)):
+                self._steps[(ang, up)] = jax.jit(
+                    self._make_step(angular=ang, up=up), donate_argnums=1)
 
     # ---------------------------------------------------------- setup
     def _setup_geometry(self):
@@ -295,8 +380,11 @@ class Solver:
             L = self.L
             mu = np.concatenate([r.node_mu, [0.0]])
             P = KS.legendre_table(mu[r.lev_node], L)  # (L+1, NL, M)
-            w = r.lev_w
-            g["WP"] = j(np.moveaxis(P * w[None], 0, -1))  # (NL, M, L+1)
+            if self.projection == "hat":
+                g["WP"] = j(_hat_weights(r, L))            # (NL, M, L+1)
+            else:
+                w = r.lev_w
+                g["WP"] = j(np.moveaxis(P * w[None], 0, -1))  # (NL, M, L+1)
             fac = (2 * np.arange(L + 1) + 1) / 2.0
             g["QP"] = j(np.moveaxis(P, 0, -1) * fac)      # (NL, M, L+1)
         self.geo = g
@@ -458,7 +546,7 @@ class Solver:
         return out
 
     # ------------------------------------------------------------ step
-    def _make_step(self, angular):
+    def _make_step(self, angular, up=False):
         nH, nL, nT, nC = self.nH, self.nL, self.nT, self.nC
         nE, W, nA, L = self.nE, self.W, self.nA, self.L
         Tidx = jnp.asarray(np.array(self.T, dtype=np.int64))
@@ -478,9 +566,12 @@ class Solver:
             out = jnp.zeros((nC, nT) + vals_ch.shape[1:])
             return out.at[ch_c, ch_p].add(v)
 
-        def step(k, carry, prm):
+        K_up = self.K_up
+        KA = min(K_up, nA)
+
+        def step(k, carry, prm, top_on):
             g = self.geo
-            S_acc, M_acc, fwin, swin = carry
+            S_acc, M_acc, fwin, swin, S_up, M_up = carry
             Y = prm["Y"][ch_keep]                         # (nch, nE, nE)
             Yk = jnp.take(Y, k, axis=2)                   # (nch, nE) child m
             if angular:
@@ -497,7 +588,7 @@ class Solver:
             Y_dec = dense(Yf, ~is_int)
             lam = jnp.take(prm["inv_lambda"][Tidx], k, axis=1)   # (nT,)
             dec = jnp.take(prm["inv_dec"][Tidx], k, axis=1)
-            ftop = jnp.take(prm["phi_top"][Tidx], k, axis=1)
+            ftop = jnp.take(prm["phi_top"][Tidx], k, axis=1) * top_on
             act = jnp.take(g["active_T"], k, axis=1)
             rho_n = g["node_rho"]
             # same-bin couplings among transported species (forward)
@@ -597,10 +688,24 @@ class Solver:
                 Gd = G_dec * mA[:, None, None, :]
                 M_acc = M_acc + (jnp.einsum("cplm,pql->cmql", Gi, Ri)
                                  + jnp.einsum("cplm,pql->cmql", Gd, Rd))
+            if up:
+                # up-scatter into transported children (child bin m > k, m <= k_up):
+                # collected for the next pass (linear: solve() re-marches the low
+                # bins with this source and zero top flux)
+                mup = (midx[None, :K_up] > k).astype(Ai.dtype)
+                Yu = jnp.concatenate([Y_int[:nT, :, :K_up], Y_dec[:nT, :, :K_up]],
+                                     axis=1) * mup[:, None, :]
+                S_up = S_up + jnp.einsum("cpm,pn->cmn", Yu, Acat)
+                if angular and KA > 0:
+                    mu_a = mup[:, :KA]
+                    Gi = G_int[:nT, :, :, :KA] * mu_a[:, None, None, :]
+                    Gd = G_dec[:nT, :, :, :KA] * mu_a[:, None, None, :]
+                    M_up = M_up + (jnp.einsum("cplm,pql->cmql", Gi, Ri)
+                                   + jnp.einsum("cplm,pql->cmql", Gd, Rd))
             out = {"F_ground": F_T[:, self._gnode], "res": res}
             if self.store_nodes:
                 out["F"] = F_T
-            return (S_acc, M_acc, fwin, swin), out
+            return (S_acc, M_acc, fwin, swin, S_up, M_up), out
 
         return step
 
@@ -714,7 +819,16 @@ class Solver:
         bq = bratio(jq)
         s_prev = _interp_log(wget(swf, sl, pidx) * bq, wlq, wpq)
         s_here = _interp_log(wget(swf, sl, here) * bq, wlq, wpq)
-        quad = (Sstar_r + 2.0 * (s_prev + s_here) + Sp[:, :-1]) / 6.0
+        # midpoint value: geometric mean of the two points (the step integral
+        # assumes a source exponential along the step; an arithmetic mean here
+        # biases every step by (d ln S)^2 / 24, first order in the step overall)
+        # (as exp of the mean log: the product of two tiny values would underflow
+        # to 0 and make the derivative of sqrt infinite)
+        posq = (s_prev > 0) & (s_here > 0)
+        lgm = 0.5 * (jnp.log(jnp.where(posq, s_prev, 1.0))
+                     + jnp.log(jnp.where(posq, s_here, 1.0)))
+        s_mid = jnp.where(posq, jnp.exp(lgm), 0.5 * (s_prev + s_here))
+        quad = (Sstar_r + 4.0 * s_mid + Sp[:, :-1]) / 6.0
         # thin-limit mean of the end values that _expj integrates exactly (log mean)
         s0, s1 = Sstar_r, Sp[:, :-1]
         posm = (s0 > 0) & (s1 > 0)
@@ -778,7 +892,13 @@ class Solver:
         nl = max(self.nL, 1)
         fwin = jnp.zeros((self.W, nl, nP))
         swin = jnp.zeros((self.W, nl, nP))
-        return (S_acc, M_acc, fwin, swin)
+        S_up = jnp.zeros((self.nT, max(self.K_up, 1), N))
+        KA = min(self.K_up, self.nA)
+        if KA > 0:
+            M_up = jnp.zeros((self.nT, KA, self.rays.levels.size, self.L + 1))
+        else:
+            M_up = jnp.zeros((1, 1, 1, 1))
+        return (S_acc, M_acc, fwin, swin, S_up, M_up)
 
     @property
     def _gnode(self):
@@ -799,7 +919,10 @@ class Solver:
             ``emis`` (nE, nSink, N): sink emissivity per unit length at the nodes;
             ``F_ground`` (nE, nT, n_ground): transported species at the inward ground
             nodes; ``res`` (nE,): relative change in the last same-bin sweep;
-            ``F`` (nE, nT, N) if ``store_nodes``.  Bins above ``k_top`` are zero.
+            ``F`` (nE, nT, N) if ``store_nodes``; ``up_res`` (n_up,): size of each
+            up-scatter pass relative to the running total (max over sinks, bins and
+            nodes of the emissivity, and over transported species at the ground).
+            Bins above ``k_top`` are zero.  All passes are summed.
         """
         if params is None:
             params = self.ks.params()
@@ -807,19 +930,64 @@ class Solver:
         carry = self.init_carry()
         outs = {}
         t0 = time.time()
-        for k in range(self.k_top, -1, -1):
-            stepf = self._step_ang if (self.nA and k < self.nA) else self._step_fwd
-            carry, o = stepf(jnp.int32(k), carry, prm)
-            for key, v in o.items():
-                outs.setdefault(key, {})[k] = v
-            if verbose and k % 20 == 0:
-                print(f"  bin {k}  {time.time() - t0:7.1f} s", flush=True)
+        nT, K_up = self.nT, self.K_up
+        n_pass = 1 + (self.n_up if K_up > 0 else 0)
+        up_res = []
+        for ipass in range(n_pass):
+            if ipass == 0:
+                ks_range = range(self.k_top, -1, -1)
+                top_on = jnp.asarray(1.0)
+            else:
+                # next pass: the collected up-scatter is the only source of the
+                # transported species in bins 0..k_up; windows and the up-scatter
+                # accumulators start empty; sinks keep accumulating
+                S_acc, M_acc, fwin, swin, S_up, M_up = carry
+                if _is_exact_zero(S_up) and _is_exact_zero(M_up):
+                    # nothing left (exactly): the remaining passes add zero
+                    up_res.extend([jnp.asarray(0.0)] * (n_pass - ipass))
+                    break
+                emis_prev = S_acc[nT:]
+                S_acc = S_acc.at[:nT, :K_up].set(S_up[:, :K_up])
+                KA = min(K_up, self.nA)
+                if KA > 0:
+                    M_acc = M_acc.at[:nT, :KA].set(M_up)
+                carry = (S_acc, M_acc, jnp.zeros_like(fwin), jnp.zeros_like(swin),
+                         jnp.zeros_like(S_up), jnp.zeros_like(M_up))
+                ks_range = range(self.k_up, -1, -1)
+                top_on = jnp.asarray(0.0)
+            fg_pass = {}
+            for k in ks_range:
+                ang = bool(self.nA and k < self.nA)
+                upf = bool(K_up > 0 and k <= self.k_up)
+                carry, o = self._steps[(ang, upf)](jnp.int32(k), carry, prm, top_on)
+                for key, v in o.items():
+                    if ipass == 0:
+                        outs.setdefault(key, {})[k] = v
+                    elif key in ("F_ground", "F"):
+                        outs[key][k] = outs[key][k] + v     # linear: passes add
+                    elif key == "res":
+                        outs[key][k] = jnp.maximum(outs[key][k], v)
+                fg_pass[k] = o["F_ground"]
+                if verbose and k % 20 == 0:
+                    print(f"  pass {ipass} bin {k}  {time.time() - t0:7.1f} s",
+                          flush=True)
+            if ipass > 0:
+                # size of this pass relative to the running total (measured
+                # residual of the up-scatter iteration)
+                d_emis = carry[0][nT:] - emis_prev
+                tot = carry[0][nT:]
+                r_e = _rel_change(d_emis, tot)
+                fgp = jnp.stack([fg_pass[k] for k in ks_range])
+                fgt = jnp.stack([outs["F_ground"][k] for k in ks_range])
+                r_f = _rel_change(fgp, fgt)
+                up_res.append(jnp.maximum(r_e, r_f))
         S_acc, M_acc = carry[0], carry[1]
         emis = jnp.moveaxis(S_acc[self.nT:], 1, 0)        # (nE, nSink, N)
         if self.nA:
             nf = jax.vmap(self._synth, in_axes=1)(M_acc[self.nT:])  # (nA, nSk, N)
             emis = emis.at[:self.nA].add(nf)
-        res = {"emis": emis}
+        res = {"emis": emis,
+               "up_res": jnp.stack(up_res) if up_res else jnp.zeros(0)}
         for key, d in outs.items():
             ex = next(iter(d.values()))
             zero = jnp.zeros_like(ex)

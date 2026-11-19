@@ -1,7 +1,7 @@
 # cascade3d solver design (stage C1, work packages 1.1 and 1.2)
 
-Status: v1, 2026-11-18. Kept current with the code. Physics conventions: `PLAN.md`
-section 2; MCEq conventions: `kernels_mceq.py` docstring. Tags: **[exact]** no
+Status: v2 (cycle 2), 2026-11-19. Kept current with the code. Physics conventions:
+`PLAN.md` section 2; MCEq conventions: `kernels_mceq.py` docstring. Tags: **[exact]** no
 discretisation error beyond floating point, **[approx]** controlled approximation
 (knob named), **[choice]** convention.
 
@@ -24,11 +24,14 @@ these (gamma, MCEq tracking species) are dropped.
   constant 1e-9 g/cm3 above 100 km). Any `Atmosphere` object with `density(h)` and
   `boundaries` can replace it (the toy test uses an exponential atmosphere).
 * **Levels** h_0 = 0 < ... < h_top, always containing the layer boundaries. Default
-  0.4 km to 50 km, 1 km to 70 km, 3 km to the top (`LevelSpec`).
+  0.4 km to 50 km, 1 km to 70 km, 3 km to the top, plus a top layer 1, 3, 10, 30, 100,
+  300 m below the top (a thick species is 0 at the top and in equilibrium one decay
+  length below; these levels resolve that boundary layer for its children).
 * **Line family.** A straight line keeps its impact parameter b. Ground lines:
-  b = R sqrt(1 - mu0^2) for a set of ground directions mu0 (default 48 nodes, half
-  uniform in cos Z and half uniform in zenith angle, plus the G1.1 directions and the
-  cos Z edges 0.1 ... 1.0). Tangent lines: b = R + h_t for every level h_t (default)
+  b = R sqrt(1 - mu0^2) for a set of ground directions mu0 (default 48 nodes uniform
+  in zenith angle, spacing 0.033 rad = pi/(3L) for L = 32, plus the G1.1 directions
+  and the cos Z edges 0.1 ... 1.0; stage A used half uniform in cos Z). Tangent lines:
+  b = R + h_t for every level h_t (default)
   plus optional extra tangent altitudes between levels ("pass-through" tangents, used
   when the line family is doubled).
 * **Nodes**: the crossings of every line with every level it reaches, on the inward
@@ -46,12 +49,18 @@ these (gamma, MCEq tracking species) are dropped.
   segment goes from the inward node at the lowest level above h_t to the outward node
   at the same level.
 * **Loss points**: for loss species each segment's sub-intervals are split further so
-  that no step exceeds `dX_max` grammage (default 10 g/cm2). The loss-species unknowns
+  that no step exceeds `dX_max` grammage (default 5 g/cm2 since cycle 2: with 10,
+  halving moved the 3D horizon muons at 0.18 GeV by 0.67%; with 5 the doubling moves
+  them by 0.42%). The loss-species unknowns
   live on these points (nodes are a subset). Lines are grouped into length buckets for
   the scan.
-* Angular quadrature at a level: trapezoid in mu over that level's nodes, sorted, on
-  [-1, 1] (mu = +-1 always present: the vertical ground line). Moments
-  F_l(level) = sum_n w_n P_l(mu_n) f_n.
+* Angular moments at a level (**hat projection**, cycle 2): F_l = sum_n W_nl f_n with
+  W_nl = int hat_n(mu) P_l(mu) dmu, the hat functions of the piecewise-linear
+  interpolation in mu between the level's sorted nodes (constant beyond the extreme
+  nodes; Gauss-Legendre, exact). These are the exact moments of the interpolant: no
+  aliasing of high l on a coarse node set. Stage A used trapezoid weights times
+  P_l(mu_n), which aliased P_32 near the vertical (0.065 rad spacing): -8% (family
+  doubling) and +30% (L doubling) at the vertical in G1.2.
 
 The ray table is kept general (per segment: upstream node, downstream node, sub-point
 arrays) so that bent lines (C3) can reuse it with interpolation weights.
@@ -170,8 +179,10 @@ x = ds (sigma(E*) + sigma(E_m))/2. psi(E*) and (beta S)(E*) at the upstream poin
 cubic Lagrange in ln E of **ln psi** and ln(beta S) over bins >= m (one-sided at the
 lowest stencil position; linear in f E^2 if a stencil value is <= 0). Bins above m are
 kept in a circular window of W bins at all loss points (W from the largest shift).
-`corr` = (3-point Gauss-Legendre along the characteristic, source interpolated in
-energy at both ends) / (trapezoid of the same): at 0.03 GeV one 10 g/cm2 step changes
+`corr` = (Simpson along the characteristic: source interpolated in energy at the
+two ends and at mid-energy, midpoint value the geometric mean of the two points) /
+(log mean of the end values, which the step integral integrates exactly): at
+0.03 GeV one 10 g/cm2 step changes
 the energy by ~70%, and a steep source is then far from linear along the step. Because
 the bin-m value enters the stencil, the recursion is nonlinear in f_m and is a
 `lax.scan` with a nonlinear body. With dedx = 0 the scheme is exactly the hadron
@@ -190,6 +201,22 @@ dedx (3.4% -> 0.2%).
 each level, multiplied by r Y (1-g) a_l and accumulated into `M_acc`; synthesised at
 nodes as sum_l (2l+1)/2 M_l P_l(mu). With nAng = 0 none of this is compiled.
 
+**Up-scatter into transported species** (cycle 2). Exact decay kinematics on a
+kinetic-energy grid put up to 84% of a yield above the parent's bin (K -> mu at
+0.09 GeV). The march collects, while it runs, the up-scatter source of transported
+children (child bin m > k, m <= k_up = highest such child bin) in `S_up` (and its
+moments in `M_up`); then up to `n_up` (default 3) passes re-march bins k_up..0 with
+zero top intensity and that source, each pass collecting the up-scatter of its own
+solution. The problem is linear, so the passes add; sinks accumulate throughout. A
+pass whose source is exactly zero is skipped (concrete arrays only; under jvp/vjp all
+passes run and the skipped ones add zero). `solve()["up_res"]`: size of each pass
+relative to the running total. Chains K -> pi -> mu need two passes; the third
+source is exactly zero (muons feed only sinks). Test: `test_upscatter.py` against
+expm of the full matrix in a constant-density atmosphere.
+
+**Top of the march** `k_top` = highest bin with a non-zero top intensity plus the
+largest up-scatter distance (exact: nothing exists above).
+
 **Sinks**: their emissivity receives every child bin, including up-scatter, and is
 read once at the end of the march. **Push**: in blocks of 16 child bins; a block above
 k + (largest sink up-scatter distance, 7 bins for PHYS) is skipped with `lax.cond`.
@@ -202,13 +229,18 @@ over the ground lines inside the bin (edges are lines).
 
 ## 5. What is exact and what is approximate
 
-Exact: geometry (Gauss-Legendre grammage, MCEq's density rule); straight-ahead lines
-decouple, each is a 1D cascade on its own slant-depth profile; attenuation, decay and
-same-bin self-regeneration on every sub-interval; thick and thin limits. Approximate:
-the source shape between nodes (levels, n_sub); same-bin cross terms (sweeps); angular
-quadrature and truncation (line family, L); continuous loss (dX_max, cubic stencil);
-up-scatter entries dropped. MCEq itself differs by its Euler step, its finite-difference
-loss operator and its one-step overshoot of the ground (<= 0.04% in X).
+Exact: geometry (Gauss-Legendre grammage, MCEq's density rule, Earth radius a run
+parameter: 6391 km for G1.1, 6371 km for the Monte Carlo comparisons); straight-ahead
+lines decouple, each is a 1D cascade on its own slant-depth profile; attenuation,
+decay (also with zero yield) and same-bin self-regeneration on every sub-interval;
+thick and thin limits; up-scatter into transported species (passes; residual after
+the last pass returned, 7e-9 on the real sets with 3 passes); `k_top`. Approximate:
+the source shape between nodes (levels, n_sub); boundary layers of thick species at
+the top and, for up-going particles, at the ground (top layer levels; first order in
+the spacing); same-bin cross terms (sweeps); angular moments of the piecewise-linear
+interpolant and truncation at L (line family, L); continuous loss (dX_max, cubic
+stencil in ln psi); cell averages (PCHIP in cos Z). MCEq itself differs by its Euler
+step, its finite-difference loss operator and its one-step overshoot of the ground.
 
 ## 6. Deviations from the guidance, and why
 
@@ -237,19 +269,38 @@ loss operator and its one-step overshoot of the ground (<= 0.04% in X).
    optional pass-through tangents between levels (used by the doubled family).
 7. **G1.1 is solved on the six G1.1 lines alone**: in the straight-ahead limit lines do
    not couple; G1.2 part A verifies the equality with the full family.
+8. (cycle 2) **Up-scatter passes**, as the manager suggested: linear re-marches of bins
+   0..k_up with the collected up-scatter as source; a pass with an exactly zero source
+   is skipped. Tested against expm of the full matrix (`test_upscatter.py`).
+9. (cycle 2) **Hat projection** instead of a finer near-vertical grid: the stage-A
+   angular failures were aliasing of the projection, not missing resolution; with
+   exact moments of the interpolant, 48 lines uniform in angle and L = 32 pass the
+   doublings, at no extra cost.
+10. (cycle 2) **Top layer levels**: a thick species is zero at the top and in
+   equilibrium a decay length below; six extra levels resolve that layer.
 
-## 7. Known limitations (from G1.1 / G1.2, 2026-11-19)
+## 7. Known limitations (updated in cycle 2, 2026-11-19)
 
-1. **Angular resolution near the vertical must match L.** Above cos Z ~ 0.5 the only
-   directions are those of the ground lines (default 24 uniform in zenith angle,
-   0.065 rad). A reduced law with structure finer than that (synthetic pT 0.35 GeV at a
-   few GeV after delta-M at L = 32) is aliased: doubling the ground lines moves vertical
-   cells by -8%, doubling L by +30% (G1.2 B). Requirement for builders and grid: the
-   reduced law must be resolved by nodes spaced <= pi/(3L) in angle near the vertical,
-   or g must take the unresolved part forward. Not yet changed in the defaults.
-2. **Steep sources on long near-ground steps of inclined lines** (loss-off muons below
-   0.4 GeV at cos Z <= 0.25: up to +31% against MCEq's step-converged value). Converges
-   with finer levels; physical (loss-on) muons and all neutrinos are within 1% there.
-3. **Cost**: 9.8 core-min for the default C1 angular solve (target 10); the push into
-   lower bins and the loss-species transport dominate (`gates/profile_step.py`).
-4. **Reverse mode** not exercised; the nonlinear pieces will need `jax.checkpoint`.
+1. **Angular resolution and L** (fixed in cycle 2). The stage-A failures (-8% / +30%
+   at the vertical when doubling the family / L) were aliasing of the trapezoid
+   projection. With the hat projection, 48 ground lines uniform in angle and L = 32,
+   the synthetic-kernel doublings move no G1.1 cell by more than 0.5% (G1.2, cycle 2).
+   Rule for builders: nothing is required beyond the delta-M form; the solver projects
+   the piecewise-linear interpolant exactly.
+2. **Loss-off muons below 0.4 GeV on inclined lines** (unchanged, accepted by the PI
+   as a known limit of an unphysical configuration): up to +31% at cos Z 0.05,
+   0.11 GeV against MCEq's step-converged value; no fix costing under 10% of a solve
+   was found (a 50 m near-ground spacing reaches +7% at +50% nodes).
+3. **Boundary layers of thick species**: at the top (resolved by the top layer
+   levels; the real atmosphere has no grammage there) and, for up-going particles,
+   at the ground (first order in the level spacing; their secondaries reach a ground
+   detector only through the angular kernels).
+4. **3D horizon muons at the ground below 0.4 GeV** are the least converged quantity:
+   synthetic set, loss-step halving 0.67% (10 -> 5 g/cm2) and 0.42% (5 -> 2.5); real
+   pool2000 set, cos Z 0.05: levels 0.72%, family -3.2%, L +2.3%, sampling 1.1%.
+   Neutrinos in the same cells move by <= 1.6e-3. Untested remedy:
+   `make_levels(ground_layer=True)` (levels 10-300 m above the ground, plus four low
+   tangent lines).
+5. **Cost**: see `WP12_CYCLE2_REPORT.md` (measured); the push into lower bins and the
+   loss-species transport dominate (`gates/profile_step.py`).
+6. **Reverse mode** not exercised; the nonlinear pieces will need `jax.checkpoint`.

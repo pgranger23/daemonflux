@@ -126,7 +126,42 @@ class ExponentialAtmosphere:
             np.exp(-h / self.scale) - np.exp(-self.h_top / self.scale))
 
 
-def make_levels(atm, spec=None, refine=1):
+class ConstantAtmosphere:
+    """Uniform density up to ``h_top`` (tests with an exact matrix-exponential
+    reference: along any straight line the 1D problem has constant coefficients in
+    grammage).
+
+    Parameters
+    ----------
+    rho : float
+        Density [g/cm^3].
+    h_top : float
+        Top [cm].
+    """
+
+    name = "constant"
+
+    def __init__(self, rho=1.0e-3, h_top=10.0e5, r_e=R_E_CM):
+        self.rho, self.h_top, self.r_e = float(rho), float(h_top), float(r_e)
+        self.boundaries = np.zeros(0)
+
+    def layer(self, h):
+        return np.zeros(np.shape(h), dtype=np.int64)
+
+    def density(self, h, layer=None):
+        return np.full(np.shape(h), self.rho)
+
+    def vertical_depth(self, h):
+        return self.rho * (self.h_top - np.asarray(h, float))
+
+
+TOP_LAYER_M = (1.0, 3.0, 10.0, 30.0, 100.0, 300.0)
+
+
+GROUND_LAYER_M = (10.0, 30.0, 100.0, 300.0)
+
+
+def make_levels(atm, spec=None, refine=1, top_layer=True, ground_layer=False):
     """Altitude levels [cm] from 0 to ``atm.h_top``.
 
     Parameters
@@ -139,6 +174,15 @@ def make_levels(atm, spec=None, refine=1):
     refine : int
         Every interval is split into ``refine`` equal parts (``refine=2`` is the
         G1.2 doubling of the altitude grid).
+    top_layer : bool or sequence of float
+        Add levels 1, 3, 10, 30, 100, 300 m (or the given depths in m) below the
+        top: a species much thicker
+        than a segment is zero at the top (boundary condition) and in equilibrium
+        with its source one decay length below; these levels resolve that boundary
+        layer for its children's sources (decay lengths >= 1 m).
+    ground_layer : bool or sequence of float
+        Add levels 10, 30, 100, 300 m (or the given heights in m) above the ground:
+        resolves the source within the range of low-energy muons on inclined lines.
 
     Returns
     -------
@@ -165,6 +209,16 @@ def make_levels(atm, spec=None, refine=1):
     keep = np.concatenate([[True], np.diff(lev) > 100.0])
     lev = lev[keep]
     lev[-1] = top
+    if ground_layer is not False and ground_layer is not None:
+        gl = GROUND_LAYER_M if ground_layer is True else ground_layer
+        extra = 100.0 * np.asarray(gl, float)
+        extra = extra[extra < lev[1] - 50.0]
+        lev = np.union1d(lev, extra)
+    if top_layer is not False and top_layer is not None:
+        tl = TOP_LAYER_M if top_layer is True else top_layer
+        extra = top - 100.0 * np.asarray(tl, float)
+        extra = extra[extra > lev[-2] + 50.0]
+        lev = np.union1d(lev, extra)
     if refine > 1:
         sub = [lev[:1]]
         for a, b in zip(lev[:-1], lev[1:]):
@@ -173,17 +227,22 @@ def make_levels(atm, spec=None, refine=1):
     return lev
 
 
-def ground_mu0(n=48, extra=G11_COSZ + G13_COSZ_EDGES):
+def ground_mu0(n=48, extra=G11_COSZ + G13_COSZ_EDGES, mode="mixed"):
     """Ground directions (cos Z at the ground), ``0 < mu0 <= 1``.
 
-    Half the nodes uniform in cos Z, half uniform in zenith angle (dense near the
-    horizon in angle), plus ``extra`` (the G1.1 directions and the G1.3 bin edges);
+    ``mode="mixed"``: half the nodes uniform in cos Z, half uniform in zenith angle;
+    ``mode="theta"``: all ``n`` uniform in zenith angle (spacing pi/(2n)); plus
+    ``extra`` (the G1.1 directions and the G1.3 bin edges);
     ``mu0 = 0`` is not a ground line (it is the tangent line at h = 0).
     """
-    n1 = n // 2
-    a = np.linspace(0.0, 1.0, n1 + 1)[1:]
-    th = np.linspace(0.0, 0.5 * np.pi, n - n1 + 1)[1:-1]
-    base = np.unique(np.round(np.concatenate([a, np.cos(th)]), 12))
+    if mode == "theta":
+        th = np.linspace(0.0, 0.5 * np.pi, n + 1)[:-1]
+        base = np.unique(np.round(np.cos(th), 12))
+    else:
+        n1 = n // 2
+        a = np.linspace(0.0, 1.0, n1 + 1)[1:]
+        th = np.linspace(0.0, 0.5 * np.pi, n - n1 + 1)[1:-1]
+        base = np.unique(np.round(np.concatenate([a, np.cos(th)]), 12))
     ex = np.unique(np.asarray(extra, float))
     ex = ex[(ex > 1e-6) & (ex <= 1.0)]
     # base nodes closer than 2e-3 to a requested direction are dropped
@@ -227,14 +286,20 @@ class LineFamily:
         return self.mu0.size
 
 
-def make_line_family(levels, n_ground=48, refine=1, extra_mu0=None, r_e=R_E_CM):
+def make_line_family(levels, n_ground=48, refine=1, extra_mu0=None, r_e=R_E_CM,
+                     mode="theta"):
     """Default line family: ``n_ground`` ground lines and one tangent line per level.
+
+    Ground lines uniform in zenith angle by default (``mode="theta"``, spacing
+    pi/96 = 0.033 rad for 48 lines; G1.2 cycle 2: doubling moves no G1.1 cell by more
+    than 2.7e-3 with the hat projection and L = 32); ``mode="mixed"`` is stage A's
+    half-uniform-in-cos Z layout.
 
     ``refine=2`` doubles the family (G1.2): twice the ground nodes and one extra
     pass-through tangent line midway between consecutive levels.
     """
     extra = G11_COSZ + G13_COSZ_EDGES if extra_mu0 is None else extra_mu0
-    mu0 = ground_mu0(n_ground * refine, extra)
+    mu0 = ground_mu0(n_ground * refine, extra, mode=mode)
     ht = list(levels[:-1])
     if refine > 1:
         for a, b in zip(levels[:-1], levels[1:]):

@@ -86,16 +86,17 @@ def main():
     print("point_scan_nl", timeit(pn, xs, n=3))
     print("loss points", r.Np, "window", c0[2].shape)
     for k in (100, 60, 20):
-        stepf = sv._step_ang if (sv.nA and k < sv.nA) else sv._step_fwd
+        stepf = sv._steps[(bool(sv.nA and k < sv.nA), bool(sv.K_up > 0
+                                                           and k <= sv.k_up))]
         t = time.time()
-        c2, o = stepf(jnp.int32(k), sv.init_carry(), prm)
+        c2, o = stepf(jnp.int32(k), sv.init_carry(), prm, jnp.asarray(1.0))
         jax.block_until_ready(o["res"])
         t1 = time.time() - t
         del c2
         carry = sv.init_carry()
         jax.block_until_ready(carry)
         t = time.time()
-        c2, o = stepf(jnp.int32(k), carry, prm)
+        c2, o = stepf(jnp.int32(k), carry, prm, jnp.asarray(1.0))
         jax.block_until_ready(o["res"])
         print(f"full step k={k}: first {t1:.2f} s, then {time.time() - t:.2f} s")
         del c2

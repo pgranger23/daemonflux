@@ -120,7 +120,7 @@ def test_tangent_lines_geometry():
 # --------------------------------------------------------- segment integrator
 def _single_line_solver(atm, n_sub=4, levels=None):
     lev = levels if levels is not None else grid.make_levels(
-        atm, spec=((np.inf, 1.0),))
+        atm, spec=((np.inf, 1.0),), top_layer=False)
     fam = grid.LineFamily(np.array([1.0]), np.zeros(0), r_e=atm.r_e)
     r = rays.Rays(atm, lev, fam, n_sub=n_sub)
     ks = K.toy_cascade()
@@ -272,3 +272,35 @@ def test_csda_power_law(mu0):
     rel = f / ex - 1
     # top bins miss the source above the grid: compare up to 6 bins below the top
     assert np.max(np.abs(rel[:-6])) < 1e-2, rel
+
+
+# ------------------------------------------------------------- G1.3 cells
+def test_cell_table_analytic():
+    """Cell means of I = E^-gamma / sqrt(mu^2 + a^2) on the default ground lines.
+
+    Energy: the band mean in the bin convention equals sum phi_i w_i / sum w_i by
+    construction; the log-log option is exact for a power law.  Angle: PCHIP on the
+    default directions (ground lines + mu = 0) against asinh, steep near the horizon.
+    Measured: energy 4e-7; angle -3.5e-3 in the bin 0-0.1 (peak of width 0.08 at
+    cos Z = 0), <= 6e-4 elsewhere.
+    """
+    import assemble as A
+
+    ks = K.from_mceq("PHYS", loss=False)
+    eb, E = ks.e_bins, ks.e_grid
+    gam, a = 2.7, 0.08
+    mu0 = np.concatenate([[0.0], grid.ground_mu0(48)])
+    I = E[:, None] ** -gam / np.sqrt(mu0[None, :] ** 2 + a * a)
+    tab = A.cell_table(mu0, I, eb, E, energy="loglog")
+    be, ce = np.asarray(A.G13_BAND_EDGES), np.asarray(A.G13_COSZ_EDGES)
+    eband = (be[:-1] ** (1 - gam) - be[1:] ** (1 - gam)) / (gam - 1) / np.diff(be)
+    ang = (np.arcsinh(ce[1:] / a) - np.arcsinh(ce[:-1] / a)) / np.diff(ce)
+    exact = eband[:, None] * ang[None, :]
+    rel = tab / exact - 1
+    assert np.max(np.abs(rel[:, 0])) < 5e-3, rel
+    assert np.max(np.abs(rel[:, 1:])) < 1e-3, rel
+    tb = A.cell_table(mu0, I, eb, E, energy="bins")
+    w = np.diff(eb)
+    i0 = int(np.argmin(np.abs(eb - 0.1)))
+    ref = (E[i0:i0 + 2] ** -gam * w[i0:i0 + 2]).sum() / w[i0:i0 + 2].sum()
+    assert abs(tb[0, -1] / (ref * ang[-1]) - 1) < 2e-3
