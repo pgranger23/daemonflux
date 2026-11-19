@@ -157,3 +157,49 @@ Result files are under `/home/pigrange/mc3d_work/runs/native3d/` (`c0/gates/`, `
   particles), fraction beyond 3: 0.0024 to 0.0028, per-node rms from 0.87 to 1.11. The
   quoted kernel errors are therefore reliable. Median relative error of such an entry:
   2.4% (l = 0), 2.6% (l = 1). Command: `gates/g0_4.py --tag fresh1e5`.
+- **G1.0: PASS** (2026-11-19). (a) The test fails when 64-bit mode is off. (b) CPU time
+  over wall time 1.77 on 2 pinned cores. (c) `jax.jvp` against a central finite difference:
+  1.2e-7 relative. Command: `gates/g1_0.py`.
+- **G1.1: FAIL** (2026-11-19, PHYS and REF alike; solver settings of `DESIGN.md`).
+  Neutrinos: all 720 cells of each case inside the tolerance (worst −0.28% with loss off,
+  ν_e at 89 GeV; −0.30% with loss on, ν_e at 4.5 GeV).
+  Muons, loss on (2%): 1 cell of 180 outside, +2.04% (PHYS) and +2.03% (REF), vertical,
+  0.141 GeV. Muons, loss off (0.3%): 107 cells of 180 outside, in every direction, worst
+  +101% at cos Z = 0.05, 0.112 GeV (+2.3% at the vertical). Command: `gates/g1_1.py`.
+  Diagnosis cycle (one, by the solver's author; `c1/WP12_REPORT.md`): MCEq's references are
+  not converged in MCEq's own step size, and the solver is compared with that step error.
+  Independent check by the manager, with MCEq's own solver and its two step controls
+  divided by 4 and 16 (PHYS; cos Z = 1, 0.25, 0.05; `gates/mceq_step_check.py`, result
+  files `c1/review/mceq_step_PHYS_*.md`):
+  - the stored references sit below their own step limit by 2.3%, 11.0% and 35.2% for
+    loss-off muons at 0.112 GeV (cos Z = 1, 0.25, 0.05), by 1.45% in the failing loss-on
+    cell, and above it by 0.22 to 0.28% for neutrinos at 89 GeV;
+  - against the step limit the solver is within 0.01% (loss off) and 0.10% (loss on) for
+    neutrinos, within 0.78% for loss-on muons, and for loss-off muons within 0.02% at the
+    vertical and 0.20% at cos Z = 0.25;
+  - a solver error remains: loss-off muons at cos Z = 0.05 are above the step limit by 30%
+    at 0.112 GeV, 6.5% at 0.18 GeV, 0.8% at 0.36 GeV and less than 0.3% above 0.5 GeV
+    (the limit itself is known to 2.6% at 0.112 GeV). It shrinks with a finer altitude
+    grid (see G1.2).
+  Not checked independently: REF, and cos Z = 0.75, 0.5, 0.15.
+  The gate is not redefined. Under decision point 1 the phase stops here until the PI
+  decides; nothing of stage B or G1.3 has been run.
+- **G1.2: FAIL** (2026-11-19; G1.1 cells only, no G1.3 cell exists yet). Largest move of a
+  cell under each doubling, against 0.5%:
+  - straight-ahead, loss on: altitude grid 0.02%, ray sampling 0.02% (inside);
+  - straight-ahead, loss off: altitude grid −20% (muons, cos Z = 0.05, 0.112 GeV), ray
+    sampling 0.07%;
+  - synthetic angular kernels (Gaussian p_T of 0.35 GeV, L = 32, loss on): altitude grid
+    0.07%, ray sampling 0.70% (muons, cos Z = 0.05, 0.18 GeV), μ grid (line family) −8.4%
+    (muons, vertical, 3.5 GeV; neutrinos −6 to −7%), Legendre order L +30% (muons,
+    vertical, 8.9 GeV).
+  Same-bin sweep residual 4.5e-7 (inside 1e-4). Cause of the two large moves, from the
+  author's follow-up runs: near the vertical the ground lines are 0.065 rad apart, too
+  coarse for L = 32; with 96 and 192 ground lines the vertical cells move by −6 to −8% and
+  then −1.3 to −1.9%. Directions at cos Z ≤ 0.5 are converged to 0.2%.
+  Command: `gates/g1_2.py`.
+- **Not gates, same date.** Three-dimensional toy problem against direct integration
+  (`test_toy3d.py`, reproduced by the manager): worst −0.043% over 11 points, including
+  1° above the horizon and up-going directions at 15 and 30 km. Cost of one angular solve
+  on the default grid, synthetic kernels: 9.8 core-minutes, 4.7 GB (G1.5, to be measured on
+  the real kernel set, allows 10 and 8); with 192 ground lines 17.5 core-minutes, 7.1 GB.

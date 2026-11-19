@@ -147,7 +147,8 @@ def main(argv=None):
               f"min {r1[ok].min():.3f}, max {r1[ok].max():.3f}. "
               "Deviation of a node's rms from 1 in units of its own "
               "sampling error (entries of one node share events, so this "
-              f"overstates the significance): rms {np.sqrt((dev[ok] ** 2).mean()):.2f}, "
+              "overstates the significance): rms "
+              f"{np.sqrt((dev[ok] ** 2).mean()):.2f}, "
               f"largest {np.abs(dev[ok]).max():.1f}.", "",
               "Ten nodes with the largest rms z:", "",
               "| projectile | node | E0 [GeV] | entries | rms z (l = 1) | "
