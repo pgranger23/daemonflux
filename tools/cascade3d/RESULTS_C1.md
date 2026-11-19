@@ -107,6 +107,12 @@ None.
   at most 2.5e-4 in the G1.3 cells and 1.0e-4 in the zenith-normalised cells. A fix is
   proposed (`c1/diag_straight/proposed.diff`) and not applied; G1.3 to G1.5 run on the
   code state of section 1.
+- The kernel sets give the nucleon bin of 1.26 to 1.58 GeV (kinetic energy) the
+  interaction rate of its centre; the cross section of the Monte Carlo turns on at 1.39
+  GeV, inside that bin. Against the Monte Carlo this raises the solver by 4.7 to 5.4% at
+  0.10 to 0.16 GeV and by 2.9 to 3.3% at 0.16 to 0.25 GeV, in the straight-ahead and in
+  the 3D solve alike (`GATES.md`, Results log, part C of the diagnosis cycle). No kernel
+  set was changed.
 
 ## 4. Gates G1.3 to G1.5 on the frozen state
 
@@ -122,10 +128,15 @@ the manager from the stored cells. Details: `GATES.md`, Results log.
 | G1.4 | PASS | half-sample sets within 0.479% (0.5% allowed) | `c1/g13/G1.4.md` |
 | G1.5 | **FAIL** | 13.23 core-minutes (10 allowed), 5.38 GB (8 allowed) | `c1/g13/g15/G1.5.md` |
 
-After the diagnosis cycle (`GATES.md`, Results log; `c1/g13/manager/`): the count criterion
-of G1.3(a) is failed by an exactly right solver in four cases of ten with this reference, so
-377 does not separate a correct solver from a wrong one; the shape difference common to the
-ten runs is 0.4% rms (below 1.1% at 2 sigma) below 1 GeV for cos Z 0.1 to 1, below 3.1% in
-the row cos Z 0 to 0.1, and below 5.9% from 1 to 10 GeV. The level offset of G1.3(b) is the
-same in the straight-ahead solve against `t` as in the 3D solve against `s`, and the same
-for the four species. The verdicts above stand as written.
+After the diagnosis cycle (`GATES.md`, Results log; `c1/g13/manager/`): the count
+criterion of G1.3(a) is failed by an exactly right solver in four cases of ten with this
+reference, so 377 does not separate a correct solver from a wrong one; the shape
+difference common to the ten runs is 0.4% rms (below 1.1% at 2 sigma) below 1 GeV for
+cos Z 0.1 to 1, below 3.1% in the row cos Z 0 to 0.1, and below 5.9% from 1 to 10 GeV.
+The level offset of G1.3(b) is the same in the straight-ahead solve against `t` as in
+the 3D solve against `s`, and the same for the four species. Below 0.25 GeV its cause is
+measured: the Monte Carlo's nucleon cross section turns on at 1.39 GeV, inside the
+solver's bin 1.26 to 1.58 GeV, which the kernel set gives one rate; a diagnostic set
+with the interacting fraction of that bin (0.54 to 0.60) brings the level to within 1%
+in the three lowest bands. The +1 to +2% above 0.4 GeV is not explained. Nothing was
+changed in the frozen state, and the verdicts above stand as written.

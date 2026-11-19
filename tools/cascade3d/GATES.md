@@ -485,6 +485,65 @@ Result files are under `/home/pigrange/mc3d_work/runs/native3d/` (`c0/gates/`, `
     band), the Monte Carlo's muon clock (the reference has the corrected one), hadron
     energy loss (none on either side), a cause in the muon chain alone (flavour ratio).
     The builder's prior estimates (`c1/LIKE_FOR_LIKE.md`, section 3) do not add up to +5%.
+- **Diagnosis cycle after G1.3, part C: cause of the level offset (2026-11-19; the
+  independent agent, brief `c1/g13/LEVEL_BRIEF.md`, report
+  `c1/g13/diag_level/REPORT.md`; the numbers below recomputed by the manager,
+  `c1/g13/manager/check_c_rate.py`, `check_c_var.py`, `check_c_shape.py`).** Nothing
+  frozen was changed and no fix was applied.
+  - Where, by primary energy. The reference was rebuilt per primary-energy stratum from
+    its per-task files (the strata sum to the combined file to 1e-15, in `s` and in `t`;
+    all ten runs), and the frozen straight-ahead solve was repeated with the primary
+    spectrum restricted to one stratum. Excess of the solver over `t`, cos Z 0.1 to 1,
+    the four species, in the bands 0.10 to 0.16, 0.16 to 0.25 and 0.25 to 0.40 GeV:
+    primaries of 1 to 3.16 GeV per nucleon +11.6 +- 0.5%, +9.2 +- 0.5%, +3.3 +- 0.8%
+    (they make 24%, 17% and 10% of the band); 3.16 to 10 GeV +3.6 +- 0.4%, +2.5 +- 0.3%,
+    +1.1 +- 0.5%; 10 to 31.6 GeV +2.2 +- 0.6%, +1.5 +- 0.7%, +0.0 +- 0.5%; 31.6 to 100
+    GeV +1.1 +- 0.9%, +0.6 +- 0.9%, -1.3 +- 0.9%. The seven stratum solves add up to the
+    full solve within -0.39% to +0.17%: the solve is not exactly linear in the primary
+    flux (the interpolations in log space, read from the code, not tested).
+  - **Cause in the two lowest bands, measured: the nucleon cross section turns on inside
+    one energy bin.** The Monte Carlo interpolates its table (MCEq's, log-log, zero at
+    the node 1.12 GeV, full at 1.41 GeV): a nucleon interacts only above a kinetic
+    energy of about 1.39 GeV. The kernel set gives the whole bin 1.26 to 1.58 GeV the
+    rate of its centre. Over 1030 g/cm2, 58% of the nucleons of that bin interact in the
+    Monte Carlo (61% over 3000 g/cm2) and all of them in the solver. Two diagnostic
+    straight-ahead solves on a copy of the set, with the interaction yields of protons
+    and neutrons in that bin scaled by f = 0.60 and f = 0.54 (rate kept), change the
+    flux by -4.7% and -5.4% at 0.10 to 0.16 GeV, -2.9% and -3.3% at 0.16 to 0.25 GeV,
+    -1.1% and -1.3% at 0.25 to 0.40 GeV, -0.2% at 0.40 to 0.63 GeV and nothing above.
+    With f = 0.60 the level against `t` becomes -0.0%, +0.2%, -0.5% in the three lowest
+    bands (errors 0.2%), and each species is within 1.4%. f is the interacting fraction
+    read from the table (0.54 to 0.65 according to the path), not a fit.
+  - The builder's estimate of this effect (`c1/LIKE_FOR_LIKE.md`, section 3, item 3: at
+    most 0.45%) was too low by a factor of ten.
+  - What it is and is not. It is a difference between the two calculations in where the
+    nucleon interactions stop inside one bin (1.26 against 1.39 GeV), not an error of
+    the transport; neither cut is physical. It shows how much the lowest band depends on
+    that cut in a field-free sky: nucleons of 1.26 to 1.58 GeV make about 12% of the
+    flux at 0.10 to 0.16 GeV in the solver [from the two variants: 4.7% / 0.40 and 5.4%
+    / 0.46]. Interactions below the cut are absent from the solver, from the Monte Carlo
+    and from MCEq.
+  - Shape. The variant's change depends little on cos Z (lowest band: -5.0% at cos Z 0.1
+    to 0.2, -4.4% at 0.9 to 1). Applied cell by cell to the frozen 3D cells (an
+    estimate: no 3D solve of the variant was made), the count of G1.3(a) is 378 with f =
+    0.60 and 380 with f = 0.54, and the row means move by less than 0.2 points. No
+    verdict follows: this is the scatter of the count shown in part A.
+  - **Not explained: the level of +1 to +2% above 0.4 GeV**, which the variants do not
+    change. By stratum, mean over the bands above 0.4 GeV: +2.2 +- 0.5% for primaries of
+    3.16 to 10 GeV per nucleon, +1.5 +- 0.4% for 10 to 31.6 GeV, +0.9 +- 0.5% for 31.6
+    to 100 GeV, -0.5 +- 0.7% for 100 to 316 GeV, -0.7 +- 0.7% for 316 to 1000 GeV and
+    -2.6 +- 1.3% above. The bands are taken as independent although they share showers,
+    so the errors are lower limits (above 100 GeV the error of one band is 2 to 3). The
+    excess falls with the primary energy; the strata above 100 GeV are each compatible
+    with zero. A candidate, not tested here: the energy discretisation of the kernels
+    (parent at the bin centre), for which the builder gave +-1 to 2% in level before the
+    comparison (`c1/LIKE_FOR_LIKE.md`, section 3, item 2). For the two-body decays the
+    builder measured it: the centre in place of a parent spread over the bin raises nu_e
+    and anti-nu_e by 0.6 to 2.2% and nu_mu and anti-nu_mu by 0.3 to 1.2% at 0.4 to 10
+    GeV (row 7); for the interactions it is an estimate. A decay effect would not depend
+    on the primary energy. MCEq has the same discretisation.
+  - Deviations of the agent: two errors in its rebuild script (wall time lost, no data),
+    one process wait with `pgrep -f` (read only). 45 core-minutes.
 - **The muon clock's effect, from the two references (2026-11-19, manager;
   `c1/mcref2/CLOCK_PAIR.md`, `CLOCK_NOTE.md`).** Opened after G1.3 had run. Corrected
   clock over legacy clock, field free, 0.10 to 1 GeV, the four species together: `s`
