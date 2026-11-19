@@ -332,6 +332,40 @@ Result files are under `/home/pigrange/mc3d_work/runs/native3d/` (`c0/gates/`, `
   G1.2 failing again after it, on ground muons near the horizon only, is carried forward
   on the manager's reading of the same decision and is reported to the PI as such.
 
+- **G1.4, and the evaluation of G1.3 fixed before the reference existed (2026-11-19;
+  agent that wrote neither the solver nor the kernel sets; report `c1/WP14_REPORT.md`,
+  results in `c1/g13/`).** Done without opening any Monte Carlo tally: the combined
+  reference file did not exist yet.
+  - **G1.4 PASS**, with little margin: the two half-sample sets differ by at most 0.479%
+    in the 400 cells (0.5% allowed; recomputed by the manager from `h0.npz` and
+    `h1.npz`). The largest differences are one level per band (anti-nu_e, 2.5 to 4 GeV,
+    +0.47 to +0.48% in every cos Z bin). Each half is within 0.24% of the full set. No
+    kernel regeneration.
+  - `gates/g1_3.py` (sha256 `2c8a2edd55cca63b...`) is committed in this state before the
+    reference is combined. It was run on synthetic references built from the solver's
+    own cells: it recovers the distortion put in and returns FAIL for a 2% zenith tilt,
+    for +8% in the lowest cos Z row below 0.4 GeV and for 1.5% of cell-to-cell scatter.
+  - Like for like, from the source with file and line: the tally `s` and
+    `assemble.cell_averages` are the same quantity (mean dN/dE over the band, mean over
+    2 pi dcos Z, weight 1/cos psi with a floor of 1e-6 only, cap area on the 6371 km
+    sphere, total energy, same species order). No conversion factor. Not checked yet:
+    the reference's own `meta_*` strings, and its caps against each other.
+  - The solve of the G1.3(a) configuration (`c1/g13/pool2000.npz`) is identical in all
+    400 cells to `c1/cycle2b/g12/C_base.npz`.
+  - 10^5-event kernels against the 2000-event pools (solver only, part of G1.3(c)):
+    levels per species and band differ by up to 1.4% (rms 0.5%); after division by the
+    cos Z mean, at most 0.36% (rms 0.08%, largest in the lowest cos Z row).
+  - **Defect found: `run_solve.py --straight` with the full line family is wrong at the
+    horizontal node.** Its cells of the row cos Z 0 to 0.1 below 1.6 GeV are 10^3 to
+    10^12 times too large (the ground lines from cos Z 0.033 up are normal; the
+    up-scatter passes of that run do not converge: 1, 1, 4e-3). G1.1 does not use this
+    path (six lines, no horizontal node), and the 3D solves are not affected (the 3D
+    horizontal node agrees with the doubled line family to four digits). Consequence:
+    G1.3(d) has no valid number in that row. Not diagnosed yet; nothing changed.
+  - The sweep residual of the `h1` solve is 2.6e-5 (the other 3D solves: 1.5e-8 to
+    2.9e-8; G1.2 allows 1e-4).
+  - Cost of the 3D solves on the shared node: 13.1 to 15.4 core-minutes, 5.1 GB.
+
 ## Decisions of the PI
 
 - **2026-11-19, after the report of G1.0 to G1.2 (interim use of decision point 1).** The PI
