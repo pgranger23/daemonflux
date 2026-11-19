@@ -19,9 +19,12 @@ continuous slowing-down on the other (same stopping power, same atmosphere).
 Usage::
 
     source $N3/env.sh
-    taskset -c 6 $PY tools/cascade3d/gates/mc_muon_clock_check.py [N]
+    taskset -c 6 $PY tools/cascade3d/gates/mc_muon_clock_check.py [N [clock]]
 
-Output ``$N3/c1/review/mc_muon_clock.md``.
+``clock`` is passed to ``shower.Config(mu_clock=...)`` unless it is ``legacy`` (the
+default, which calls ``Config`` as every run before 2026-11-19 did).  Output
+``$N3/c1/review/mc_muon_clock.md`` (legacy) or ``mc_muon_clock_<clock>.md``; the last
+line printed is the largest deviation of the table.
 """
 
 import os
@@ -38,7 +41,8 @@ from constants import CTAU_CM, M_MU, R_EARTH_CM  # noqa: E402
 N3 = os.environ.get("N3", "/home/pigrange/mc3d_work/runs/native3d")
 E_B = (0.1, 0.2, 0.4)
 T0 = (0.15, 0.3, 0.6, 1.2, 2.5, 5.0)
-START = ((15.0, 1.0), (15.0, 0.3), (25.0, 1.0), (8.0, 1.0))  # altitude km, cos theta
+# altitude km, cos theta
+START = ((15.0, 1.0), (15.0, 0.3), (25.0, 1.0), (8.0, 1.0), (15.0, 0.05))
 _X, _W = np.polynomial.legendre.leggauss(96)
 _X, _W = 0.5 * (_X + 1.0), 0.5 * _W
 SPEC = {"numu": 2.0 * _X**2 * (3.0 - 2.0 * _X), "nue": 12.0 * _X**2 * (1.0 - _X)}
@@ -65,9 +69,10 @@ def n_above(e_mu, e_b):
     return {k: float(np.sum(_W * f * frac)) for k, f in SPEC.items()}
 
 
-def monte_carlo(e0, r0, u0, n):
+def monte_carlo(e0, r0, u0, n, clock="legacy"):
     """Neutrinos above each threshold per muon, through ``transport_muon``."""
-    cfg = shower.Config(collinear=True, bfield=None, energy_loss=True)
+    kw = {} if clock == "legacy" else {"mu_clock": clock}
+    cfg = shower.Config(collinear=True, bfield=None, energy_loss=True, **kw)
     out = {(k, eb): 0.0 for k in SPEC for eb in E_B}
     n_dec = 0
     for i in range(n):
@@ -118,7 +123,10 @@ def exact(e0, r0, u0):
 
 def main():
     n = int(sys.argv[1]) if len(sys.argv) > 1 else 4000
+    clock = sys.argv[2] if len(sys.argv) > 2 else "legacy"
+    worst = 0.0
     lines = ["# Monte Carlo muon decay clock against exact slowing-down", "",
+             f"Clock: `{clock}`. "
              f"`shower.transport_muon` with a stratified decay variate (N = {n}) "
              "against a fine integration of the same stopping power and atmosphere. "
              "Entries: neutrinos above E_b per muon, Monte Carlo / exact - 1, in %. "
@@ -132,21 +140,28 @@ def main():
                   + " | exact per muon (numu > 0.1) | decays in flight MC |",
                   "|---|" + "---|" * (len(E_B) * len(SPEC) + 2)]
         for t0 in T0:
-            mc, f_mc = monte_carlo(t0 + M_MU, r0, u0, n)
+            mc, f_mc = monte_carlo(t0 + M_MU, r0, u0, n, clock)
             ex, _ = exact(t0 + M_MU, r0, u0)
             cells = []
             for eb in E_B:
                 for k in SPEC:
-                    cells.append(f"{100 * (mc[(k, eb)] / ex[(k, eb)] - 1):+.2f}"
-                                 if ex[(k, eb)] > 1e-6 else "-")
+                    if ex[(k, eb)] > 1e-6:
+                        dev = 100 * (mc[(k, eb)] / ex[(k, eb)] - 1)
+                        worst = max(worst, abs(dev))
+                        cells.append(f"{dev:+.2f}")
+                    else:
+                        cells.append("-")
             lines.append(f"| {t0:g} | " + " | ".join(cells)
                          + f" | {ex[('numu', 0.1)]:.4f} | {f_mc:.3f} |")
             print(lines[-1], flush=True)
         lines.append("")
-    path = os.path.join(N3, "c1", "review", "mc_muon_clock.md")
+    lines += [f"Largest deviation of the table: {worst:.2f}%.", ""]
+    name = "mc_muon_clock.md" if clock == "legacy" else f"mc_muon_clock_{clock}.md"
+    path = os.path.join(N3, "c1", "review", name)
     with open(path, "w") as fh:
         fh.write("\n".join(lines) + "\n")
     print(path)
+    print(f"largest deviation {worst:.2f}%")
 
 
 if __name__ == "__main__":

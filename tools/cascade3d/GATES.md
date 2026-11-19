@@ -248,3 +248,17 @@ Result files are under `/home/pigrange/mc3d_work/runs/native3d/` (`c0/gates/`, `
      and G1.4 by an agent that wrote neither.
   After the second cycle G1.0 to G1.2 are re-run in full, as written. The comparison with
   step-converged MCEq is reported next to G1.1 and is not a gate.
+- **2026-11-19, after the report of the kernel sets and of the Monte Carlo's muon decay
+  clock.** The PI was given the finding, its estimated effect on the G1.3 reference and on
+  the product table, and the manager's recommendation, and answered "Follow your
+  recommendations". That is:
+  1. The clock is corrected behind an opt-in switch of `tools/mc3d`
+     (`Config(mu_clock="converged")`, `sky3d.py --muon-clock converged`); the default
+     stays bit-identical to every earlier run. Acceptance, fixed here before the code is
+     written: `gates/mc_muon_clock_check.py 4000 converged`, every entry within 0.2%.
+  2. The field-free reference is re-run with the switch on, same settings and seeds
+     (about 25 core-h, into `c1/mcref2/`). The re-run becomes the reference of G1.3. The
+     first run is kept and is not compared with the solver.
+  3. The pair of runs measures the clock's effect per cell. Whether the product table
+     needs a correction is put to the PI after that.
+  The compute of C0 and C1 rises from about 110 to about 115 core-h.
