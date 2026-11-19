@@ -145,3 +145,15 @@ Result files are under `/home/pigrange/mc3d_work/runs/native3d/` (`c0/gates/`, `
   T + m to four digits at every energy, 20% above the true momentum at T = 0.11 GeV and
   0.9% above at 0.89 GeV.
   The gate is not redefined. How it is treated is the PI's decision. Command: `gates/g0_2.py`.
+- **G0.3: reported** (2026-11-19, kernel set `gen_fresh1e5`, 10^5 events per node, 708
+  nodes). 553 channel rows with Z above 0.001: median generator/MCEq 0.969, 67% within 10%,
+  81% within 20%. At 3, 9, 28 and 890 GeV the main nucleon and pion channels agree within
+  1 to 6%. At 89 GeV, next to the generator switch at 80 GeV, they differ by up to 17%
+  (π → π) and 40% (π → nucleon); the database file in use is interpolated across that
+  region. The pool kernels agree with the 10^5-event kernels within their errors (pull rms
+  1.005). Command: `gates/g0_3.py --tag fresh1e5 --also pool2000`.
+- **G0.4: reported** (2026-11-19, `gen_fresh1e5`). Half-sample differences in units of their
+  expected error: rms 0.998 to 1.002 for l = 0 to 64 (276 213 entries with at least 200
+  particles), fraction beyond 3: 0.0024 to 0.0028, per-node rms from 0.87 to 1.11. The
+  quoted kernel errors are therefore reliable. Median relative error of such an entry:
+  2.4% (l = 0), 2.6% (l = 1). Command: `gates/g0_4.py --tag fresh1e5`.
