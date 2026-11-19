@@ -127,6 +127,15 @@ After C1 the PI decides on C2. G1.1 or G1.3(a) failing after one diagnosis cycle
 - 2026-11-19, same status. For like-for-like in G1.3 the solver's initial condition is the
   reference run's: GSF proton and neutron fluxes (`primaries.py`, `GSFG:GH`, energy
   convention "total"), kinetic energy per nucleon from 1 to 1000 GeV, nothing outside.
+- 2026-11-19, same status. The range in the previous entry is wrong: the reference run
+  covers kinetic energy per nucleon from 1 to 3162 GeV. `--nstrata 7` takes the first
+  seven strata of `sky.STRATA = logspace(0, 4, 9)`, whose upper edge is 10^3.5
+  (`tools/mc3d/sky.py`, `build_tasks`; confirmed by calling it). `PLAN_CONFIG.txt` and
+  the reference's report say 1 to 1000; the run itself is what the source says. The
+  gate's content, the reference run's own initial condition, is unchanged: the kernel
+  sets use 1 to 3162 GeV. Found by the kernel-set builder in the source, without sight
+  of any Monte Carlo output. Cutting at 1000 GeV would have lowered the solver by 1.8
+  to 3.5% at 3 to 10 GeV (builder's measurement, straight ahead).
 
 ## Results log
 
@@ -203,6 +212,28 @@ Result files are under `/home/pigrange/mc3d_work/runs/native3d/` (`c0/gates/`, `
   1° above the horizon and up-going directions at 15 and 30 km. Cost of one angular solve
   on the default grid, synthetic kernels: 9.8 core-minutes, 4.7 GB (G1.5, to be measured on
   the real kernel set, allows 10 and 8); with 192 ground lines 17.5 core-minutes, 7.1 GB.
+- **Open before G1.3 (2026-11-19; found by the kernel-set builder in the source, nothing
+  compared yet).** The Monte Carlo's muon transport (`shower.transport_muon`, and
+  likewise `bend.transport_muons`) advances the decay clock of a step with βγ at the
+  start of the step, in steps of up to 30 g/cm². A slowing muon ages too slowly, so it
+  decays later and at lower energy. Manager's check, the Monte Carlo's own function
+  against a fine integration of the same stopping power and atmosphere
+  (`gates/mc_muon_clock_check.py`, `c1/review/mc_muon_clock.md`): neutrinos above
+  0.1 GeV per muon, Monte Carlo below exact by 1.2, 1.8, 2.9 and 3.9% for vertical muons
+  of kinetic energy 1.2, 0.6, 0.3 and 0.15 GeV starting at 15 km; by 2.1, 3.4, 6.0 and
+  9.2% starting at 8 km; by 0.2 to 0.5% starting at 25 km; by 0.5, 1.0, 2.0 and 3.5% at
+  15 km and cos θ = 0.3. The effect on the reference flux is not measured. The builder
+  estimates the reference 1 to 4% low at 0.1 to 1 GeV, with a zenith dependence of up to
+  1%, the size of the row tolerance of G1.3(a). The reference is compared with nothing
+  until the PI has decided how to treat this.
+- **Kernel sets for G1.3 and G1.4 (2026-11-19, not a gate).** `kernelset_mc.py` builds
+  them from the generator and decay kernels with the Monte Carlo's own functions for
+  rates, thresholds, stopping power and primaries; rule-by-rule table in
+  `c1/LIKE_FOR_LIKE.md`. Its 23 tests pass (re-run by the manager). The independent
+  dense straight-ahead reference `gates/ref1d_dense.py` agrees with step-converged MCEq
+  within 6.2e-5 for neutrinos (0.1 to 100 GeV, cos Z 1, 0.25, 0.05). Straight ahead, the
+  two half-sample sets differ by up to 0.6% per bin at 1 to 10 GeV (G1.4 allows 0.5% per
+  cell; not yet run).
 
 ## Decisions of the PI
 
