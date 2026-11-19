@@ -97,3 +97,13 @@ configuration and code state: `c1/cycle2b/g12/C_base.npz` (same file as
 ## 2. Changes after the freeze
 
 None.
+
+## 3. Found after the freeze, nothing changed
+
+- `run_solve.py --straight` with the full line family is wrong in the row cos Z 0 to 0.1
+  (lines tangent up to about 10 km). Cause: unbounded log-cubic energy interpolation of the
+  muons where neighbouring bins differ by many decades (`GATES.md`, Results log;
+  `c1/diag_straight/MANAGER_NOTE.md`). The same mechanism moves the frozen 3D solve by
+  at most 2.5e-4 in the G1.3 cells and 1.0e-4 in the zenith-normalised cells. A fix is
+  proposed (`c1/diag_straight/proposed.diff`) and not applied; G1.3 to G1.5 run on the
+  code state of section 1.

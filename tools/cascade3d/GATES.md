@@ -366,6 +366,46 @@ Result files are under `/home/pigrange/mc3d_work/runs/native3d/` (`c0/gates/`, `
     2.9e-8; G1.2 allows 1e-4).
   - Cost of the 3D solves on the shared node: 13.1 to 15.4 core-minutes, 5.1 GB.
 
+- **Straight-ahead defect diagnosed; nothing adopted (2026-11-19; diagnosis by the
+  solver's author on reduced problems, record `c1/diag_straight/MANAGER_NOTE.md`,
+  written by the manager from the author's messages; exposure of the 3D solve recomputed
+  by the manager).**
+  - Cause: muons are interpolated in energy with a log-cubic stencil
+    (`solver._interp_log`). In the up-scatter passes of a straight-ahead run the solution
+    on grazing lines consists only of up-scatter from parents that are extinct after
+    about 36 000 g/cm2; neighbouring muon bins then differ by tens to hundreds of
+    decades, the cubic extrapolates without bound and the march compounds it. With
+    linear interpolation, or with the cubic bounded by its own stencil values, the
+    horizontal node agrees with the neighbouring ground line to 3e-4.
+  - Extent in the straight-ahead run: the lines tangent up to about 10 km are wrong (at
+    29 km: 4e-4); the ground lines from cos Z 0.033 up are right to 2e-4. So its cells for cos Z 0.1 to 1
+    stand, and the row cos Z 0 to 0.1 does not.
+  - Exposure of the frozen 3D solve, measured with a bound that acts only where the four
+    stencil values span more than a factor 1000 (`c1/diag_straight/C_base_wide.npz`
+    against `c1/cycle2b/g12/C_base.npz`): ground muons 4.4e-4, nu_e on the ground lines
+    2.8e-4, the G1.3 cells 2.5e-4, the zenith-normalised cells that G1.3(a) gates
+    1.0e-4 (2% allowed).
+  - The fix (`c1/diag_straight/proposed.diff`) is **not adopted before G1.3**: the 3D
+    results would not be bit-identical, so rule 4 would require G1.0 to G1.5 to be
+    re-run in full, for 1.0e-4 in the gated quantity. G1.3 to G1.5 run on the frozen
+    code. Adopting it afterwards, with the full re-run, is put to the PI at decision
+    point 1. An unconditional bound is not a correct fix (it caps genuine maxima of the
+    muon spectrum: 3.2% in the ground muons).
+  - G1.3(d) therefore has no valid number in the row cos Z 0 to 0.1 on the frozen code.
+    A supplement, labelled as such and not a gate: one straight-ahead solve with the
+    bound, in the diagnostic copy of the code (`c1/diag_straight/straight_wide.npz`).
+    Its up-scatter passes converge (0.11, 1.8e-4, 1.4e-9), it agrees with the frozen
+    straight-ahead run within 2.5e-4 for cos Z 0.1 to 1, and its ratio to the 3D solve
+    in the row cos Z 0 to 0.1 for nu_mu runs from 0.43 at 0.10 to 0.16 GeV to 0.996 at
+    6.3 to 10 GeV.
+- **Reference re-run complete (2026-11-19, 14:44).** Ten runs of 10^6 primaries with
+  `--muon-clock converged`, seeds and settings of the first run, all with exit status 0;
+  29.8 core-h (25 quoted; the node was shared), 0.45 GB per process. Combined into
+  `c1/mcref2/mcref2_fieldfree.npz` (sha256 `2bc6afe7ceec46f6...`): same arrays as the
+  first run plus `meta_muon_clock`, no empty cell in the 10 degree cap, 52 fallback
+  (group, stratum) pairs per run as in the first run. The comparison of the two
+  references (the clock's effect) is kept with the manager until G1.3 has run.
+
 ## Decisions of the PI
 
 - **2026-11-19, after the report of G1.0 to G1.2 (interim use of decision point 1).** The PI
