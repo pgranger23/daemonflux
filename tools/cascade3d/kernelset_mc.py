@@ -27,6 +27,27 @@ M2  Every hadron is transported and decays in flight at all energies
 M3  Interaction rate: ``1 / ChromoBackend.lambda_int(pdg, T + m)`` at the bin
     centre (MCEq's SIBYLL-2.3d cross sections, log-log in kinetic energy, zero
     below the table's threshold).  Muons and neutrinos never interact.
+    Turn-on of the nucleon cross section (``turn_on=True``, the default; C1
+    closing cycle).  For p and n the table is zero up to one node and full from
+    the next, so the Monte Carlo's rate rises by many decades inside one bin k*
+    (found from the function, :func:`turn_on_bin`: k* = 17, T = 1.26 to 1.58
+    GeV).  With P(T) = 1 - exp(-X_ref / lambda(T)), X_ref = 2000 g/cm2
+    (:data:`X_REF`), integrals over bin k* in T:
+
+    * every source into (s, k*) is multiplied by the interacting fraction of
+      that source: ``phi_top[s, k*]`` by f_prim = int J_s P / int J_s (J_s the
+      primary flux per nucleon, :func:`mc_primary_flux`), the row k* of every
+      interaction and decay channel with child s by f_sec = int T^-g P /
+      int T^-g, g = g_s of :data:`G_SEC` (diagonal entries of s -> s included);
+    * ``inv_lambda[s, k*]`` = a_s = (int J_s / lambda / int J_s) / f_prim, the
+      interaction rate per g/cm2 of the bin's population at birth;
+    * the yields out of (s, k*) and everything else are unchanged.
+
+    Consequence: the nucleon flux of bin k* that the solver returns is the
+    interacting part only, and the number sum rule of the channels into
+    (s, k*) is short by 1 - f on purpose.  One fraction is exact at X_ref only
+    (the ramp is steep but not a step).  The numbers are in ``meta["turn_on"]``.
+    ``turn_on=False`` reproduces the sets of 2026-11-19 array by array.
 M4  Floor (``pool.EventPool.draw``): below 2 GeV total energy an interaction
     yields nothing; the particle is still removed (zero yield, rate kept).
 M5  Interaction yields and angles: the generator kernel's ``c_l`` (rules R1-R11 of
@@ -61,6 +82,10 @@ Usage::
     python kernelset_mc.py decay-extra
     python kernelset_mc.py build --gen pool2000 [--L 32] [--loss off]
     python kernelset_mc.py build --gen all            # the four G1.3/G1.4 sets
+    python kernelset_mc.py build --gen pool2000 --turn-on off   # 2026-11-19 rule
+
+Sets with the turn-on rule go to ``$N3/kernels/mc_close`` by default, sets
+without it to ``$N3/kernels/mc`` (the file names do not carry the rule).
 """
 
 from __future__ import annotations
@@ -88,10 +113,25 @@ import decays as mcdec  # noqa: E402
 import primaries as mcprim  # noqa: E402
 import shower as mcshower  # noqa: E402
 
-VERSION = "kernelset_mc-1.0"
+VERSION = "kernelset_mc-1.1"
 N3 = os.environ.get("N3", "/home/pigrange/mc3d_work/runs/native3d")
 KERNEL_DIR = os.path.join(N3, "kernels")
 OUT_DIR = os.path.join(KERNEL_DIR, "mc")
+OUT_DIR_CLOSE = os.path.join(KERNEL_DIR, "mc_close")
+
+#: slant depth [g/cm2] at which the interacting fraction of rule M3 is taken
+#: (cos Z = 0.5, the middle of the cells of G1.3); fixed in the brief of the
+#: C1 closing cycle, not adjusted
+X_REF = 2000.0
+#: species with the turn-on rule of M3
+TURN_ON_SPECIES = ("p+", "n0")
+#: local logarithmic slope g_s of dN/dT of the secondary production of p and n
+#: around the turn-on bin (bins k*-1, k*, k*+1): :func:`secondary_slope` of the
+#: first generation of the primaries in the pool2000 set of 2026-11-19
+#: (``kernels/mc/ks_mc_pool2000_L32_losson.npz``, f_prim in bin k*), rounded to
+#: four digits (0.91256, 0.87071); the same two numbers for every set.  All
+#: baryon generations without decays give 1.30 and 1.31 (cross-check only).
+G_SEC = {"p+": 0.9126, "n0": 0.8707}
 DECAY_PATH = os.path.join(KERNEL_DIR, "decay.npz")
 DECAY_EXTRA_PATH = os.path.join(KERNEL_DIR, "decay_extra.npz")
 
@@ -236,6 +276,139 @@ def phi_top_mc(e_bins, model=MC_DEFAULTS["model"], nstrata=MC_DEFAULTS["nstrata"
 
 
 # ---------------------------------------------------------------------------
+# the turn-on of the nucleon cross section (rule M3)
+# ---------------------------------------------------------------------------
+def mc_interaction_prob(pdg, e_kin, x, backend=None):
+    """Probability that a hadron of kinetic energy ``e_kin`` interacts over ``x``
+    g/cm2 in the Monte Carlo (no energy loss of hadrons): 1 - exp(-x/lambda)."""
+    return -np.expm1(-x * mc_inv_lambda(pdg, e_kin, backend))
+
+
+def turn_on_bin(pdg, e_bins, x_ref=X_REF, tol=0.01, backend=None):
+    """The bin in which the Monte Carlo's interaction probability over ``x_ref``
+    rises by more than ``tol`` between the bin edges (the turn-on bin).
+
+    Returns the bin index, or None if there is no such bin; raises
+    ``ValueError`` if there are several.
+    """
+    pe = mc_interaction_prob(pdg, np.asarray(e_bins, float), x_ref, backend)
+    ks = np.flatnonzero(np.diff(pe) > tol)
+    if ks.size == 0:
+        return None
+    if ks.size > 1:
+        raise ValueError(f"pdg {pdg}: interaction probability rises in bins {ks}")
+    return int(ks[0])
+
+
+def bin_quadrature(lo, hi, breaks=(), n_panel=64, n_gl=8):
+    """Nodes ``t`` and weights ``w`` (for dT) of a composite Gauss-Legendre rule
+    in ln T over [lo, hi], with panel boundaries at the ``breaks`` inside.
+
+    The Monte Carlo's cross section is linear in log-log between its table nodes,
+    so splitting at the nodes leaves only smooth (if steep) integrands.
+    """
+    cuts = [lo] + sorted(b for b in breaks if lo < b < hi) + [hi]
+    xg, wg = np.polynomial.legendre.leggauss(n_gl)
+    ts, ws = [], []
+    for a, b in zip(cuts[:-1], cuts[1:]):
+        edges = np.linspace(np.log(a), np.log(b), n_panel + 1)
+        h = np.diff(edges)
+        u = edges[:-1, None] + 0.5 * h[:, None] * (xg[None, :] + 1.0)
+        t = np.exp(u)
+        ts.append(t.ravel())
+        ws.append((0.5 * h[:, None] * wg[None, :] * t).ravel())   # dT = T dlnT
+    return np.concatenate(ts), np.concatenate(ws)
+
+
+def _table_nodes(backend):
+    return np.asarray(backend._cs.e_grid, float)
+
+
+def turn_on_factors(name, e_bins, g, x_ref=X_REF, model=MC_DEFAULTS["model"],
+                    backend=None, dg=(-0.5, 0.5)):
+    """Interacting fractions and rate of rule M3 for nucleon species ``name``.
+
+    Parameters
+    ----------
+    name : {"p+", "n0"}
+        Species.
+    e_bins : array
+        Kinetic bin edges of the set [GeV].
+    g : float
+        Slope g_s of the secondary weight T^-g.
+    x_ref : float
+        Slant depth [g/cm2] of the interacting fraction.
+    model : str
+        Primary model (J_s).
+    backend : interactions.ChromoBackend, optional
+    dg : tuple of float
+        Offsets of g at which f_sec is also reported.
+
+    Returns
+    -------
+    dict
+        ``k``, ``T_range``, ``f_prim``, ``f_sec``, ``a`` (rate [cm2/g]),
+        ``inv_lambda_centre`` (the rule-off rate), ``g_sec``, ``x_ref`` and
+        ``f_sec_at_g`` ({g + dg: f_sec}).
+    """
+    be = backend or mc_backend()
+    pdg = SPECIES[_IDX[name]][1]
+    if pdg not in (2212, 2112):
+        raise ValueError("the turn-on rule is for p and n only")
+    e_bins = np.asarray(e_bins, float)
+    k = turn_on_bin(pdg, e_bins, x_ref, backend=be)
+    if k is None:
+        raise ValueError(f"{name}: no turn-on bin on this grid")
+    lo, hi = e_bins[k], e_bins[k + 1]
+    t, w = bin_quadrature(lo, hi, _table_nodes(be))
+    il = mc_inv_lambda(pdg, t, be)
+    P = -np.expm1(-x_ref * il)
+    jp, jn = mc_primary_flux(t, model)
+    J = jp if pdg == 2212 else jn
+    f_prim = float(np.sum(w * J * P) / np.sum(w * J))
+    a = float(np.sum(w * J * il) / np.sum(w * J)) / f_prim
+
+    def f_sec_of(gg):
+        ws = w * t ** (-gg)
+        return float(np.sum(ws * P) / np.sum(ws))
+
+    centre = float(mc_inv_lambda(pdg, np.sqrt(lo * hi), be)[0])
+    return {"k": k, "T_range": [float(lo), float(hi)], "f_prim": f_prim,
+            "f_sec": f_sec_of(g), "a": a, "inv_lambda_centre": centre,
+            "g_sec": float(g), "x_ref": float(x_ref),
+            "f_sec_at_g": {f"{g + d:.4f}": f_sec_of(g + d) for d in dg}}
+
+
+def secondary_slope(ks, name, k=None, x_ref=X_REF, f_prim=None):
+    """Local logarithmic slope g of dN/dT of the first-generation production of
+    species ``name`` by the primaries of the set ``ks``, around bin ``k``.
+
+    Production density in child bin m: S(m) = sum over the interaction channels
+    q -> name and parent bins k' of ``Y[m, k'] phi_top[q, k'] P_q(k')``, with
+    P_q(k') = 1 - exp(-x_ref inv_lambda[q, k']) the probability that the
+    primary interacts over ``x_ref`` (``f_prim`` replaces it in the turn-on bin
+    when given: {q name: f}).  g = -d ln S / d ln T from the bins k-1, k, k+1:
+    the least-squares slope of ln S against ln T_centre over the three bins,
+    which on the uniform ln T grid is the central difference
+    ln(S[k-1] / S[k+1]) / ln(T[k+1] / T[k-1]).
+    """
+    d = ks.d
+    c = ks.index(name)
+    if k is None:
+        k = turn_on_bin(SPECIES[_IDX[name]][1], d["e_bins"], x_ref)
+    S = np.zeros(ks.nE)
+    for j in np.flatnonzero((d["ch_child"] == c) & (d["ch_kind"] == KIND_INT)):
+        q = int(d["ch_parent"][j])
+        P = -np.expm1(-x_ref * np.asarray(d["inv_lambda"][q], float))
+        if f_prim is not None and str(d["species"][q]) in f_prim:
+            P = P.copy()
+            P[k] = f_prim[str(d["species"][q])]
+        S += d["Y"][j] @ (d["phi_top"][q] * P)
+    E = d["e_grid"]
+    return float(np.log(S[k - 1] / S[k + 1]) / np.log(E[k + 1] / E[k - 1]))
+
+
+# ---------------------------------------------------------------------------
 # decay kernels of Lambda (decay_extra.npz)
 # ---------------------------------------------------------------------------
 def _extra_species_info(names):
@@ -349,7 +522,8 @@ def build(gen="pool2000", L=32, n_tail=4, n_e=52, loss=True,
           e_nu_min=MC_DEFAULTS["e_nu_min"], thr_scheme=MC_DEFAULTS["thr_scheme"],
           model=MC_DEFAULTS["model"], nstrata=MC_DEFAULTS["nstrata"],
           phi_mode="average", clip=True, decay_path=DECAY_PATH,
-          decay_extra_path=DECAY_EXTRA_PATH, kernel_dir=KERNEL_DIR, angular=True):
+          decay_extra_path=DECAY_EXTRA_PATH, kernel_dir=KERNEL_DIR, angular=True,
+          turn_on=True, x_ref=X_REF, g_sec=None):
     """Build the Monte Carlo-matched kernel set.
 
     Parameters
@@ -375,6 +549,13 @@ def build(gen="pool2000", L=32, n_tail=4, n_e=52, loss=True,
         Clip ``a*`` to [-1, 1] (``KernelSet.validate`` requires it).
     angular : bool
         Attach the angular laws (False: straight-ahead set, smaller).
+    turn_on : bool
+        Apply the turn-on rule of M3 to p and n (default); False gives the sets
+        of 2026-11-19.
+    x_ref : float
+        Slant depth [g/cm2] of the interacting fractions of the turn-on rule.
+    g_sec : dict, optional
+        Slopes g_s of the secondary weight per species (default :data:`G_SEC`).
 
     Returns
     -------
@@ -480,6 +661,39 @@ def build(gen="pool2000", L=32, n_tail=4, n_e=52, loss=True,
             clm = np.moveaxis(mom, 0, -1)
             add(KIND_DEC, p, c, Y, clm)
 
+    # turn-on of the nucleon cross section (rule M3)
+    turn_meta = None
+    if turn_on:
+        g_sec = dict(G_SEC if g_sec is None else g_sec)
+        turn_meta = {"rule": "M3 turn-on: sources into (s, k*) times the "
+                     "interacting fraction over x_ref (phi_top: f_prim, channel "
+                     "rows k* with child s: f_sec), inv_lambda[s, k*] = a_s",
+                     "x_ref": float(x_ref),
+                     "consequence": "the nucleon flux of bin k* returned by the "
+                     "solver is the interacting part only; the number sum rule "
+                     "of the channels into (s, k*) is short by 1 - f_sec on "
+                     "purpose", "species": {}}
+        for name in TURN_ON_SPECIES:
+            if g_sec.get(name) is None:
+                raise ValueError(f"no secondary slope g for {name}")
+            tf = turn_on_factors(name, e_bins, g_sec[name], x_ref, model, backend)
+            s, k = _IDX[name], tf["k"]
+            np.testing.assert_allclose(inv_lambda[s, k], tf["inv_lambda_centre"],
+                                       rtol=1e-12)
+            phi_top[s, k] *= tf["f_prim"]
+            inv_lambda[s, k] = tf["a"]
+            n_sc = 0
+            for j in range(len(Ys)):
+                if chi[j] == s and np.any(Ys[j][k] != 0):
+                    Ys[j] = Ys[j].copy()
+                    Ys[j][k] *= tf["f_sec"]
+                    n_sc += 1
+            tf["n_channels_scaled"] = n_sc
+            tf["channels_with_child"] = sorted(
+                f"{['int', 'dec'][kinds[j]]} {NAMES[par[j]]}->{name}"
+                for j in range(len(Ys)) if chi[j] == s)
+            turn_meta["species"][name] = tf
+
     nCh = len(Ys)
     d = {"e_grid": e_grid, "e_bins": e_bins, "e_widths": e_widths,
          "species": np.array(NAMES), "pdg": pdg, "mass": mass, "charge": charge,
@@ -515,14 +729,21 @@ def build(gen="pool2000", L=32, n_tail=4, n_e=52, loss=True,
             "constants.CTAU_CM", "n_e": n_e,
             "created": time.strftime("%Y-%m-%d %H:%M:%S"),
             "mceq_db": G["meta"].get("mceq_db")}
+    if turn_on:
+        meta["turn_on"] = turn_meta
+        meta["interaction_lengths"] += (" (p, n in the turn-on bin: rule M3, "
+                                        "meta['turn_on'])")
     d["meta"] = meta
     ks = KernelSet(d)
     ks.validate()
     return ks
 
 
-def set_path(gen, L=32, loss=True, out_dir=OUT_DIR):
-    """File name of a stored set."""
+def set_path(gen, L=32, loss=True, out_dir=None, turn_on=True):
+    """File name of a stored set (``out_dir`` None: :data:`OUT_DIR_CLOSE` with
+    the turn-on rule, :data:`OUT_DIR` without)."""
+    if out_dir is None:
+        out_dir = OUT_DIR_CLOSE if turn_on else OUT_DIR
     return os.path.join(out_dir, f"ks_mc_{gen}_L{L}_{'losson' if loss else 'lossoff'}"
                                  ".npz")
 
@@ -604,18 +825,23 @@ def main(argv=None):
     b.add_argument("--loss", default="on", choices=["on", "off"])
     b.add_argument("--phi-mode", default="average", choices=["average", "centre"])
     b.add_argument("--no-angular", action="store_true")
-    b.add_argument("--out-dir", default=OUT_DIR)
+    b.add_argument("--turn-on", default="on", choices=["on", "off"],
+                   help="turn-on rule of M3 for p and n (default on)")
+    b.add_argument("--out-dir", default=None,
+                   help="default: kernels/mc_close (rule on), kernels/mc (off)")
     a = ap.parse_args(argv)
     if a.cmd == "decay-extra":
         print("wrote", build_decay_extra())
         return
     gens = list(GEN_SETS) if a.gen == "all" else [a.gen]
     loss = a.loss == "on"
+    turn_on = a.turn_on == "on"
     for gen in gens:
         t0 = time.time()
         ks = build(gen, L=a.L, n_tail=a.n_tail, n_e=a.n_e, loss=loss,
-                   phi_mode=a.phi_mode, angular=not a.no_angular)
-        path = set_path(gen, a.L, loss, a.out_dir)
+                   phi_mode=a.phi_mode, angular=not a.no_angular,
+                   turn_on=turn_on)
+        path = set_path(gen, a.L, loss, a.out_dir, turn_on)
         if a.no_angular:
             path = path.replace(".npz", "_sa.npz")
         save_new(ks, path)
