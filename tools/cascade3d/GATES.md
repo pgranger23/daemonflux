@@ -1,6 +1,7 @@
 # Pre-registered gates, Phase 3 (`cascade3d`)
 
-Stages C0 and C1. Written 2026-11-18, before any Phase 3 code or run exists.
+Stages C0 and C1: written 2026-11-18, before any Phase 3 code or run exists.
+Stage C2: written 2026-11-20, before any C2 code or run exists (section C2).
 The plan is `PLAN.md`; this file fixes what each gate measures and when it passes.
 
 ## Rules
@@ -211,6 +212,178 @@ to the excess re-measured on the changed set.
 **After the cycle** the manager reports to the PI. The recommendation given before the
 cycle stands: stop the phase if G1.3(a) as amended fails, or if the level above 0.4 GeV
 is "not explained". Compute: about 15 core-h, no new Monte Carlo run.
+
+## C2. Azimuth and the cutoff sky, no bending
+
+Written 2026-11-20, after the PI's decision of that date (last section) and before any
+C2 code, Monte Carlo run or solve exists. The plan's text of the stage is `PLAN.md`,
+section 4, C2. Rules 1 to 3 apply as written.
+
+- Rule 4 applies with `RESULTS_C2.md`. The settings (grids in μ, φ and location, L,
+  sweeps, ray sampling, kernel sets, cutoff skies with their hashes, reference altitude)
+  are written there after G2.0, G2.1, G2.2, G2.4 and G2.5, and before the solver's
+  output with the cutoff is compared with a Monte Carlo tally for the first time.
+- Rule 5 applies to G2.3: it is run by an agent that wrote neither the solver, the
+  kernel sets nor the cutoff skies.
+- The agents that write the solver and the cutoff skies do not open the reference of
+  G2.3 before the freeze. The agent that runs the reference compares nothing with the
+  solver.
+
+**Carried from C1.**
+- G1.1 and G1.2 are on record as failed for ground muons (accepted by the PI until C3).
+  The gates of C2 are on the four neutrino species. Ground muons are reported where a
+  gate has them.
+- G1.5 is on record as failed. The cost of C2 is measured first (G2.6) and brought to
+  the PI.
+- Kernel sets: those frozen in the closing cycle (`RESULTS_C1.md`, section 5; parent at
+  the bin centre). In an absolute comparison with the Monte Carlo the solver is
+  therefore expected about 1.8% high from 0.4 to 10 GeV, as measured in C1. G2.3 is
+  gated on quantities in which this level cancels.
+
+**Notation.** Cells: the four neutrino species × the ten energy bands of G1.3 (0.1 to
+10 GeV) × ten cos Z bins from 0 to 1 × twelve azimuth bins of 30°, 4800 in all. Zenith
+and azimuth are those of `tools/mc3d/scoring.py`: in the local frame of the point where
+the neutrino crosses the ground; azimuth of the direction the neutrino comes from, from
+north through east. Φ_cut is the flux with the cutoff. Φ_0 is the flux with the
+transmission set to 1, averaged over azimuth. K = Φ_cut / Φ_0 is the cutoff factor of a
+cell.
+
+**G2.0 Cutoff sky against direct back-tracing (reported, with a trigger).** The
+transmission that `boundary.py` gives a primary (nucleus group, kinetic energy per
+nucleon, point and direction on the injection sphere) against the verdict of
+`tools/mc3d/cutoff.py` (`gate`, then `trace_gated`) for the same state. States: at least
+20 000, drawn as the reference run draws its primaries (`cutoff.sample_test_states`),
+rigidity below 60 GV; states that the sky does not cover are counted and left out.
+Classes: rigidity 0 to 5, 5 to 10, 10 to 20 and 20 to 60 GV × cos of the zenith at
+injection 0 to 0.25, 0.25 to 0.5 and 0.5 to 1 × four azimuth quadrants centred on
+north, east, south and west. Per class: mean transmission of the sky against the
+allowed fraction of the verdicts. A class in which they differ by more than
+max(0.02, 2σ), σ the binomial error, triggers a check of the sky before the freeze.
+
+**G2.1 Transmission 1 reproduces C1 (gated).** The C2 solver with the transmission set
+to 1 everywhere, assembled exactly as for G2.3 (location grid, interpolation, average
+over the 10° cap), against the C1 solve `c1/close/g13/pool2000.npz`: every G1.3 cell, in
+each of the twelve azimuth bins, within 0.2%.
+
+**G2.2 Straight-ahead limit with the cutoff against MCEq (gated).** At Kamioka
+(36.4267° N, 137.31° E), cos Z = 1, 0.75, 0.5, 0.25, 0.15, 0.05, azimuth 0°, 90°, 180°
+and 270° (21 directions; the vertical once). Solver: straight-ahead limit, boundary from
+the cutoff sky for that line of sight. MCEq: same zenith, the spectrum of each nucleus
+group multiplied by the same binned transmission of that line. Otherwise as G1.1 with
+energy loss on (same database, population, atmosphere, H3a, observation level).
+Pass: the four neutrino species within 1% in every MCEq bin from 0.1 to 100 GeV.
+Ground muons are reported.
+
+**G2.3 Cutoff and azimuth against the Monte Carlo.**
+
+Reference (WP 2.3): `tools/mc3d/sky3d.py` at Kamioka with the cutoff on and no bending.
+The command is that of the field-free reference of C1 (`c1/mcref2/scripts/run_all.sh`:
+`--model GSFG:GH --nstrata 7 --chunk 10000 --r-thr 0 --no-bend-primary --no-muon-field
+--thresholds chain --muon-clock converged`, pools `pools_fix`) without `--no-cutoff`.
+- Twenty runs of equal size, seeds 900000000 + 20000000 j, j = 0 to 19 (no seed of an
+  earlier run).
+- Size: 2×10^5 primaries per run, the plan's 4×10^6 in all. 5×10^5 per run instead if
+  a pilot (own seed, not part of the reference) projects at most 55 core-h in total
+  for that. The size is chosen on cost alone, before the runs.
+- `--upgoing` is added if the pilot shows that it costs less than 10% more.
+- Tallies used: `s` (each of the twelve azimuthal copies of a primary with its own
+  cutoff verdict) and `n` (no cutoff, copy 0), in the flux measure, in the cap of 10°
+  around the site.
+
+Statistics: `gates/c2_stats.py`, committed with this text. The same functions serve
+the reference, the count thresholds and the solver.
+- K_MC = `s`(cell) / (Σ_az `n` / 12).
+- σ of any statistic: delete-one-run jackknife of that statistic over the twenty runs.
+
+Refinement of the plan's wording, made here before any run. The plan gates "F", the
+table factor `s/t`. Two reasons against that, both from C1. The Monte Carlo's `t` is not
+what the solver's straight-ahead limit computes (G1.3). And an absolute comparison
+carries the 1.8% level and the full sampling error of the cascades. The cutoff factor K
+isolates what C2 adds. In the Monte Carlo its numerator and its denominator come from
+the same showers, so most of the sampling error cancels. Measured on the field-free
+reference of C1 with the azimuth kept, where K is 1 by construction: K scatters over
+the 4800 cells with an rms of 1.25% at 10^7 primaries and 2.1% at 4×10^6, against 1 to
+10% for the flux of one azimuth cell at 10^7. With the cutoff the cancellation is
+weaker; the jackknife measures what is left.
+
+Solver, like for like:
+- kernel set `kernels/mc_close/ks_mc_pool2000_L32_losson.npz` (sha256 beginning
+  `32b4215d5bf0de6d`);
+- initial condition of the reference run: the nucleon fluxes of each nucleus group
+  (`tools/mc3d/primaries.py`, `GSFG:GH`), kinetic energy per nucleon from 1 to 3162 GeV,
+  superposition, rigidity R = (A/Z) p (`cutoff.rigidity_gv`);
+- transmission of a primary line from `tools/mc3d/cutoff.py` with its defaults (IGRF-14
+  at 2020-01-01, injection sphere at 100 km, re-entry rule at that sphere), at the state
+  where the line enters the injection sphere, as the Monte Carlo tests each copy;
+- Earth radius 6371 km;
+- flux averaged over the 10° cap, each ground point with its own local frame, and over
+  each cell;
+- Φ_0 from the same assembly with the transmission set to 1 (the solve of G2.1).
+
+Parts:
+- **(a) Cutoff factor per cell (gated).** |K_solver − K_MC| ≤ max(0.03 K_MC, 2σ) in at
+  least N_a of the cells counted. A cell is counted if `s` is filled in at least half
+  of the runs; the others are listed.
+- **(b) East-West (gated).** Per energy band and cos Z row, the four species summed:
+  a_c = Σ Φ_cut cos(az) / Σ Φ_cut and a_s = Σ Φ_cut sin(az) / Σ Φ_cut over the twelve
+  azimuth bins, az at the bin centres. Both within max(0.01, 2σ) of the Monte Carlo's,
+  in at least N_b of the 100 pairs of band and row. The floor of 0.01 is an addition to
+  the plan's "within 2σ_MC"; it is a 2% error of the modulation, of the size of the 3%
+  of (a).
+- **(c) Horizontal over vertical (gated).** Per energy band: H = K(cos Z 0 to 0.2) /
+  K(cos Z 0.8 to 1), each K from the sums over the species, the azimuth and the two
+  rows. Within max(2%, 2σ) of the Monte Carlo's in at least N_c of the 10 bands.
+
+N_a, N_b and N_c are the counts that an exactly right solver reaches or exceeds in 95%
+of the cases. They are computed from the reference alone by `gates/null_count_c2.py`
+(committed with this text, before the reference exists): the larger of two null models,
+independent Gaussian errors of size σ and resampling of the runs, as in the closing
+cycle of C1. The three numbers are written here as a dated entry before any solver
+output with the cutoff is compared with a tally. The count of (a) is also reported
+against 95% of the cells counted, the plan's wording.
+
+What the choice costs. With three gated parts at 95% each, an exactly right solver
+fails at least one of them in up to 14% of the cases. Where the two null models
+differ, taking the larger number makes a right solver fail that part more often than
+5% if resampling is the truer model. Both numbers of each part are reported.
+
+Reported, not gated:
+- **(d) Absolute.** r = Φ_cut,solver / `s` per cell, and its mean per species and band
+  (expected level: about +1.8% above 0.4 GeV).
+- **(e) Level of K per band**, the species, the zenith and the azimuth summed, solver
+  against Monte Carlo. A band outside max(2%, 2σ) triggers one diagnosis cycle before
+  decision point 2.
+- **(f) Plan wording.** Solver 3D with the cutoff over its own straight-ahead limit with
+  no cutoff, against `s/t`, with the caveat of G1.3.
+- **(g) Smaller cap.** (a) to (c) for the cap of 5°.
+- **(h) Up-going rows near the horizon**, if the reference has the tallies `us` and
+  `un` and the assembly covers the far side: (a) for cos Z from −0.2 to 0.
+
+**G2.4 Homogeneity (gated).** Halving the spacing of the location grid, and moving the
+reference altitude at which a line of sight is attached to a location, each move no
+cell of Φ_cut of G2.3 (cap of 10°) by more than 0.5%. The two variations (the spacings,
+the altitudes) are fixed here as a dated entry once `DESIGN.md` names the location grid
+and the reference altitude, before any C2 solve with the cutoff.
+
+**G2.5 Numerical convergence with the azimuth (gated; an addition to the plan).** At
+one location, the grid location nearest the site, with the cutoff, on the ground flux
+of that location in the cells of G2.3:
+- (a) doubling, one at a time, the φ nodes (or azimuthal modes), the μ grid and the
+  Legendre order L moves no cell by more than 0.5%;
+- (b) the cutoff sky rotated by 30° about the vertical gives the flux moved by one
+  azimuth bin, every cell within 0.5%;
+- (c) the same-bin sweep residual is below 1e-4 in every energy bin.
+
+**G2.6 Cost (reported, no threshold).** One location solve with the cutoff, and the full
+set of solves of G2.3, in core-minutes and GB (`/usr/bin/time -v`, pinned cores). The
+first measurement goes to the PI before the solves of G2.3, with what it projects for
+G2.4 and for the global grid of C5.
+
+**Decision point 2.** After C2 the manager reports to the PI, who decides on C3. The
+manager's recommendation is fixed in advance: stop the phase if, after one diagnosis
+cycle, G2.3(a) fails, or if G2.4 does not converge on a finer location grid (the plan's
+stop rule). Compute: the plan's about 100 core-h. What goes materially beyond is brought
+to the PI before it is spent.
 
 ## Results log
 
