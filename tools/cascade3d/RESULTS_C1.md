@@ -96,7 +96,11 @@ configuration and code state: `c1/cycle2b/g12/C_base.npz` (same file as
 
 ## 2. Changes after the freeze
 
-None.
+None before the gates of section 4 ran.
+
+After them, on 2026-11-20, the PI authorised one closing cycle. Its two changes and the
+second freeze are in section 5; the gates re-run in full on it follow in section 6. Sections 1, 3
+and 4 stay as written: they describe the first frozen state.
 
 ## 3. Found after the freeze, nothing changed
 
@@ -140,3 +144,112 @@ solver's bin 1.26 to 1.58 GeV, which the kernel set gives one rate; a diagnostic
 with the interacting fraction of that bin (0.54 to 0.60) brings the level to within 1%
 in the three lowest bands. The +1 to +2% above 0.4 GeV is not explained. Nothing was
 changed in the frozen state, and the verdicts above stand as written.
+
+## 5. C1 closing cycle: second freeze (rule 4 of `GATES.md`)
+
+Frozen 2026-11-20 by the manager, after G1.0 to G1.2 were re-run in full on the changed
+state and before any solve on the changed kernel sets was compared with a Monte Carlo
+tally. Decision of the PI of 2026-11-20 and what was fixed before the runs: `GATES.md`,
+"C1 closing cycle".
+
+**Code state: commit `ab8bda740f0e6508331735854fd2439bcc1511a1` of branch
+`phase3-cascade3d`.** G1.3 to G1.5 are re-run in full on this state.
+
+### The two changes, with their reasons
+
+1. **Solver, commit `1e5d2d8`.** `solver._interp_log` bounds the log-cubic value by the
+   smallest and the largest of the four stencil values where these span more than a
+   factor 1e3. Reason: section 3, first item (the straight-ahead solve had no valid
+   number in the row cos Z 0 to 0.1). The diff is the one proposed on 2026-11-19,
+   unchanged, plus a unit test.
+2. **Kernel sets, commit `ab8bda7`.** The Monte Carlo-matched sets treat the turn-on of
+   the nucleon cross section inside the bin of 1.26 to 1.58 GeV (rule M3 of
+   `kernelset_mc.py`). Reason: section 3, second item. The rule was fixed in the
+   builder's brief before any set was built (`c1/close/K_BRIEF.md`), from the Monte
+   Carlo's interaction-length function and table: for protons and neutrons the sources
+   into that bin are multiplied by the fraction that interacts over 2000 g/cm2
+   (primaries 0.602 and 0.594; secondaries 0.605 and 0.607, weight T^-g with g 0.91 and
+   0.87), and the bin's rate is that of its interacting population (9.46e-3 and
+   9.62e-3 cm2/g in place of 1.080e-2 and 1.101e-2). 2000 g/cm2 is not adjusted.
+   Nothing else in the sets changes: against each predecessor only `phi_top` (2
+   entries), `inv_lambda` (2 entries) and the rows 17 of the 26 channels into p and n
+   differ, by these factors (builder's report `c1/close/WP_K1_REPORT.md`; manager's own
+   comparison and quadrature `c1/close/manager/check_k1.txt`).
+
+Everything of section 1 stays as frozen on 2026-11-19: geometry and transport, cell
+averages, reference. The gate scripts changed in the paths of the kernel sets
+(`g1_2.py` part C, `g1_5.py`) and `g1_3.py` in the count option of the amended G1.3(a)
+(`--count-min 373`; without it the script reproduces the result of 2026-11-19 from the
+stored cells).
+
+### Kernel sets (`/home/pigrange/mc3d_work/runs/native3d/kernels/mc_close/`)
+
+| Use | File | sha256 (first 16) | Predecessor |
+|---|---|---|---|
+| G1.3(a), (b), (d); G1.5; G1.2 C | `ks_mc_pool2000_L32_losson.npz` | `32b4215d5bf0de6d` | `40c721af020961c1` |
+| G1.3(c) | `ks_mc_fresh1e5_L32_losson.npz` | `dcb4455805e9164a` | `700ca7d557d270ec` |
+| G1.4, first half | `ks_mc_fresh1e5_h0_L32_losson.npz` | `dc46a30ecc401927` | `80cd8d39f05623a0` |
+| G1.4, second half | `ks_mc_fresh1e5_h1_L32_losson.npz` | `eafe25654d7b2902` | `b807516d1813ce56` |
+| G1.2 C, L doubled | `ks_mc_pool2000_L64_losson.npz` | `24b2f161303522fc` | `ecfb53df4840c94b` |
+| G1.2 C, diagnostic | `ks_mc_pool2000_L16_losson.npz` | `17d8691224e6d2be` | `6e3cee950c360991` |
+
+Full hashes: `c1/close/kbuild/k1/sha256_mc_close.txt`. The sets of 2026-11-19 are
+untouched (`kernels/mc/`, `c1/cycle2/kernels/`); `build(turn_on=False)` reproduces them
+array by array.
+
+### What the kernel change does, without any tally
+
+- Probability that a nucleon of the bin interacts over X g/cm2, set against the direct
+  integration of the Monte Carlo's rule (the check fixed in `GATES.md`): exact at 2000
+  g/cm2; +4.2%, +6.4%, +6.4%, +3.2% at 100, 200, 500, 1030 g/cm2; -4.1% and -7.0% at
+  5000 and 10 000 g/cm2 (protons, primary weight; neutrons and the secondary weight
+  within 0.2 points of these). The sets of 2026-11-19 were +55 to +87% high. One
+  fraction per bin cannot follow the depth; this residual is carried into G1.3.
+- Straight-ahead solve, new set over old, four species, cos Z 0.1 to 1: -4.71%, -2.89%,
+  -1.13%, -0.23%, -0.02% in the five bands from 0.10 to 1 GeV, nothing above.
+
+Reported by the builder and not treated (`WP_K1_REPORT.md`, section 7): every other
+projectile has one such bin (antinucleons 17, pions 14, kaons 15, Lambda 18), and the
+Monte Carlo serves part of the pion bin 18 and of the kaon bin 17 that the sets leave
+empty. Estimated on variants of the set, each moves no band by more than 0.03% and no
+cell by more than 0.06%.
+
+### Who had seen what at this freeze
+
+The comparison is not blind any more: the manager and the agent of section 4 saw the
+solver next to the reference on 2026-11-19. The builder of the kernel sets opened no
+Monte Carlo flux tally (report); the rule, its depth and its check were fixed before
+the sets existed. The solver change is the diff proposed before the PI's decision. No
+solve on the changed kernel sets was compared with a tally before this freeze; the
+statistic and the wording of the candidate test are fixed in `GATES.md`.
+
+The variant sets of the candidate test were built and solved before this freeze
+(`c1/close/WP_K2_REPORT.md`). They were compared with the base solve only, by the builder
+and by the manager (`c1/close/manager/k2check/CHECK.txt`).
+
+### Status of the gates at this freeze
+
+| Gate | Verdict | Where |
+|---|---|---|
+| G1.0 | PASS | `c1/close/gates/G1.0.md` |
+| G1.1 | **FAIL**, with the numbers of 2026-11-19 (ground muons: +2.035% at the vertical, 0.141 GeV, loss on, against 2%; +101% at cos Z 0.05, 0.112 GeV, loss off, against 0.3%) | `c1/close/gates/G1.1.md` |
+| G1.2 | **FAIL**. Parts A and B: the numbers of 2026-11-19 (A fails in the loss-off muon cell at cos Z 0.05, 0.112 GeV; B is inside). Part C, on the new kernel sets: ground muons at cos Z 0.05 move by up to 3.2% (line family), 2.3% (L), 1.1% (ray sampling) and 0.7% (levels) against 0.5%; the G1.3 cells move by at most 0.16% | `c1/close/gates/G1.2.md` |
+
+G1.0, G1.1 and G1.2 parts A and B ran on commit `1e5d2d8`. From there to the frozen
+commit the diff touches `kernelset_mc.py` and its test, `gates/g1_2.py` (paths of part
+C), `gates/g1_3.py` and its test, `gates/g1_5.py` (path) and `GATES.md`; none of them
+is imported by the solves of those gates (they use `kernelset.py`, the MCEq and the
+synthetic kernels). G1.2 part C ran on the frozen commit. Unit tests of
+`tools/cascade3d` on the frozen commit: 116 passed (`c1/close/logs/pytest_ab8bda7.log`).
+
+No change of this cycle addresses the failures of G1.1 and G1.2 (ground muons).
+
+### Command of the G1.3(a) solve
+
+```
+taskset -c <4 cores> $PY tools/cascade3d/gates/run_solve.py MC losson --r-earth 6371 \
+    --ks $N3/kernels/mc_close/ks_mc_pool2000_L32_losson.npz --out <file.npz>
+```
+
+`--straight` added for G1.3(d). An existing run of exactly this configuration and code
+state: `c1/close/g12/C_base.npz`.

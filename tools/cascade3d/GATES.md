@@ -628,6 +628,55 @@ Result files are under `/home/pigrange/mc3d_work/runs/native3d/` (`c0/gates/`, `
   within noise. The row cos Z 0 to 0.1 is bounded only at 3 to 11%, and the field-on and
   up-going cases are not covered by the pair. The first run was not compared with the
   solver.
+- **C1 closing cycle, before the comparison (2026-11-20, manager; outputs in
+  `c1/close/`).**
+  - Change 1, commit `1e5d2d8`: the bound in `solver._interp_log`, as proposed, with a
+    unit test.
+  - Change 2, commit `ab8bda7`: rule M3 of `kernelset_mc.py` and six new sets in
+    `kernels/mc_close/` (hashes in `RESULTS_C1.md`, section 5). Built by an agent that
+    opened no tally, from a brief that fixed the rule before any set existed
+    (`c1/close/K_BRIEF.md`, report `WP_K1_REPORT.md`). For protons and neutrons in the
+    bin of 1.26 to 1.58 GeV: sources into the bin times the fraction that interacts over
+    2000 g/cm2 (primaries 0.602, 0.594; secondaries 0.605, 0.607), rate 9.46e-3 and
+    9.62e-3 cm2/g. Manager's check (`c1/close/manager/check_k1.txt`): each set differs
+    from its predecessor in those entries only, by those factors; own quadrature agrees
+    to 4e-11.
+  - The check fixed above, set against direct integration of the Monte Carlo's rule,
+    probability to interact over X: exact at 2000 g/cm2; +4.2%, +6.4%, +6.4%, +3.2% at
+    100, 200, 500, 1030 g/cm2; -4.1%, -7.0% at 5000 and 10 000 g/cm2 (the old sets:
+    +55 to +87%). One fraction per bin does not follow the depth.
+  - Straight-ahead solve, new set over old, no tally: -4.71%, -2.89%, -1.13%, -0.23%,
+    -0.02% in the bands from 0.10 to 1 GeV, nothing above.
+  - Not treated, reported by the builder: the same kind of bin for the other
+    projectiles and the part of two bins that the Monte Carlo serves and the sets leave
+    empty; at most 0.03% per band and 0.06% per cell on variants of the set.
+  - **G1.0 PASS** (`c1/close/gates/G1.0.md`).
+  - **G1.1 FAIL**, with the numbers of 2026-11-19: +2.035% (mu, vertical, 0.141 GeV,
+    loss on) and +101% (mu, cos Z 0.05, 0.112 GeV, loss off).
+  - **G1.2 FAIL.** Parts A and B as on 2026-11-19 (A fails in the loss-off muon cell at
+    cos Z 0.05, B is inside). Part C on the new sets: G1.1 muon cells at cos Z 0.05 move
+    by up to 3.2% (family), 2.3% (L), 1.1% (sampling), 0.7% (levels); the G1.3 cells by
+    at most 0.16%. Base run of part C: 14.0 core-minutes, 5.1 GB.
+  - G1.0, G1.1 and G1.2 A and B ran on `1e5d2d8`, G1.2 C on `ab8bda7`; nothing that
+    those solves import differs between the two. Unit tests on `ab8bda7`: 116 passed.
+  - Variants of the candidate test, built and solved before the freeze, compared with
+    the base solve only (`c1/close/WP_K2_REPORT.md`): (C) changes the straight-ahead
+    flux by -1.2 to -2.5% per band from 0.4 to 10 GeV and by +0.3% or less below; mean
+    of the seven bands (C) -1.89%, (A) -3.21%, (B) -0.02%. With the parent at the bin
+    centre the builder's assembly reproduces the base set to 7e-16. Sixteen points per
+    bin against eight: at most 0.12% in a cell.
+  - The builder's stop condition "a variant changes the flux by more than 5%" fired: two
+    cells of (A) at 5.2%, and the strata near their kinematic end (up to 132% where the
+    stratum makes 0.04% of the flux). Read by the manager as binning, not as an error,
+    for the reasons above.
+  - Manager's check of the variants (`c1/close/manager/k2check/CHECK.txt`). The
+    residual of 8.3e-3 that the builder reported for the stratum of 10 to 31.6 GeV is in
+    the stratum's top bin alone; twelve sweeps in place of six bring it to 1e-14 and
+    change no cell beyond 3e-13. The builder changed the slope of (C) in the turn-on bin
+    once, before any (C) solve had finished; its first version differs by at most 0.03%
+    in a band and by 0.002 points in the mean above 0.4 GeV.
+  - Second freeze written to `RESULTS_C1.md`, section 5. No solve on the changed sets
+    had been compared with a tally.
 
 ## Decisions of the PI
 
