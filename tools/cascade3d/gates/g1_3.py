@@ -9,7 +9,9 @@ Evaluation fixed before any Monte Carlo number was seen (WP 1.4, phase 1; brief
 - (a) r = Phi_solver / s per cell; rn = r / mean_cosZ(r) (arithmetic mean over the ten
   cos Z bins of the same species and band: equal solid angles).  sigma of a cell =
   ``s_err_task / s`` of that cell (the error of the normalising mean is not added).
-  A cell is inside if |rn - 1| <= max(2%, 2 sigma).  Count: at least 95% of the cells.
+  A cell is inside if |rn - 1| <= max(2%, 2 sigma).  Count: at least 95% of the cells
+  (``--count-min N`` replaces that number by N; the C1 closing cycle uses 373,
+  ``GATES.md``, "C1 closing cycle"; the original count is reported next to it).
   Row mean: arithmetic mean of rn over the four species and the bands with upper edge
   <= 1 GeV (20 cells) of one cos Z bin; its sigma = std(ddof=1) over the ten runs of
   the same statistic computed with ``s_runs[k]`` in place of ``s`` (each run normalised
@@ -32,7 +34,8 @@ Evaluation fixed before any Monte Carlo number was seen (WP 1.4, phase 1; brief
 Usage::
 
     $PY tools/cascade3d/gates/g1_3.py --ref REF.npz --pool POOL.npz \
-        --fresh FRESH.npz --straight STRAIGHT.npz [--outdir DIR] [--name G1.3]
+        --fresh FRESH.npz --straight STRAIGHT.npz [--outdir DIR] [--name G1.3] \
+        [--count-min N]
 
 The solver files are ``run_solve.py --out`` files (keys ``cell_<species>``).
 Exit status 0 = PASS, 1 = FAIL, 2 = input error.
@@ -79,6 +82,13 @@ engine's E_off v4 is about 8% high there) and the band 0.10 to 0.16 GeV (engine 
 (Corrections of 2026-11-19: sigma_MC of a cell is the chunk-spread estimate `*_err_task`;
 for the row means sigma is the spread over the ten runs of the row mean itself, divided by
 sqrt(10).)"""
+
+
+AMEND = """**G1.3(a) as amended for the C1 closing cycle** (`GATES.md`, section
+"C1 closing cycle"; written 2026-11-20 before the run, with knowledge of the first
+result, 377). Pass: at least {n} of the {ncell} cells within max(2%, 2 sigma_MC) of 1;
+and the row-mean condition as written. The count is also reported against the
+{norig} of the original text."""
 
 
 class InputError(Exception):
@@ -160,8 +170,12 @@ def row_means(rn, ib):
     return np.nanmean(rn[:, ib, :], axis=(0, 1))
 
 
-def part_a(sol, ref):
-    """Gate (a) and the numbers of (b) for solver cells ``sol`` (4, nb, nz)."""
+def part_a(sol, ref, n_min=None):
+    """Gate (a) and the numbers of (b) for solver cells ``sol`` (4, nb, nz).
+
+    ``n_min``: number of cells needed inside; None = 95% of the cells (the
+    original text).
+    """
     s = ref["s"][CAP]
     err = ref["s_err_task"][CAP]
     r = _ratio(sol, s)
@@ -174,7 +188,9 @@ def part_a(sol, ref):
     pull = (rn - 1.0) / sig
     n_cells = int(inside.size)
     n_in = int(inside.sum())
-    count_ok = n_in >= FRAC_MIN * n_cells - 1e-9
+    n_orig = int(np.ceil(FRAC_MIN * n_cells - 1e-9))
+    n_needed = n_orig if n_min is None else int(n_min)
+    count_ok = n_in >= n_needed
     ib = row_bands(ref["e_band_edges_GeV"])
     rows = row_means(rn, ib)
     runs = ref["s_runs"][:, CAP]
@@ -187,8 +203,8 @@ def part_a(sol, ref):
     trig = np.abs(rbar - 1.0) > TRIGGER_B
     return {"r": r, "rn": rn, "rbar": rbar, "sigma": sig, "tol": tol, "pull": pull,
             "inside": inside, "zero": zero, "n_cells": n_cells, "n_inside": n_in,
-            "n_needed": int(np.ceil(FRAC_MIN * n_cells - 1e-9)),
-            "count_ok": bool(count_ok),
+            "n_needed": n_needed, "count_ok": bool(count_ok),
+            "n_needed_original": n_orig, "count_ok_original": bool(n_in >= n_orig),
             "row_bands": ib, "rows": rows, "rows_runs": rows_k, "rows_sigma": rows_sig,
             "rows_tol": rows_tol, "rows_ok": rows_ok, "pass": ok,
             "b_trigger": trig, "b_any": bool(trig.any()), "n_runs": int(n_runs)}
@@ -336,7 +352,10 @@ def block_a(label, a, ref):
     L = [f"### {label}: zenith shape (a)", "",
          f"Cells inside max(2%, 2 sigma): **{a['n_inside']} of {a['n_cells']}** "
          f"(needed {a['n_needed']}); cells with s = 0: {int(a['zero'].sum())}; "
-         f"count criterion {'met' if a['count_ok'] else 'NOT met'}.", "",
+         f"count criterion {'met' if a['count_ok'] else 'NOT met'}."
+         + ("" if a["n_needed"] == a["n_needed_original"] else
+            f"  Against the {a['n_needed_original']} of the original text: "
+            f"{'met' if a['count_ok_original'] else 'NOT met'}."), "",
          f"Row means over the four species and the bands "
          f"{be[a['row_bands'][0]]:.3g}-{be[a['row_bands'][-1] + 1]:.3g} GeV "
          f"({4 * len(a['row_bands'])} cells), sigma from the {a['n_runs']} runs:", "",
@@ -385,10 +404,10 @@ def jsonable(x):
     return x
 
 
-def evaluate(ref, pool, fresh=None, straight=None):
-    res = {"a": part_a(pool, ref)}
+def evaluate(ref, pool, fresh=None, straight=None, n_min=None):
+    res = {"a": part_a(pool, ref, n_min)}
     if fresh is not None:
-        res["c"] = part_a(fresh, ref)
+        res["c"] = part_a(fresh, ref, n_min)
         res["c_minus_pool_rn"] = res["c"]["rn"] - res["a"]["rn"]
         res["c_over_pool_rbar"] = res["c"]["rbar"] / res["a"]["rbar"] - 1.0
     if straight is not None:
@@ -401,7 +420,11 @@ def evaluate(ref, pool, fresh=None, straight=None):
 def report(res, ref, args, inputs, cmd):
     a = res["a"]
     L = [f"# Gate {args.name}: three-dimensional transport against the Monte Carlo", "",
-         GATE, "", "## Inputs", ""]
+         GATE, ""]
+    if a["n_needed"] != a["n_needed_original"]:
+        L += [AMEND.format(n=a["n_needed"], ncell=a["n_cells"],
+                           norig=a["n_needed_original"]), ""]
+    L += ["## Inputs", ""]
     for k, (p, h) in inputs.items():
         L.append(f"- {k}: `{p}` (sha256 {h[:16]})")
     L += [f"- cap index {CAP} ({CAP_DEG:g} deg); n_primaries "
@@ -412,7 +435,10 @@ def report(res, ref, args, inputs, cmd):
             L.append(f"- `meta_{k}`: {v}")
         L.append("")
     L += [f"## Result of the gated part (a): **{'PASS' if a['pass'] else 'FAIL'}**", "",
-          f"- cells inside: {a['n_inside']} of {a['n_cells']} (needed {a['n_needed']})",
+          f"- cells inside: {a['n_inside']} of {a['n_cells']} (needed {a['n_needed']})"
+          + ("" if a["n_needed"] == a["n_needed_original"] else
+             f"; against the {a['n_needed_original']} of the original text: "
+             f"{'met' if a['count_ok_original'] else 'NOT met'}"),
           f"- rows inside: {int(a['rows_ok'].sum())} of {len(a['rows_ok'])}",
           f"- (b) trigger: {'YES' if a['b_any'] else 'no'} "
           f"(mean r - 1 from {np.min(a['rbar']) - 1:+.4f} to "
@@ -497,6 +523,8 @@ def main(argv=None):
     ap.add_argument("--outdir", default=os.path.join(
         os.environ.get("N3", "/home/pigrange/mc3d_work/runs/native3d"), "c1", "g13"))
     ap.add_argument("--name", default="G1.3")
+    ap.add_argument("--count-min", type=int, default=None,
+                    help="cells needed inside for (a); default 95%% of the cells")
     args = ap.parse_args(argv)
     try:
         ref = load_ref(args.ref)
@@ -506,7 +534,7 @@ def main(argv=None):
     except InputError as exc:
         print("INPUT ERROR:", exc, file=sys.stderr)
         return 2
-    res = evaluate(ref, pool, fresh, straight)
+    res = evaluate(ref, pool, fresh, straight, args.count_min)
     inputs = {"reference": (args.ref, sha(args.ref)),
               "pool2000 solve": (args.pool, sha(args.pool))}
     if args.fresh:

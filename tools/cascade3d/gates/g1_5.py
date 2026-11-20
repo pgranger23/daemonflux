@@ -26,7 +26,7 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 N3 = os.environ.get("N3", "/home/pigrange/mc3d_work/runs/native3d")
-KS = os.path.join(N3, "kernels", "mc", "ks_mc_pool2000_L32_losson.npz")
+KS = os.path.join(N3, "kernels", "mc_close", "ks_mc_pool2000_L32_losson.npz")
 CPU_MAX_MIN, MEM_MAX_GB = 10.0, 8.0
 GATE = ("**G1.5 Cost (gated).** One C1 solve, all species, measured: at most "
         "10 core-minutes and 8 GB.")

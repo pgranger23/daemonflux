@@ -186,8 +186,8 @@ def main(argv):
                       f"ratio - 1 = {m:+.3f} ({w[0]}, cos Z {w[1]:g}, {w[2]:.3g} GeV).",
                       ""]
     if "C" in parts:
-        ksd = os.path.join(N3, "kernels", "mc")
-        own = os.path.join(N3, "c1", "cycle2", "kernels")
+        ksd = os.path.join(N3, "kernels", "mc_close")
+        own = ksd
         base_args = ["MC", "losson", "--r-earth", "6371", "--ks",
                      os.path.join(ksd, "ks_mc_pool2000_L32_losson.npz")]
         varc = {"levels2": VARIANTS["levels2"], "family2": VARIANTS["family2"],

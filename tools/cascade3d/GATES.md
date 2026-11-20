@@ -198,6 +198,16 @@ in between. The strata and the variants (A) and (B) are reported next to it. A v
 that cannot be built within the budget of the cycle is reported as not built, and the
 candidate stays untested to that extent.
 
+Correction of 2026-11-20, made before any solve on the changed kernel sets was compared
+with a tally. The +1.74 +- 0.20% quoted above for the full spectrum was computed with
+nine of the ten runs; the three strata values are from all ten. The same statistic with
+the ten runs gives +1.52 +- 0.20% on the state of 2026-11-19
+(`c1/close/manager/level_stat.py`, which fixes the statistic: per band the flux summed
+over the four species and cos Z 0.1 to 1, solver over `t`; mean over the seven bands
+from 0.4 to 10 GeV weighted by the inverse variances, the bands taken as independent, so
+that its error is a lower limit). The wording does not depend on that number: it refers
+to the excess re-measured on the changed set.
+
 **After the cycle** the manager reports to the PI. The recommendation given before the
 cycle stands: stop the phase if G1.3(a) as amended fails, or if the level above 0.4 GeV
 is "not explained". Compute: about 15 core-h, no new Monte Carlo run.

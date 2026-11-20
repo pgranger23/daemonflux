@@ -142,6 +142,23 @@ def test_threshold_is_95_percent_of_cells():
         assert a["count_ok"] is ok, (n_out, a["n_inside"])
 
 
+def test_count_min_replaces_the_95_percent():
+    """Closing cycle of C1: the count needed is given, the original one is kept."""
+    sol = analytic_solver()
+    for n_out, ok in ((27, True), (28, False)):
+        D = np.ones_like(sol)
+        rows = np.random.default_rng(3).permutation(40)[:n_out]
+        for k, rw in enumerate(rows):
+            D[rw // 10, rw % 10, k % 10] = 1.15 if k % 2 else 0.85
+        a = G.part_a(sol, as_ref(make_ref(sol, D, sig_run=0.0003)), n_min=373)
+        assert a["n_inside"] == 400 - n_out
+        assert a["n_needed"] == 373 and a["n_needed_original"] == 380
+        assert a["count_ok"] is ok and a["count_ok_original"] is False
+    D = np.ones_like(sol)
+    a = G.part_a(sol, as_ref(make_ref(sol, D, sig_run=0.0003)), n_min=373)
+    assert a["count_ok"] and a["count_ok_original"]
+
+
 def test_row_sigma_from_runs_includes_correlation():
     sol = analytic_solver()
     ind = G.part_a(sol, as_ref(make_ref(sol, np.ones_like(sol), sig_run=0.01)))
