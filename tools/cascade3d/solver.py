@@ -138,11 +138,25 @@ _GL3_T = tuple(float(v) for v in 0.5 * (_GL3_X + 1.0))
 _GL3_W = tuple(float(v) for v in 0.5 * _GL3_WW)
 
 
+#: stencils spanning more than this (in ln) are bounded by their own range
+_LOG_SPAN_BOUND = 6.907755278982137   # ln(1e3)
+
+
 def _interp_log(vals, wl, wpre):
-    """Stencil interpolation: exp(sum wl ln v) if all v > 0, else sum wpre v."""
+    """Stencil interpolation: exp(sum wl ln v) if all v > 0, else sum wpre v.
+
+    Where the four stencil values span more than a factor 1e3, the log-cubic value
+    is bounded by their smallest and largest: there (solutions made only of
+    up-scatter, straight ahead on grazing lines) the unbounded cubic extrapolates by
+    decades per step and the march compounds it (diag_straight/REPORT.md).
+    Smooth spectra, including genuine maxima between bins, are left unbounded.
+    """
     pos = jnp.all(vals > 0, axis=-1)
     lv = jnp.log(jnp.where(vals > 0, vals, 1.0))
-    geo = jnp.exp(jnp.sum(wl * lv, axis=-1))
+    lg = jnp.sum(wl * lv, axis=-1)
+    lo, hi = jnp.min(lv, axis=-1), jnp.max(lv, axis=-1)
+    lg = jnp.where(hi - lo > _LOG_SPAN_BOUND, jnp.clip(lg, lo, hi), lg)
+    geo = jnp.exp(lg)
     lin = jnp.sum(wpre * vals, axis=-1)
     return jnp.where(pos, geo, lin)
 

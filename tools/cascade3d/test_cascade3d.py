@@ -304,3 +304,42 @@ def test_cell_table_analytic():
     i0 = int(np.argmin(np.abs(eb - 0.1)))
     ref = (E[i0:i0 + 2] ** -gam * w[i0:i0 + 2]).sum() / w[i0:i0 + 2].sum()
     assert abs(tb[0, -1] / (ref * ang[-1]) - 1) < 2e-3
+
+
+# ------------------------------------------------- energy stencil interpolation
+def test_interp_log_bound():
+    """`_interp_log` is the log-cubic value, bounded only on stencils over 1e3.
+
+    Smooth stencils (also one with a maximum between the nodes, where the cubic
+    exceeds every stencil value) keep the unbounded value; a stencil that spans more
+    than a factor 1e3 is bounded by its smallest and largest value; a stencil with a
+    zero takes the linear branch as before.
+    """
+    # cubic Lagrange weights on nodes -1, 0, 1, 2 at 0.5, and extrapolating at 2.6
+    def lagrange(t):
+        x = np.array([-1.0, 0.0, 1.0, 2.0])
+        return np.array([np.prod([(t - x[j]) / (x[i] - x[j])
+                                  for j in range(4) if j != i]) for i in range(4)])
+
+    w_in, w_out = lagrange(0.5), lagrange(2.6)
+    smooth = np.array([1.0, 3.0, 3.0, 1.0])            # maximum between the nodes
+    steep = np.array([1.0, 1e-2, 1e-9, 1e-30])         # spans 30 decades
+    edge = np.array([1.0, 0.3, 0.02, 1.01e-3])         # just under a factor 1e3
+    zero = np.array([1.0, 0.5, 0.0, 0.2])
+    for vals, w in [(smooth, w_in), (edge, w_in), (edge, w_out)]:
+        got = float(S._interp_log(vals[None], w[None], w[None])[0])
+        assert got == pytest.approx(np.exp(np.sum(w * np.log(vals))), rel=1e-13)
+    assert float(S._interp_log(smooth[None], w_in[None], w_in[None])[0]) > 3.0
+    for w in (w_in, w_out):
+        free = np.exp(np.sum(w * np.log(steep)))
+        got = float(S._interp_log(steep[None], w[None], w[None])[0])
+        assert steep.min() <= got <= steep.max()
+        if steep.min() <= free <= steep.max():
+            assert got == pytest.approx(free, rel=1e-13)
+    # the extrapolating weights leave the range of the steep stencil without the bound
+    free = np.exp(np.sum(w_out * np.log(steep)))
+    assert not steep.min() <= free <= steep.max()
+    assert float(S._interp_log(steep[None], w_out[None], w_out[None])[0]) in (
+        pytest.approx(steep.min(), rel=1e-13), pytest.approx(steep.max(), rel=1e-13))
+    got = float(S._interp_log(zero[None], w_in[None], w_in[None])[0])
+    assert got == pytest.approx(np.sum(w_in * zero), rel=1e-13)
