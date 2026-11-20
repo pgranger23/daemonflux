@@ -677,6 +677,95 @@ Result files are under `/home/pigrange/mc3d_work/runs/native3d/` (`c0/gates/`, `
     in a band and by 0.002 points in the mean above 0.4 GeV.
   - Second freeze written to `RESULTS_C1.md`, section 5. No solve on the changed sets
     had been compared with a tally.
+- **G1.3 to G1.5 on the second frozen state (2026-11-20; an agent that wrote neither the
+  solver nor the kernel sets; report `c1/close/WP_G13_REPORT.md`, results
+  `c1/close/g13/G1.3.md`, `G1.3.json`, `G1.4.md`, `g15/G1.5.md`).** The agent checked
+  before its runs: HEAD `b77b065`, clean tree, code of `tools/cascade3d` equal to
+  `ab8bda7` (the diff lists this file and `RESULTS_C1.md` only), the six kernel sets and
+  the reference by sha256. `gates/g1_3.py` ran as committed (sha256
+  `9cab9b3cc7d10773...`) with `--count-min 373`. Its pool solve is bit-identical to the
+  manager's `c1/close/g12/C_base.npz`. The manager recomputed the counts, the row means,
+  the levels and G1.4 from the stored cells with separate scripts
+  (`c1/close/manager/recheck_pool2000.txt`, `recheck_fresh1e5.txt`,
+  `recheck_g14_close.txt`): they agree. After the run the tree is clean and the kernel
+  sets verify against their hashes.
+  - **G1.3(a) as amended: PASS.** 380 of the 400 cells are within max(2%, 2 sigma_MC)
+    of 1; 373 are needed. The 380 of the original text is reached with no margin. The
+    ten row means below 1 GeV differ from 1 by -0.70% to +0.45%, each inside
+    max(1%, 2 sigma). On the state of 2026-11-19 the count was 377. Cells outside, by
+    species (nu_e, anti-nu_e, nu_mu, anti-nu_mu): 2, 10, 3, 5; by band from 0.10 GeV up:
+    2, 2, 2, 2, 0, 1, 1, 7, 1, 2; by cos Z row from the horizon up: 2, 1, 2, 1, 1, 5, 3,
+    2, 1, 2. The net change against 2026-11-19 is in the two bands below 0.25 GeV.
+  - Reported with (a), not gated (`c1/close/manager/diag_a_pool2000.txt`): chi2 of the
+    400 shape pulls 466.3 (489.5 on 2026-11-19). An exactly right solver gives a larger
+    chi2 in 12% of the cases with Gaussian errors and in 33% when the ten runs are
+    resampled, and it reaches 380 cells or more in about six cases of ten. Shape
+    difference common to the ten runs, noise subtracted: not different from zero in any
+    block; 2 sigma bounds 0.98% below 1 GeV at cos Z 0.1 to 1, 3.1% below 1 GeV in the
+    row cos Z 0 to 0.1, 5.9% from 1 to 10 GeV. The agent's report gives 467.5 for the
+    chi2 of the pulls; that number is the agreement of the two caps of the reference
+    (`G1.3.md`, "Not gates"), the solver's is 466.3.
+  - **G1.3(b): the trigger fired.** The mean of r - 1 per species and band is above 5%
+    in 3 of the 40: anti-nu_e at 2.51 to 3.98 GeV, +7.4 +- 4.3%; nu_e at 6.31 to 10 GeV,
+    +10.9 +- 8.9%; anti-nu_mu at 6.31 to 10 GeV, +6.7 +- 2.7%. These are the values of
+    2026-11-19: the changes of this cycle do not act above 1 GeV. The fourth of
+    2026-11-19, nu_e at 0.10 to 0.16 GeV, is now +0.45 +- 0.47%. The four species
+    together, per band from 0.10 GeV up: +0.26, +0.20, -0.19, +0.62, +1.09, +2.66,
+    +1.79, +3.72, +1.54, +4.53%. In the anti-nu_e mean the cell of the row cos Z 0 to
+    0.1 stands at +57% (error from the ten runs 13%); the nine other rows give
+    +1.8%. No diagnosis was
+    started: the one cycle that the gate text gives was used on 2026-11-19, and this
+    closing cycle is what the PI added to it.
+  - The level in the statistic of `level_stat.py`, 3D solve over `s`
+    (`c1/close/manager/level3d_close.txt`; computed by the manager after the run): bands
+    below 0.4 GeV +0.22 +- 0.20%, +0.17 +- 0.31%, -0.07 +- 0.23% (2026-11-19: +4.75,
+    +2.94, +0.98%); mean of the bands from 0.4 to 10 GeV +1.77 +- 0.18% (+1.83 +-
+    0.18%). With the 10^5-event kernels +1.23 +- 0.18%.
+  - G1.3(c), reported: with the 10^5-event kernels 382 of 400, ten rows of ten, the
+    trigger fires as in (b); normalised shape within 0.37% of the pool kernels.
+  - G1.3(d), reported: 372 of 400 inside the tolerance of (a) (349 on 2026-11-19, 373
+    there with the bound in a diagnostic copy). The row cos Z 0 to 0.1 holds valid
+    numbers: q from 0.63 to 1.42. With the fluxes summed over the four species (manager,
+    after the run, not fixed in advance; `c1/close/manager/ratio_d_close.txt`):
+    (3D / straight-ahead) over s/t differs from 1 by -0.13 to +0.56% per band at cos Z
+    0.1 to 1 (errors 0.2 to 0.8%); in the row cos Z 0 to 0.1 by -1.7 +- 2.9% below 1 GeV
+    and -5 +- 11% above. By zenith below 1 GeV: -0.9 +- 0.8% (cos Z 0.1 to 0.3), +0.76
+    +- 0.29% (0.3 to 0.6), +0.34 +- 0.14% (0.6 to 1).
+  - **G1.4 PASS**, with the margin of 2026-11-19: 400 of 400 cells within 0.5%, largest
+    0.4788% (anti-nu_e, 2.51 to 3.98 GeV).
+  - **G1.5 FAIL.** Cold solve on four cores: 12.48 core-minutes (user 688 s, system
+    61 s; 10 allowed), peak memory 5.48 GB (8 allowed), 4 min 20 s elapsed. Load average
+    of the node 1.8 before, 4.5 after. A second solve in a warm process: 12.09
+    core-minutes (not the gate). 2026-11-19: 13.23. No work was done on the cost.
+  - The five solves: 710 to 864 CPU seconds each, 4.8 to 5.4 GB, largest sweep residual
+    2.6e-5 (second half-sample set; the others 3e-8 or less); every cell finite and
+    positive. Compute of the agent: about 1.75 core-h.
+- **Test of the candidate for the level above 0.4 GeV (2026-11-20, manager; run after
+  the freeze commit; `c1/close/manager/candidate_cmp.py`, output `candidate_cmp.txt`,
+  per species `candidate_species.txt`).** Straight-ahead solve over `t`, statistic of
+  `level_stat.py`, ten runs.
+  - Changed set (parent at the bin centre): +1.44 +- 0.20% (2026-11-19: +1.52 +-
+    0.20%).
+  - Variant (C): -0.18 +- 0.20%. By the wording fixed in advance the level is
+    **"explained"**: the excess left is within 0.6% of zero.
+  - Variant (A), slope 2.7: -1.73 +- 0.19%. Variant (B), slope 1: +1.16 +- 0.20%.
+  - Strata, changed set and (C): 3.16 to 10 GeV per nucleon +2.14 +- 0.55% and +0.57 +-
+    0.54%; 10 to 31.6: +1.48 +- 0.37% and +0.58 +- 0.37%; 31.6 to 100: +0.88 +- 0.48%
+    and +0.07 +- 0.48%.
+  - Per species, changed set and (C): nu_e +0.96 +- 0.37% and -0.77 +- 0.36%; anti-nu_e
+    +1.64 +- 0.43% and -0.34 +- 0.42%; nu_mu +1.48 +- 0.29% and +0.11 +- 0.28%;
+    anti-nu_mu +1.59 +- 0.33% and -0.02 +- 0.33%.
+  - Bands below 0.4 GeV on the changed set: -0.04 +- 0.18%, +0.17 +- 0.24%, -0.48 +-
+    0.23% (2026-11-19: +4.91, +3.14, +0.66%). The turn-on rule removed that offset.
+  - Limits. The test is straight-ahead: no 3D solve of a variant exists. The errors take
+    the bands as independent and are lower limits. The outcome depends on the slope: (A)
+    over-corrects by more than the excess and (B) leaves four fifths of it, so
+    "explained" rests on the slopes that the set itself gives. The sets of the gates
+    keep the parent at the bin centre and carry the excess (3D over `s`: +1.77 +-
+    0.18%).
+- **Compute of the closing cycle:** about 10 core-h of the 15 (kernel sets and variants
+  about 3, G1.0 to G1.2 and unit tests about 5, G1.3 to G1.5 1.75, checks 0.3). No
+  Monte Carlo was run.
 
 ## Decisions of the PI
 

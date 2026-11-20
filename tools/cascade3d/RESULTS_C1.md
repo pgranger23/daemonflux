@@ -253,3 +253,45 @@ taskset -c <4 cores> $PY tools/cascade3d/gates/run_solve.py MC losson --r-earth 
 
 `--straight` added for G1.3(d). An existing run of exactly this configuration and code
 state: `c1/close/g12/C_base.npz`.
+
+## 6. C1 closing cycle: gates on the second frozen state
+
+G1.3 to G1.5 were run on 2026-11-20 by an agent that wrote neither the solver nor the
+kernel sets, on the state of section 5, and recomputed by the manager from the stored
+cells. G1.0 to G1.2: section 5. Details: `GATES.md`, Results log. The comparison was not
+blind, and the count of G1.3(a) was amended with knowledge of the first result
+(`GATES.md`, "C1 closing cycle").
+
+| Gate | Verdict | Numbers | First frozen state | Where |
+|---|---|---|---|---|
+| G1.0 | PASS | | PASS | `c1/close/gates/G1.0.md` |
+| G1.1 | **FAIL** | ground muons: +2.035% against 2% (vertical, 0.141 GeV, loss on); +101% against 0.3% (cos Z 0.05, 0.112 GeV, loss off) | the same | `c1/close/gates/G1.1.md` |
+| G1.2 | **FAIL** | ground muons at cos Z 0.05 move by up to 3.2% under a doubling (0.5% allowed); the G1.3 cells by at most 0.16% | the same | `c1/close/gates/G1.2.md` |
+| G1.3(a), amended | PASS | 380 of 400 cells within max(2%, 2 sigma_MC); 373 needed (380 in the original text). Row means below 1 GeV -0.70% to +0.45%, all inside | FAIL, 377 | `c1/close/g13/G1.3.md` |
+| G1.3(b) | trigger fired | level above 5% in 3 of 40 (species, band), all above 2.5 GeV, errors 2.7 to 8.9% | 4 of 40 | `c1/close/g13/G1.3.md` |
+| G1.3(c) | reported | 10^5-event kernels: 382 of 400; shape within 0.37% of the pool kernels | 379 | `c1/close/g13/G1.3.md` |
+| G1.3(d) | reported | 372 of 400; the row cos Z 0 to 0.1 holds valid numbers | 349, row not valid | `c1/close/g13/G1.3.md` |
+| G1.4 | PASS | half-sample sets within 0.479% (0.5% allowed) | the same | `c1/close/g13/G1.4.md` |
+| G1.5 | **FAIL** | 12.48 core-minutes (10 allowed), 5.48 GB (8 allowed) | FAIL, 13.23 | `c1/close/g13/g15/G1.5.md` |
+
+What the cycle changed and what it did not:
+
+- The offset below 0.4 GeV is gone. Solver over Monte Carlo, fluxes summed over the four
+  species and cos Z 0.1 to 1, three lowest bands: +0.2%, +0.2%, -0.1% (errors 0.2 to
+  0.3%); on the first state +4.8%, +2.9%, +1.0%.
+- The level from 0.4 to 10 GeV is still in the sets of the gates: +1.77 +- 0.18% (3D
+  over `s`). The candidate test attributes it to the parent being put at the bin centre
+  in the kernels. Straight-ahead over `t`: +1.44 +- 0.20% with the gate set, -0.18 +-
+  0.20% with the parent spread over the bin with the slope that the set itself gives
+  (variant C); "explained" by the wording fixed before the test. No 3D solve with such a
+  set exists, the outcome depends on the slope, and the kernel sets of the gates were
+  not changed.
+- Zenith shape: no difference between solver and Monte Carlo is seen. What this
+  reference excludes at 2 sigma: 1.0% rms below 1 GeV for cos Z 0.1 to 1, 3.1% in the row
+  cos Z 0 to 0.1, 5.9% from 1 to 10 GeV.
+- The straight-ahead solve is valid in the row cos Z 0 to 0.1 (change 1).
+- Ground muons (G1.1, G1.2) and the cost (G1.5) are where they were.
+
+Open at decision point 1, for the PI: C2; G1.1, which the gate text names as stopping
+the phase and which the PI's "Continue" of 2026-11-19 left on record as failed while C1
+ran on; G1.5; the muon clock in the product table; the form of G2.3.
