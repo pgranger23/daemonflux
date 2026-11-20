@@ -2,6 +2,7 @@
 
 v0.2, 2026-11-18. **Approved by the PI on 2026-11-18**: C0 and C1 are authorised; decision
 point 1 (after C1) and every later stage need a PI decision. Pre-registered gates: `GATES.md`.
+**C2 authorised by the PI on 2026-11-20** (section 8); C3 and later are not.
 v0.2: solver core in JAX at the PI's suggestion (sections 3, C1, C4, 7, 8).
 Background and equations: `THEORY_NOTE.md` in this directory (route B, staged as C).
 Tags: **[m]** measured or recorded in this project, **[e]** my estimate, **[d]** design choice.
@@ -288,3 +289,11 @@ A failed gate is reported as failed. No gate is redefined after its run without 
    `/home/pigrange/mc3d_work/pylib_jax`: **approved**.
 4. Contact with the MCEq / daemonflux authors: **no contact**.
 5. GPU: lxplus GPUs may be used if needed (relevant for the global map in C5).
+
+Later decisions (full record: `GATES.md`, "Decisions of the PI"):
+
+- 2026-11-20, decision point 1: **C2 authorised** within the budget of section 6 (about
+  100 core-h, one to two weeks), with a PI decision after it. G1.1 accepted as a known
+  limit for ground muons until C3. The thresholds of G2.3 are fixed from the reference
+  alone. The cost of a C2 solve is measured first and brought back to the PI. C2 keeps
+  the kernel sets of the C1 closing cycle. C3 and later stages are not authorised.

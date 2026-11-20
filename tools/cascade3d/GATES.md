@@ -808,3 +808,28 @@ Result files are under `/home/pigrange/mc3d_work/runs/native3d/` (`c0/gates/`, `
   to the PI at the start of the cycle. The section "C1 closing cycle" fixes it. Not
   decided by this answer and left as they are: G1.5 (cost), the muon clock in the
   product table, the form of G2.3.
+- **2026-11-20, after the report of the closing cycle (decision point 1).** The PI was
+  given the gates on the second frozen state (G1.0 pass; G1.1 and G1.2 fail on ground
+  muons as before; G1.3(a) as amended pass with 380 of 400 against 373; the trigger of
+  G1.3(b) fired above 2.5 GeV; G1.4 pass; G1.5 fail at 12.48 core-minutes), the
+  manager's reading and six points, and answered "Follow your recommendations". Point
+  by point:
+  1. **C2 is authorised.** The manager recommended going on, since neither of his stop
+     conditions occurred. Budget as in the plan: about 100 core-h, of which about 60 for
+     one new Monte Carlo run, over one to two weeks. A PI decision follows C2; C3 is not
+     authorised.
+  2. G1.1 is accepted as a known limit for ground muons until C3, where muon intensities
+     are used. It stays on record as failed and is not redefined.
+  3. G2.3: its thresholds are fixed from the reference alone, before any solver output
+     with the cutoff exists (section C2).
+  4. G1.5: the cost is accepted for now and stays on record as failed. The cost of a C2
+     solve is measured at the start of C2 and brought back to the PI.
+  5. Kernel sets for C2: the report put two options (keep the parent at the bin centre
+     and carry the level of +1.8%; or switch to the spread-parent variant after one 3D
+     check solve) and gave **no recommendation**, so the answer decides nothing here.
+     The manager takes the option that changes nothing: C2 uses the kernel sets frozen
+     in the closing cycle. No check solve is run, and the spread-parent variant stays an
+     open item. This default is said to the PI as such.
+  6. Muon clock: `kamioka_3D_v2l.npz` is left as it is, with one documentation entry
+     (`tools/mceq3d/INTEGRATION.md`, 18.7). New Monte Carlo runs use
+     `--muon-clock converged`.

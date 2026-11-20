@@ -1679,6 +1679,13 @@ v2k is unchanged (`ea0b2bfe...a9c6`). Builder: `build-v2l` / `gates-v2l` (same c
   Down-going, up-going |cos Z| > 0.2 and all 0.11-1 GeV fluxes equal Pv2k exactly. U/D at |cos Z| 0.05, 1.0-2.5 GeV: Pv2j +.043, Pv2k +.036, Pv2l +.030 (0.15: +.037, +.002, +.019);
   this is outside the expected Pv2k-Pv2j interval because the MC/v2h ratio of rows -0.05 is 0.975 at E5 but 1.006 at E6 (arithmetic): reverting E6 lowers the up-going flux.
 * The 0.11-1 GeV a1/a0 gains of v2k are kept (the E-W excess lives there).
+* **Muon decay clock (added 2026-11-20; PI decision of 2026-11-20: the table is left as it is).** Every Monte Carlo run behind this
+  table used the legacy muon decay clock of `tools/mc3d`, which lets a slowing muon decay too late. Measured on a pair of field-free runs
+  of 10^7 primaries (corrected over legacy clock, 0.10-1 GeV, four species together): `s` +0.84 +- 0.30%, `t` +0.34 +- 0.22% (nue and
+  antinue +1.4 +- 0.6% in `s`). The ratio s/t, which the table uses, moves by less than 0.3%, 0.5% and 0.8% (value plus 2 sigma) at
+  cos Z 0.6-1, 0.3-0.6 and 0.1-0.3. It is bounded only at 3 to 11% in the row cos Z 0-0.1, and the field-on and up-going cells are not
+  covered by the pair. Records: `tools/cascade3d/GATES.md` (Results log), `$W/runs/native3d/c1/mcref2/CLOCK_PAIR.md`. New Monte
+  Carlo runs use `sky3d.py --muon-clock converged` (opt-in; the default reproduces the earlier runs bit for bit).
 
 ### 18.8 Note on the table of 17.9
 The species means of the table in 17.9 (MC level / v2h) are arithmetic means over the four species. The v2k brief used the geometric mean (the pre-registered ln rho statistic);
