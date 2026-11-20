@@ -137,6 +137,71 @@ After C1 the PI decides on C2. G1.1 or G1.3(a) failing after one diagnosis cycle
   of any Monte Carlo output. Cutting at 1000 GeV would have lowered the solver by 1.8
   to 3.5% at 3 to 10 GeV (builder's measurement, straight ahead).
 
+## C1 closing cycle
+
+Written 2026-11-20, before any run of the cycle (decision of the PI of 2026-11-20, last
+section). The comparison is no longer blind: the solver's cells were compared with the
+reference on 2026-11-19. What follows is fixed before the changed code or the changed
+kernel sets exist.
+
+**Changes to the frozen state (rule 4), and nothing else.**
+1. `solver._interp_log`: where the four stencil values span more than a factor 1e3, the
+   log-cubic value is bounded by the smallest and the largest of them
+   (`c1/diag_straight/proposed.diff`, as proposed on 2026-11-19).
+2. Monte Carlo-matched kernel sets: the cross section of the nucleons, which in the
+   Monte Carlo turns on inside the bin of 1.26 to 1.58 GeV. The treatment is derived
+   from the Monte Carlo's own interaction-length function and from the distribution
+   of the nucleons inside the bin, not from any tally and not from the size of the
+   offset seen in G1.3(b). Its check needs no tally: the probability that a nucleon of
+   that bin interacts over X g/cm2, kernel set against the direct integration of the
+   Monte Carlo's rule, for X from 100 to 10 000 g/cm2 (reported).
+
+Grids, L, sweeps, ray sampling, cell averaging and the reference stay as frozen on
+2026-11-19. A gate script changes only in its paths, and `g1_3.py` in the count below.
+
+**Gates.** G1.0, G1.1 and G1.2 are re-run in full, as written, on the changed code. The
+new state (commit, kernel sets with their hashes) is then written to `RESULTS_C1.md`,
+and G1.3, G1.4 and G1.5 are re-run in full on it, by an agent that wrote neither the
+solver nor the kernel sets. All are evaluated as written, with one amendment. No change
+of this cycle addresses the failures of G1.1 and G1.2 (ground muons); they are reported
+as they come out.
+
+**G1.3(a), amended.** r and its normalisation as written. Pass: at least 373 of the 400
+cells within max(2%, 2σ_MC) of 1; and the row-mean condition as written. 373 is the
+count that an exactly right solver reaches or exceeds in 95% of the cases with this
+reference. It is computed from the reference alone (`c1/close/manager/null_count.py`:
+independent Gaussian errors of size σ_MC, 200 000 samples, P(count < 373) = 0.050,
+P(count < 380) = 0.36). Resampling the ten runs instead gives a wider distribution and
+a lower number (344); the stricter one is taken. The count is also reported against the
+380 of the original text. The amendment is made with knowledge of the first result (377
+on the state of 2026-11-19).
+
+Reported with G1.3, not gated: the chi2 of the 400 cells, and the part of the shape
+difference that is common to the ten runs with its 2σ bound, both as in part A of the
+diagnosis cycle.
+
+**Test of the candidate for the level above 0.4 GeV (reported, not a gate).** Candidate:
+the energy discretisation of the kernels (parent at the bin centre; `LIKE_FOR_LIKE.md`,
+section 3, item 2). Variant kernel sets are built for this test only and used for no
+gate: the parent of the interaction and decay channels is spread over its bin with a
+weight T^-γ, (A) γ = 2.7, (B) γ = 1, (C) γ per species and bin from the slope of the
+production spectrum that the kernel set itself gives for the primary spectrum in use.
+Straight-ahead solves, variant against the changed set, for the full primary spectrum
+and for the strata of 3.16 to 10, 10 to 31.6 and 31.6 to 100 GeV per nucleon. The
+builder reports the change of the flux without sight of any tally. The manager compares
+it with the excess over `t` (bands from 0.4 to 10 GeV, cos Z 0.1 to 1, the four species;
+in part C: full spectrum +1.74 +- 0.20%, strata +2.2 +- 0.5%, +1.5 +- 0.4%, +0.9 +-
+0.5%), re-measured on the changed set with the script of part C. Wording fixed in
+advance, on variant (C) and the full spectrum: "explained" if the excess left is within
+0.6% of zero; "not explained" if more than two thirds of it is left; "partly explained"
+in between. The strata and the variants (A) and (B) are reported next to it. A variant
+that cannot be built within the budget of the cycle is reported as not built, and the
+candidate stays untested to that extent.
+
+**After the cycle** the manager reports to the PI. The recommendation given before the
+cycle stands: stop the phase if G1.3(a) as amended fails, or if the level above 0.4 GeV
+is "not explained". Compute: about 15 core-h, no new Monte Carlo run.
+
 ## Results log
 
 Result files are under `/home/pigrange/mc3d_work/runs/native3d/` (`c0/gates/`, `c1/gates/`).
@@ -581,3 +646,17 @@ Result files are under `/home/pigrange/mc3d_work/runs/native3d/` (`c0/gates/`, `
   3. The pair of runs measures the clock's effect per cell. Whether the product table
      needs a correction is put to the PI after that.
   The compute of C0 and C1 rises from about 110 to about 115 core-h.
+- **2026-11-20, after the decision-point-1 report.** The PI was given the verdicts of
+  G1.3 to G1.5, the diagnosis cycle and three options (stop the phase; one closing
+  cycle of C1; go on to C2), and answered "Go ahead with option 2." Option 2 as it was
+  put: apply the two fixes that were not applied (the bound of the energy
+  interpolation; the cross-section turn-on in the kernel sets), test the candidate for
+  the level above 0.4 GeV, and re-run G1.0 to G1.5 in full; about 15 core-h, no new
+  Monte Carlo; the comparison no longer blind; the criterion of G1.3(a) to be set
+  before the re-run, for which the manager proposed the row means as written plus a
+  count at or above the 5th percentile of a correct solver; and the manager's
+  recommendation to stop if the re-run fails again or the level stays unexplained. The
+  manager reads the answer as acceptance of the proposed criterion as well, and said so
+  to the PI at the start of the cycle. The section "C1 closing cycle" fixes it. Not
+  decided by this answer and left as they are: G1.5 (cost), the muon clock in the
+  product table, the form of G2.3.
