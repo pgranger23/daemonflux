@@ -1995,6 +1995,182 @@ Result files are under `/home/pigrange/mc3d_work/runs/native3d/` (`c0/gates/`, `
   - The known limitation for the product table is written in
     `tools/mceq3d/INTEGRATION.md`, section 18.7, with items 2 to 4 as an estimate.
   - Compute: single-core minutes.
+- **2026-11-23. Site solve at M = 12: first measurement of G2.6; G2.5(a) on the
+  azimuthal orders FAIL at M = 6; G2.5(c) PASS; the orders above about 8 of one sky
+  table are draw noise** (solver agent, hand-back at 22:50;
+  `c2/solver/WP_SOLVER_REPORT_C.md`, sha256 `cba66113…`; the manager's checks in
+  `c2/manager/g25/`). No repository file was changed by the agent.
+  - Solve: the location (0, 0) with its own sky table (seed 20261123, sha256
+    `0a382659…`), mode path, the 25 tangents of the orders 0 to 12, five processes
+    of five tangents one after the other on cores 0 to 3, frozen C1 geometry and
+    kernel set, guard of G2.7, code state `d7ede51`. Output `c2/solver/site_M12/`
+    (`tangents_b1.npz` to `tangents_b5.npz`, logs, `batches.out`). Command of a
+    batch:
+
+        taskset -c 0-3 /usr/bin/time -v $PY tools/cascade3d/gates/run_solve3d.py \
+            run $N3/c2/solver/site_M12 --xy 0,0 --M 12 --orders <five orders> \
+            --batch 5 --tag b<i>
+
+  - **G2.6, first measurement** (`/usr/bin/time -v`, user plus system time):
+
+    | batch | orders | core-min | wall | peak memory |
+    |---|---|---|---|---|
+    | b1 | 0c 1c 1s 2c 2s | 60.4 | 24:33 | 19 861 112 kB |
+    | b2 | 3c 3s 4c 4s 5c | 55.8 | 22:56 | 19 888 492 kB |
+    | b3 | 5s 6c 6s 7c 7s | 54.9 | 22:36 | 19 969 476 kB |
+    | b4 | 8c 8s 9c 9s 10c | 56.2 | 22:59 | 19 895 004 kB |
+    | b5 | 10s 11c 11s 12c 12s | 65.0 | 26:54 | 19 995 640 kB |
+
+    Total 292.3 core-min = **4.87 core-h**, peak **20.0 GB**, wall 2 h 00 (20:47 to
+    22:47). Batch b5 ran while other projects loaded the node (load average 32 to
+    48); b2 to b4 are the quiet numbers, about 56 core-min for five tangents. The
+    split of the short runs holds: it gives 61.8 core-min and 20.2 GB for a batch
+    of five. G1.5 asked for 2 core-min and 2 GB per location.
+  - **G2.5(a), azimuthal orders: FAIL.** M = 6 (partial sum) against M = 12 on the
+    4800 cells at the site: largest relative move **5.067e-3** (limit 0.005), at
+    nue, 1.58 to 2.51 GeV, cos Z 0.5 to 0.6, azimuth 30° to 60°. It is the only
+    cell above 0.5%; 700 cells are above 0.1%. Worst per band, 0.1 to 10 GeV:
+    2.7e-4, 7.3e-4, 1.7e-3, 3.0e-3, 4.1e-3, 4.8e-3, 5.1e-3, 4.0e-3, 2.4e-3, 1.2e-3.
+    Reported: the order 0 alone against M = 12 moves a cell by up to 0.911.
+    Result file `c2/solver/gates/G2.5/G2.5_orders.md` (sha256 `a457a7ab…`; `.json`
+    `185f1970…`; cells `G2.5_orders_cells.npz` `dd97120f…`). Script `g2_5.py` of
+    commit `5f586a8` (sha256 `49cc3381…`, checked before the run), run once, exit
+    status 1:
+
+        $PY tools/cascade3d/gates/g2_5.py orders --solve-dir $N3/c2/solver/site_M12 \
+            --tags b1,b2,b3,b4,b5 --outdir $N3/c2/solver/gates/G2.5 \
+            --g27 $N3/c2/solver/gates/G2.7/cells_s0.1_i0.1_l0.1_mx_D2.npz
+
+  - **G2.5(c): PASS.** Largest same-bin sweep residual 1.49e-8 (energy bin 22;
+    primal 1.49e-8, tangents 1.28e-8; limit 1e-4 in every bin).
+  - Reported check of the path: the order-0 tangent gives the linearised cells of
+    deficit 2 of G2.7 to 4.4e-16, and the C1 cells exactly.
+  - The μ grid and L doublings of (a) and part (b) are not run. G2.5 as a whole is
+    failed by its part (a) on the orders at M = 6.
+  - Checks of the manager, no solve and nothing of the reference
+    (`c2/manager/g25/orders_series.py`, `boundary_orders.py` and their `.out`):
+    1. The comparison again from `G2.5_orders_cells.npz`: the same cell, 5.0668e-3.
+       Cells above 0.5%, 0.4%, 0.3%, 0.1%: 1, 12, 53, 700. Root mean square of the
+       move over the cells 8.0e-4. Largest per species: nue 5.07e-3, antinue
+       3.73e-3, numu 4.19e-3, antinumu 4.35e-3.
+    2. Every partial sum 0..M against 0..12, from the stored tangents:
+
+       | M | largest move | cells > 0.5% | cells > 0.1% | largest step from M − 1 |
+       |---|---|---|---|---|
+       | 4 | 1.41e-2 | 200 | 1791 | 1.14e-2 |
+       | 5 | 7.21e-3 | 18 | 1271 | 7.4e-3 |
+       | 6 | 5.07e-3 | 1 | 700 | 4.6e-3 |
+       | 7 | 3.37e-3 | 0 | 151 | 3.9e-3 |
+       | 8 | 1.37e-3 | 0 | 19 | 2.1e-3 |
+       | 9 | 8.8e-4 | 0 | 0 | 8.9e-4 |
+       | 10 | 2.8e-4 | 0 | 0 | 6.5e-4 |
+       | 11 | 0 | 0 | 0 | 2.8e-4 |
+
+       The agent's reported numbers for M = 8 and M = 10 (1.37e-3, 2.8e-4) are
+       confirmed.
+    3. The order 12 does not reach the cells: the mean of cos 12φ and of sin 12φ
+       over a bin of 30° is zero. "M = 12" on these cells is M = 11. The bins also
+       weight the orders: largest bin mean 0.51 at order 7, 0.41 at 8, 0.21 at 9,
+       0.19 at 10, 0.09 at 11, 0 at 12, then 0.07, 0.14, 0.13, 0.21, 0.21 at the
+       orders 13 to 17. The small steps at the orders 10 and 11 come from these
+       weights, not from the series.
+    4. Amplitude of an order in a cell before the bin average, over the azimuth
+       mean of the cell, largest cell: 4.6e-1, 8.6e-2, 4.4e-2, 1.0e-2, 9.1e-3,
+       6.6e-3, 5.2e-3, 4.1e-3, 2.1e-3, 2.7e-3, 2.8e-3, 3.0e-3 at the orders 1 to 12
+       (99th percentile from order 9: 1.8e-3, 2.2e-3, 2.5e-3, 2.5e-3). The series
+       stops falling at order 9.
+    5. The sky tables hold 36 sectors of 10°, so their largest order is 18
+       (`fourier_sectors` refuses more). A test of M = 12 against M = 24 cannot be
+       made with them; the agent's projection row for it would need a table with
+       48 sectors or more. M = 8 against 16 can be made.
+    6. Signal against draw noise in the boundary, from three realisations of the
+       site table (seeds 20261123, 20261124, 20261128; the last two were built for
+       the sky check, `c2/manager/g20/sky_seed2/`, `sky_seed3/`). A table holds one
+       draw per line node, sector and rigidity rung (45 × 36 × 31). Quantity: the
+       forbidden share of the proton boundary summed by number over the 18 energy
+       bins the cutoff touches, order m over the sectors, root mean square over
+       the 30 ground line nodes; signal from the products of two seeds, noise from
+       the rest:
+
+       | order | signal | noise |
+       |---|---|---|
+       | 0 | 0.886 | 0.0025 |
+       | 1 | 0.0774 | 0.0048 |
+       | 2 | 0.0150 | 0.0051 |
+       | 3 | 0.0125 | 0.0050 |
+       | 4 | 0.0059 | 0.0048 |
+       | 5 | 0.0034 | 0.0046 |
+       | 6 | 0.0025 | 0.0052 |
+       | 7 | 0.0022 | 0.0056 |
+       | 8 | 0.0027 | 0.0050 |
+       | 9 | 0.0012 | 0.0052 |
+
+       From order 10 to 18 the signal is zero within its scatter (−0.0020 to
+       +0.0022) and the noise is 0.0039 to 0.0078. The noise is flat in the
+       order, apart from the factor that undoes the sector average (1.5 at order
+       17), as for independent draws per sector. It exceeds the signal from
+       order 5 on. Per energy bin the signal falls more slowly (0.0115 at order 7,
+       0.0060 at order 12, noise 0.017 to 0.019) and is below the noise from
+       order 6 on. Tangent nodes: signal above the noise to order 6, about equal
+       to it from 7 to 10.
+    7. Reading. The move of 0.507% between M = 6 and M = 12 is mostly the draw
+       noise that the orders 7 to 11 of one table carry, not azimuthal structure
+       of the cutoff. With the signal share of the power at the orders 7 and 8
+       (13 to 31%), the truncation of the true series at M = 6 is about 0.1 to
+       0.25% in the worst cell, and below 0.1% at M = 8. This is an estimate with
+       an error of its own size. It changes no verdict: G2.5(a) on the orders is
+       failed at M = 6 as written.
+    8. What follows for a test of M against 2M at one location with one table:
+       the orders M + 1 to 2M add noise of 0.2 to 0.3% of a cell (largest cells)
+       times the bin weights. Expected for M = 8 against 16: 0.16 to 0.30%, from
+       the measured 0.137% to order 12 and the orders 13 to 16. The agent's
+       "factor 3.6" of margin for M = 8 is against M = 12 only.
+    9. The same noise is in every order the solves use, the order 0 included
+       (0.0025 of the boundary by number at the site, on a transmitted share of
+       0.114). Its size in a cap average is not measured: the tables of a grid
+       hold the same draws, so it does not fall as for independent tables. More
+       draws per table lower it at about 0.1 core-h per table and realisation;
+       the solve cost does not change (the boundary is linear in the tables).
+  - Consequence by the dated entry on G2.5(a): "If M = 6 fails it, M = 12 for all
+    solves takes C2 to or beyond the plan's compute and goes to the PI with
+    G2.6." The order for the solves of G2.3 and G2.4 goes to the PI with this
+    entry. No cap solve, no solve of G2.3 or G2.4 and no new table before the
+    decision.
+  - Projected, not measured (agent's table with the measured batch; core-h at
+    M = 6 and at M = 12): one boundary 2.6 and 4.87 (measured); G2.3, caps of 10°
+    and 5°, 5.2 and 9.8; G2.4(a) 2.6 and 4.9 plus tables; G2.4(b), six shifted
+    caps at 15 km, 15.4 and 29.3 plus 49 tables (about 4.7); the μ grid doubled
+    6.7 and 12.1 (1.9 times the CPU and 1.75 times the memory per tangent,
+    batches of 3); L doubled about 3 and 5 to 6; G2.5(b) none if assembled from
+    the orders (a phase), else one solve; G2.8 at M = 18 about 6.6 for the full
+    line family. All solves of C2 still to run at M = 12: about 78 core-h.
+    At M = 8 (manager, derived from the split: 17 tangents, about 3.5 core-h per
+    boundary): about 57 core-h. One process of five tangents fills 20 GB, so the
+    solves run one after the other under the memory cap.
+  - Global grid of C5, projected: 2.6 (M = 6), 3.5 (M = 8), 4.9 (M = 12) core-h
+    per location on CPU; 1450 locations are about 3800, 5100 and 7100 core-h.
+  - Answers of the agent to the manager's questions (report, section "Answers"):
+    - The doubled μ grid reads the same 45 line nodes of the sky table by
+      interpolation. It does not test the spacing of the line nodes. Step F of
+      the sky check and the ground midpoints are the only tests of it. A doubled
+      set of tangent altitudes costs about 1.5 core-min per location (about 2
+      core-h for 81) and a few lines of code.
+    - The map from the boundary to the flux is linear, so a test of two
+      boundaries about 1% apart can solve their difference alone, at a lower
+      order with its own truncation bound: G2.4(a) at 2.6 core-h, G2.4(b) at
+      about 15, or 5 to 8 with two or three singular vectors and a bound that
+      needs a positivity test. Such a reading has to be written here before its
+      run. Not decided.
+    - Batches of 6 or 7 tangents save at most 4% and peak near 26 GB. Not run.
+  - Blindness, one disclosure. In check 1 the manager printed the solver's
+    azimuth mean of the cutoff factor per band for one row at the site. The
+    level of the reference per band was known to the manager from the threshold
+    report. No comparison was made or written, nothing of it went to the solver
+    agent, and the recommendations to the PI were formed before it, on cost and
+    convergence alone.
+  - Compute: milestone B about 9.7 core-h of 12 released, the site solve
+    included; the manager's checks single-core minutes. C2 so far about 98 to 99
+    core-h of the plan's 100.
 
 ## Decisions of the PI
 
