@@ -982,6 +982,76 @@ recomputed from the tables equals the stored one.
   one draw per half-interval, since the transmission rises with rigidity. Its mean is
   the excess.
 
+### 2026-11-23. The new reference of G2.3 (event roll) and its count thresholds
+
+**Reference.** `c2/mcref_roll/c2roll_cutoff.npz`, sha256
+`fb226760abacc2f40963d5e48f8264830a5349baf47a9b589592965c9775fc50`, combined on
+2026-11-23 at 22:06 from the twenty runs with `--event-roll`
+(`c2/mcref_roll/scripts/combine_roll.py`). From here on it is the reference of G2.3.
+- Runs 1 to 19 ended at 22:05, each with exit 0. Size: 5×10^5 primaries per run, 10^7
+  in all, with `--upgoing`. Cost: 37.14 core-h of CPU for the twenty (run 0: 2.64;
+  runs 1 to 19: 34.50, against the 39 to 50 of the entry above).
+- Integrity (`scripts/roll_integrity.py`, output `logs/roll_integrity.out`): twenty
+  totals of 47350185 bytes with the same keys, shapes and edges; seeds 1500000000 +
+  20000000 j; 500000 showers and 312 tasks in each; no two totals equal; all tallies
+  finite; `event_roll` set in the twenty manifests, the other options as in the first
+  reference (no bending of the primaries, no field on the muons).
+- Level of `n` against the field-free reference of C1 (`c1/mcref2`, tally `s`), cap of
+  10°: 1.0031 ± 0.0045 (`logs/roll_checks.out`). Per band, nine of ten are within 1.5
+  errors of 1. The band 0.63 to 1 GeV is at 0.9798 ± 0.0063 (−3.2 errors). Over the 400
+  cells of species, band and row: rms of the pulls 1.11, one beyond 3 (+3.19). Smaller
+  caps: 0.9980 ± 0.0063 (7.5°), 0.9932 ± 0.0114 (5°), 0.9882 ± 0.0200 (2.5°).
+- Cutoff factor per band, cap of 10°: 0.4144, 0.4669, 0.5439, 0.6263, 0.7141, 0.7884,
+  0.8699, 0.9434, 0.9760, 0.9929 (errors 0.0013 to 0.0037).
+
+**Thresholds.** Computed from the reference alone with the commands fixed in the
+amendment of 2026-11-23 (`c2/manager/thresholds_roll.sh`). Files in
+`c2/manager/thresholds_roll/`: `calib.json` (sha256 beginning `b3596e8d2f53be08`),
+`cap10/null_count_c2.json` (`a18f7d8c73d1783a`), `cap5/null_count_c2.json`
+(`db22225063607e27`).
+
+| Part | Items counted | Threshold | First rule (decides nothing) |
+|---|---|---|---|
+| (a) cutoff factor per cell | 4800 | **N_a = 4640** | 4654 |
+| (b) East-West harmonic per band and row | 100 | **N_b = 97** | 97 |
+| (c) horizontal over vertical per band | 10 | **N_c = 8** | 9 |
+
+Reported parts, cap of 10°: (d) 4499 of 4800, (f) 391 of 400. Cap of 5° (part g): (a)
+4543 of 4788, (b) 94 of 100, (c) 8 of 10; twelve cells of the 5° cap are filled in
+fewer than half of the runs and are not counted. In part (a), 2631 of the 4800 cells
+have the 3% floor as their tolerance. The thresholds of the first reference were 4639,
+98 and 8.
+
+**Calibration of (a) at the reference's own event counts.** 600 synthetic references,
+model `nested`. An exactly right solver falls below N_a in 17.3 ± 1.5% of them (5%
+intended; first rule 61.0%). Δ_a = 18: at 4622 the rate is 4.8%. As fixed in the
+amendment:
+- the gate decides on N_a = 4640;
+- the rate is above 10%, so the result of (a) carries it as a caveat, pass or fail;
+- a count from 4622 to 4639 is a FAIL that goes to the PI with these numbers.
+
+**Standing.**
+- The commands were fixed in commit `529b596`. `gates/c2_stats.py`,
+  `gates/null_count_c2.py` and `gates/calib_null_c2.py` were at their committed state
+  (sha256 beginning `0b54bc056c47b405`, `fe9160e1fa9d78bc`, `0baedfc127e49f44`; working
+  tree clean at `5f586a8`). The numbers follow from them and from the file. Run from
+  22:08:32 to 22:12:26, 0.2 core-h.
+- What the manager had read of the new reference before the thresholds existed: the
+  tallies of run 0 (entry on the artefact), the integrity check and the checks of
+  `logs/roll_checks.out` and `logs/roll_azcheck.out`. While the threshold commands ran,
+  the manager looked at the azimuth of `n` and of the up-going tallies per row
+  (`c2/manager/dipole/roll_n_rows.out`, `roll_n_rows_up.out`; results log). None of
+  this enters a threshold.
+- Solver outputs with the cutoff that exist at the time of this entry: the solves of
+  G2.7, the sky values of G2.0 and of the check of the sky, and the tangent solves of
+  the site at M = 12 (three batches of five written, the fourth running). None has
+  been compared with a tally of either reference. The manager has read the results of
+  G2.7 and of G2.0. Of the site solve the manager has read the log of times only.
+- The two references have not yet been compared by `two_refs.py`. That comparison is
+  run after the commit of this entry.
+- This entry holds content of the reference. The solver agent is told not to read it
+  before the freeze.
+
 ## Results log
 
 Result files are under `/home/pigrange/mc3d_work/runs/native3d/` (`c0/gates/`, `c1/gates/`).
