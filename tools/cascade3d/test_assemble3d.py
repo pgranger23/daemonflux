@@ -139,3 +139,42 @@ def test_run_at_M_is_partial_sum_of_run_at_2M(setup):
     full = A3.azimuth_cells(r4["mu0"], A3.azimuth_table(r4["I"], r4["dI"],
                                                         r4["tangents"]), ks)
     assert np.nanmax(np.abs(full - c2) / np.abs(c2)) > 1e-8  # orders 3, 4 matter
+
+
+def test_grid_deficit_on_the_2p5_degree_grid(setup, tmp_path_factory):
+    """The 2.5-deg grid (81 tables; mock verdicts, nothing traced): the cap-average
+    deficit is assembled before any solve, has the shape of one location's deficit,
+    and gives the same number of tangents as one location (the cost of the solve does
+    not depend on the number of tables).  The 25 nodes of the 5-deg grid are among
+    the 81, with the same file names."""
+    d = str(tmp_path_factory.mktemp("sky25"))
+    ks, gw, cw = setup["ks"], setup["gw"], setup["cw"]
+    g25 = B.LocationGrid(2.5, 10.0)
+    g5 = B.LocationGrid(5.0, 10.0)
+    for i in range(g25.n):
+        B.SkyTable.build(B.table_path(d, (g25.x[i], g25.y[i])), (g25.x[i], g25.y[i]),
+                         seed=20261123, verdict="test_boundary.mock_verdict",
+                         log=lambda s: None)
+    names5 = {B.table_path(d, (g5.x[i], g5.y[i])) for i in range(g5.n)}
+    names25 = {B.table_path(d, (g25.x[i], g25.y[i])) for i in range(g25.n)}
+    assert names5 <= names25 and len(names25) == 81
+    out = {}
+    for name, g in (("5", g5), ("2.5", g25)):
+        W = g.cap_weights(10.0, n_quad=60)
+        D, used = A3.grid_deficit(d, g, W, gw, ks, cw)
+        assert len(used) == int(np.sum(W > 0))
+        ref = sum(w * A3.location_deficit(B.SkyTable.load(p), gw, ks, cw)
+                  for _i, w, p in used)
+        assert np.max(np.abs(D - ref)) <= 1e-14 * np.abs(ref).max()
+        assert D.shape == setup["Dc"].shape
+        out[name] = (D, A3.order_tangents(D, 6, ks))
+    assert len(out["5"][1]) == len(out["2.5"][1]) == 13
+    # the two cap averages differ, but little (the deficit varies smoothly)
+    rel = np.abs(out["5"][0] - out["2.5"][0]).max() / np.abs(out["5"][0]).max()
+    assert 0 < rel < 0.1, rel
+    # one location through grid_deficit equals location_deficit
+    e = np.zeros(g25.n)
+    e[g25.node_index(-7.5, 2.5)] = 1.0
+    D1, used1 = A3.grid_deficit(d, g25, e, gw, ks, cw)
+    t = B.SkyTable.load(used1[0][2])
+    assert np.array_equal(D1, A3.location_deficit(t, gw, ks, cw))

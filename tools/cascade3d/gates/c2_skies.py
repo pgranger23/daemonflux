@@ -1,4 +1,5 @@
-"""Report of the sky tables of a location grid (cascade3d C2, "Reported with the skies").
+"""Report of the sky tables of a location grid (cascade3d C2, "Reported with the
+skies").
 
 For the 25 tables of the 5-deg grid (h_ref = 0): sha256, statistics, cost, and the
 singular values of the deficits of the locations (no solve).  The deficit of a
@@ -35,6 +36,7 @@ def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--sky-dir", default=os.path.join(N3, "c2", "solver", "sky"))
     ap.add_argument("--out", required=True)
+    ap.add_argument("--spacing", type=float, default=5.0)
     a = ap.parse_args(argv)
     if os.path.exists(a.out):
         raise SystemExit(f"{a.out} exists")
@@ -42,7 +44,7 @@ def main(argv=None):
     names = list(ks.species)
     b0 = ks.phi_top[[names.index("p+"), names.index("n0")]]
     gw = B.GroupWeights(ks.e_bins)
-    g = B.LocationGrid(5.0, 10.0)
+    g = B.LocationGrid(a.spacing, 10.0)
     rows, stats = [], []
     for i in range(g.n):
         p = B.table_path(a.sky_dir, (g.x[i], g.y[i]), 0.0)
@@ -60,7 +62,7 @@ def main(argv=None):
         out[name] = {"relative": r.tolist(),
                      "n_above": {e: int(np.sum(r > float(e)))
                                  for e in ("1e-2", "1e-3", "1e-4")}}
-    L = ["# Sky tables of the 5-deg location grid (h_ref = 0)", "",
+    L = [f"# Sky tables of the {a.spacing:g}-deg location grid (h_ref = 0)", "",
          "| x | y | file | sha256 | states | traced | allowed | core-s |",
          "|---|---|---|---|---|---|---|---|"]
     for s in stats:
@@ -68,7 +70,8 @@ def main(argv=None):
                  f"{s['states']} | {s['traced']} | {s['allowed_fraction']:.4f} | "
                  f"{s['cpu_s']:.0f} |")
     tot = sum(s["cpu_s"] for s in stats)
-    L += ["", f"Tracing CPU of the 25 tables (workers): {tot / 3600:.2f} core-h.", "",
+    L += ["", f"Tracing CPU of the {g.n} tables (workers): {tot / 3600:.2f} core-h.",
+          "",
           "## Singular values of the location deficits (relative to the largest)",
           ""]
     for name, v in out.items():
@@ -78,6 +81,8 @@ def main(argv=None):
     L += ["", "Command: `" + " ".join(sys.argv) + "`", ""]
     with open(a.out, "w") as fh:
         fh.write("\n".join(L))
+    if os.path.exists(a.out[:-3] + ".json"):
+        raise SystemExit(a.out[:-3] + ".json exists")
     with open(a.out[:-3] + ".json", "w") as fh:
         json.dump({"tables": stats, "svd": out}, fh, indent=1)
     print("\n".join(L))

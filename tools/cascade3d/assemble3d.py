@@ -57,6 +57,30 @@ def cap_deficit(tables, weights, gw, ks, cw):
     return D
 
 
+def grid_deficit(sky_dir, grid, weights, gw, ks, cw, h_ref_km=0.0, tables=None):
+    """Weighted sum of the location deficits of a ``boundary.LocationGrid`` (cap
+    average: ``weights = grid.cap_weights(radius)``; one location: a unit vector).
+
+    Only the tables with non-zero weight are read (``boundary.table_path`` names in
+    ``sky_dir``, or ``tables``: index -> SkyTable).  The result has the shape of one
+    location's deficit whatever the number of locations, so the solve that follows
+    costs the same for 25 or 81 tables.  Returns ``(D, used)`` with ``used`` the
+    (index, weight, path) of the tables read.
+    """
+    used, tabs = [], {}
+    for p, w in enumerate(weights):
+        if w == 0.0:
+            continue
+        if tables is not None:
+            tabs[p] = tables[p]
+            path = getattr(tables[p], "path", None)
+        else:
+            path = B.table_path(sky_dir, (grid.x[p], grid.y[p]), h_ref_km)
+            tabs[p] = B.SkyTable.load(path)
+        used.append((p, float(w), path))
+    return cap_deficit(tabs, weights, gw, ks, cw), used
+
+
 def order_tangents(Dc, M, ks):
     """Top tangents of the orders 0..M: list of ``(m, part, dtop)`` with ``part`` "c"
     or "s" and ``dtop`` (nS, nE, Nl) = -D^part_m (sine parts from m = 1; at the

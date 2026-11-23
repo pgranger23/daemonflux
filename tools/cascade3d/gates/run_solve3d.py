@@ -1,9 +1,13 @@
 """Location solve of the mode path (cascade3d C2): tangents of the azimuthal orders.
 
-Geometry, kernel set and settings: those of the frozen C1 solve (``g2_7.build_geometry``);
+Geometry, kernel set and settings: those of the frozen C1 solve
+(``g2_7.build_geometry``);
 guard: the setting of G2.7 (``solver3d.GUARD_PROTOTYPE``).  The boundary is the deficit
 of one location's sky table (h_ref = 0) on the chains and the 36 sectors; the orders
 are ``assemble3d.order_tangents``.
+
+The boundary is one location (``--xy``) or the cap average over a grid
+(``--cap 10 --spacing 5``; ``assemble3d.grid_deficit``).
 
 Steps::
 
@@ -65,12 +69,23 @@ def cmd_run(a):
         raise SystemExit(f"{path} exists")
     w0, c0 = time.time(), cpu()
     ry, ks, sha = g2_7.build_geometry()
-    x, y = (float(v) for v in a.xy.split(","))
-    tpath = B.table_path(SKY_DIR, (x, y), 0.0)
-    tab = B.SkyTable.load(tpath)
+    grid = B.LocationGrid(a.spacing, 10.0)
+    if a.cap > 0:
+        weights = grid.cap_weights(a.cap)
+        where = {"cap_deg": a.cap, "spacing_deg": a.spacing}
+    else:
+        x, y = (float(v) for v in a.xy.split(","))
+        weights = np.zeros(grid.n)
+        weights[grid.node_index(x, y)] = 1.0
+        where = {"xy": [x, y], "spacing_deg": a.spacing}
     gw = B.GroupWeights(ks.e_bins, model="GSFG:GH")
-    cw = B.chain_weights(ry, tab.nodes)
-    Dc = A3.location_deficit(tab, gw, ks, cw)
+    nodes = B.line_nodes()
+    cw = B.chain_weights(ry, nodes)
+    Dc, used = A3.grid_deficit(SKY_DIR, grid, weights, gw, ks, cw)
+    for _p, _w, tp in used:
+        t = B.SkyTable.load(tp)
+        if not all(np.array_equal(t.nodes[k], nodes[k]) for k in nodes):
+            raise SystemExit(f"{tp}: line nodes differ from boundary.line_nodes()")
     allt = A3.order_tangents(Dc, a.M, ks)
     want = parse_orders(a.orders, a.M)
     tl = allt if want is None else [t for t in allt if (t[0], t[1]) in want]
@@ -85,7 +100,9 @@ def cmd_run(a):
             "peak_rss_GB": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
             / 1024.0 ** 2, "affinity": sorted(os.sched_getaffinity(0)),
             "batch": a.batch, "n_tangents": len(tl), "timing": r["timing"],
-            "sky": tpath, "sky_sha256": B._sha256(tpath), "ks_sha256": sha,
+            "boundary": where,
+            "sky": [(p, w, tp, B._sha256(tp)) for p, w, tp in used],
+            "ks_sha256": sha,
             "guard": S3.GUARD_PROTOTYPE.as_dict(), "M": a.M,
             "res_max": float(r["res"].max()),
             "d_res_max": float(r["d_res"].max()),
@@ -154,6 +171,9 @@ def main(argv=None):
     ap.add_argument("cmd", choices=("run", "combine"))
     ap.add_argument("outdir")
     ap.add_argument("--xy", default="0,0")
+    ap.add_argument("--cap", type=float, default=0.0,
+                    help="cap radius [deg]: cap-average boundary (0: --xy)")
+    ap.add_argument("--spacing", type=float, default=5.0)
     ap.add_argument("--M", type=int, default=12)
     ap.add_argument("--orders", default="all")
     ap.add_argument("--batch", type=int, default=2)
