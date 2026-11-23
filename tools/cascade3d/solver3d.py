@@ -41,6 +41,7 @@ The kernel arrays are not differentiated here (C4); the tangents are with respec
 the boundary only.
 """
 
+import os
 import time
 
 import jax
@@ -742,6 +743,20 @@ class ModeSolver(S.Solver):
 # ---------------------------------------------------------------------------
 # the tangent solver
 # ---------------------------------------------------------------------------
+def _cpu():
+    t = os.times()
+    return t.user + t.system
+
+
+def enable_compilation_cache(path):
+    """Persistent XLA compilation cache in ``path`` (engineering only: the compiled
+    functions are those of the same trace; numbers unchanged)."""
+    os.makedirs(path, exist_ok=True)
+    jax.config.update("jax_compilation_cache_dir", path)
+    jax.config.update("jax_persistent_cache_min_compile_time_secs", 1.0)
+    jax.config.update("jax_persistent_cache_min_entry_size_bytes", 0)
+
+
 def _exact_zero(*xs):
     return all(not bool(jnp.any(x != 0)) for x in xs)
 
@@ -858,7 +873,8 @@ class TangentSolver:
         n_pass = 1 + (sv.n_up if K_up > 0 else 0)
         outs, touts = {}, {}
         up_res, dup_res = [], []
-        t0 = time.time()
+        first_call = {}
+        t0, c0 = time.time(), _cpu()
         for ipass in range(n_pass):
             if ipass == 0:
                 ks_range = range(sv.k_top, -1, -1)
@@ -890,8 +906,14 @@ class TangentSolver:
                 ang = bool(sv.nA and k < sv.nA)
                 upf = bool(K_up > 0 and k <= sv.k_up)
                 fn = self._tstep(ang, upf)
+                first = (ang, upf) not in first_call
+                if first:
+                    w1, c1 = time.time(), _cpu()
                 carry, tcarry, o, to = fn(jnp.int32(k), carry, tcarry, prm, top_c,
                                           dtop_c, Wms, Qms, top_on)
+                if first:
+                    jax.block_until_ready(tcarry)
+                    first_call[(ang, upf)] = (time.time() - w1, _cpu() - c1)
                 for key in ("F_ground", "res"):
                     for d, v in ((outs, o[key]), (touts, to[key])):
                         if ipass == 0:
@@ -931,7 +953,11 @@ class TangentSolver:
             zero = jnp.zeros_like(next(iter(d.values())))
             res["d_" + key] = jnp.moveaxis(
                 jnp.stack([d.get(k, zero) for k in range(nE)]), 0, 1)
-        res["timing"] = {"wall_s": time.time() - t0}
+        jax.block_until_ready(res["d_emis"])
+        res["timing"] = {
+            "wall_s": time.time() - t0, "cpu_s": _cpu() - c0,
+            "first_calls": {f"ang{int(a)}_up{int(u)}": {"wall_s": v[0], "cpu_s": v[1]}
+                            for (a, u), v in first_call.items()}}
         return res
 
     def _emis_mode(self, tcarry, b, m):
