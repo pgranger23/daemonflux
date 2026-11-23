@@ -290,6 +290,11 @@ The command is that of the field-free reference of C1 (`c1/mcref2/scripts/run_al
   cutoff verdict) and `n` (no cutoff, copy 0), in the flux measure, in the cap of 10°
   around the site.
 
+Amended on 2026-11-23 by decision of the PI, before any solver output with the cutoff
+was compared with a tally: the reference is replaced by twenty runs with the event
+plane turned (`--event-roll`, seeds 1500000000 + 20000000 j). The bullets above are
+kept as first written. The reasons and the amendment are in "C2, dated entries".
+
 Statistics: `gates/c2_stats.py`, committed with this text. The same functions serve
 the reference, the count thresholds and the solver.
 - K_MC = `s`(cell) / (Σ_az `n` / 12).
@@ -794,6 +799,75 @@ Put to the PI on 2026-11-23:
   new one.
 
 Until the PI has answered, no solver output with the cutoff is compared with a tally.
+
+### 2026-11-23. Reference of G2.3 replaced: twenty runs with the event plane turned
+
+Decision of the PI of 2026-11-23 (last section), on the entry above. Written before the
+runs j = 1 to 19 exist and before any solver output with the cutoff is compared with a
+tally.
+
+**What changes in G2.3.** Only the reference.
+- Command: that of the first reference with `--event-roll` added
+  (`c2/mcref_roll/scripts/run_roll.sh`). Code: the snapshot `c2/mcref_roll/code/`, equal
+  file by file to `tools/mc3d` at commit `97a87be`.
+- Twenty runs of 5×10^5 primaries, seeds 1500000000 + 20000000 j, j = 0 to 19. No
+  seed of an earlier run: the task seeds of a run lie within 5×10^6 above its seed
+  (`sky3d.build_tasks`), and the first reference ends at 1280000000.
+- The tallies, the statistics, the parts (a) to (g) and their floors are unchanged.
+
+**Run j = 0** is the run of the test in the entry above. It was made with this command
+and this seed before this amendment, and the manager has read its tallies (same entry).
+It enters as it is. No run is left out or repeated for what it contains. A run that
+ends with an error is repeated with its seed.
+
+**Runs j = 1 to 19:** `run_roll.sh 1 19 8-11,20,22-23 7`. Run 0 used six processes
+and these use seven. By the code the number of processes sets no random stream: the
+seed of a task is fixed by the seed of the run, the nucleus group, the stratum and the
+chunk.
+
+**Combination and checks.** `c2/mcref_roll/scripts/combine_roll.py` is `combine_c2.py`
+of the first reference with the paths, tags, seeds and command of this one. Output:
+`c2/mcref_roll/c2roll_cutoff.npz`, same arrays and units. Checks as for the first
+reference: integrity of the twenty totals, the number of showers, the level of `n`
+against the field-free reference of C1.
+
+**Thresholds.** N_a, N_b and N_c are recomputed on the new file with the commands of
+the amendment of 2026-11-23, outputs in `c2/manager/thresholds_roll/`. They are written
+here as a dated entry before any comparison. The thresholds of the first reference no
+longer gate anything and stay on record.
+
+**The first reference** (`c2/mcref/c2ref_cutoff.npz`) is kept. No solver output is
+compared with it. It is compared with the new one only, as follows.
+
+**The two references compared (reported, not a gate; fixed here).** By the manager,
+script `c2/manager/dipole/two_refs.py`, cap of 10°. Error of a difference: the
+jackknife errors of the two references in quadrature.
+1. `n`, the species summed: sine and cosine components per band and pooled over the
+   three lowest bands, for all rows and for cos Z 0 to 0.3, in both references. The
+   roll is said to remove the artefact if the pooled sine component of the new
+   reference is within two errors of zero in both sets of rows. Otherwise the remainder
+   is reported as unexplained.
+2. `s`: a_c and a_s pooled over the three lowest bands, for all rows and for cos Z 0
+   to 0.3, new minus first. This is the size of the artefact in the quantity of
+   part (b). It is set against the estimate of the entry above (sign and size).
+3. Per band and row: the differences of a_c and a_s. Reported: the largest, the number
+   above the floor of 0.01, and the rms of the differences over their errors.
+4. K per cell: the rms of the differences over their errors, the number beyond 2 and
+   beyond 3, the number of cells that differ by more than 3% of K, and the mean
+   relative difference per band for cos Z 0 to 0.3.
+5. K per band and H per band (the statistics of (e) and (c)): the differences over
+   their errors.
+
+**Product table.** Items 2 to 4 measure the artefact in this configuration (cutoff on,
+no bending). For `kamioka_3D_v2l.npz`, made with bending, they are an estimate and not
+a measurement. The entry in `tools/mceq3d/INTEGRATION.md` is written with them.
+
+**Compute.** 39 to 50 core-h for the nineteen runs and about 2 for the thresholds,
+authorised by the decision. C2 then stands at about 112 to 135 core-h at the design's
+solve costs, against the plan's about 100. The cost of the solves is open (G2.6).
+
+**Blindness.** The agents that write the solver and the cutoff skies do not open
+`c2/mcref_roll/` before the freeze, as for `c2/mcref/`.
 
 ## Results log
 
@@ -1460,3 +1534,17 @@ Result files are under `/home/pigrange/mc3d_work/runs/native3d/` (`c0/gates/`, `
   five steps. The report also said that the amendment could no longer be committed
   before the reference was complete, and why. Not decided by this answer: M = 12 for all
   solves, the fallback of G2.7, the far side, anything of C3.
+- **2026-11-23, after the manager's report on the azimuth artefact of the Monte Carlo.**
+  The PI was given the finding and its test, the estimated effect on G2.3, and three
+  options: (A) keep the reference with the artefact on record; (B1) nineteen more runs
+  with `--event-roll` at the same size, 39 to 50 core-h; (B2) twenty runs at the plan's
+  first size of 2×10^5 primaries, 17 to 21 core-h. The manager recommended B1 and said
+  that it takes C2 beyond the plan's compute: about 112 to 135 core-h at the design's
+  solve costs, and near 100 to 135 even without it if the measured cost of the
+  linearised solves holds (three to four times the design's estimate; G2.6).
+
+  The PI answered "GO with B1 as recommended". Recorded as: the reference of G2.3 is
+  replaced as in the dated entry "Reference of G2.3 replaced", and its compute is
+  authorised. Not decided by this answer: the cost of the solves (G2.6 goes to the
+  PI before the solves of G2.3, as before), M = 12 for all solves, the fallback of
+  G2.7, anything of C3, anything about the product table.
