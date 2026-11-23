@@ -693,6 +693,9 @@ before any comparison.
 - No output of the C2 solver has been compared with a tally. The manager opened the
   reference after commit `529b596` and has since read the result of G2.7. The manager
   compares neither with the other.
+- This entry and the next hold more of the reference than the three counts (the cap
+  radius, the azimuth of `n`, the effect of the roll). The solver agent is told not to
+  read them before the freeze.
 
 **Cap radius (reported).** The cutoff factor of the 10° cap is higher than that of the
 smaller caps below 1 GeV: by 4.6 ± 1.2%, 3.8 ± 0.8% and 2.1 ± 0.3% against the caps of
