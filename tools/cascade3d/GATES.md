@@ -869,6 +869,119 @@ solve costs, against the plan's about 100. The cost of the solves is open (G2.6)
 **Blindness.** The agents that write the solver and the cutoff skies do not open
 `c2/mcref_roll/` before the freeze, as for `c2/mcref/`.
 
+### 2026-11-23. G2.0 triggered: the check of the sky before the freeze
+
+**Outcome of G2.0: TRIGGER in one class of 100** (solver agent, milestone B; result
+file `c2/solver/gates/G2.0/G2.0.md`, sha256 beginning `298f839300be9ea1`).
+- 64 916 covered states below 60 GV, 2 000 of them on lines that miss the ground. All
+  states: sky 0.1741, verdicts 0.1718.
+- The class: 5 to 10 GV, cos Z at injection 0.25 to 0.5, south, 659 states. Sky
+  0.1062, verdicts 0.0774, difference +0.0288, tolerance 0.0208.
+- The gate text asks for a check of the sky before the freeze. The agent stopped there
+  and handed back.
+
+**Checked by the manager** (`c2/manager/g20/recheck.out`, from the stored states; no
+tracing). The class table of the agent is reproduced. The difference is not one
+fluctuation. Mean of d = sky − verdict over the states, with the error of that mean:
+- 4 to 5 GV +0.0037 ± 0.0007; 5 to 10 GV +0.0108 ± 0.0017, positive in 10 of 12
+  classes; 10 to 20 GV −0.0020 ± 0.0025; 20 to 60 GV −0.0015 ± 0.0010.
+- In counts: the sky allows about 150 states more than the 11 150 of the verdicts
+  (+1.3%), about +170 at 4 to 9 GV and −20 above. At 5 to 10 GV it is +7.4%.
+- Where the sky gives a value between 0.1 and 1, the verdicts are lower by 0.04 to
+  0.06.
+- These errors hold the test sample only. The draws of the tables (one azimuth and one
+  rigidity per cell, the same at every location) are a second source of scatter that
+  is frozen in the sky. Its size is not known.
+
+**Question of the check.** Is the excess at the foot of the cutoff edge (a) a bias of
+the interpolation between locations, (b) a bias of another interpolation, (c) the
+frozen scatter of the table draws? How large is it in the quantity the solver uses?
+- Why (a) is the first suspect: at fixed direction and rigidity the transmission is a
+  step in the location. The cutoff rigidity changes by about 18% over 5° of latitude.
+  The bilinear value between two tables is a ramp over that range, so the edge is
+  smeared: too much transmission at its foot, too little at its top.
+
+**Steps, each written down before it was run** (`c2/manager/g20/CHECK.md`: steps A to
+C before step A; step D after step A). This entry is committed before the tables of
+B, C and D are read.
+- **A. Stored states, no tracing.** Least squares of d on c_x = 4 t_x (1 − t_x), c_y
+  and c_n for 4 to 10 GV, with robust errors; t_x, t_y the weights of the state's
+  location on the grid, t_n its weight between two line nodes. Predicted slope on c_y
+  if the latitude makes all of the excess: about 0.013. Expected errors about 0.005.
+  A can point; it cannot decide.
+- **B. Five tables at mid locations**, with the draws of the base tables (same seed,
+  nodes, sectors, ladder; h_ref = 0): (0, ±2.5°), (±2.5°, 0), (2.5°, 2.5°). The
+  bilinear value of the 5° tables against the direct table, state by state.
+  - B1: allowed count over the ground line nodes and the sectors,
+    E = N_bilinear / N_direct − 1, error by a jackknife over the 36 sectors. Ranges:
+    foot 4.27 to 10.73 GV, middle 10.73 to 19.07 GV, top 19.07 to 60 GV, all. Tangent
+    nodes apart.
+  - Prediction if (a) makes the excess: about +11% in the foot range at (2.5°, 2.5°),
+    negative at the top. A scale, not a value: the weights of G2.0 and of this count
+    differ.
+  - **Criterion.** E_foot at (2.5°, 2.5°) of +5.5% or more and at least two errors
+    from zero: (a) explains the excess. Below +2.75%: it does not. Between: in part.
+  - B2, reported: the same comparison in the solver's quantity. Transmission of the
+    proton group per energy bin (group weights of the solver, mean over the sectors),
+    bilinear over direct minus 1, mean over the ground line nodes, per location. Read
+    against 0.5% (G2.4) and 3% (floor of G2.3(a)).
+- **C. A second realisation of the site table**, seed 20261124. Against the base site
+  table: the allowed count per range of B1 and the quantity of B2. The difference over
+  √2 is the scatter of one realisation at one location. Reported. It does not say
+  whether the excess of G2.0 is frozen scatter; that needs a second set of 25 tables
+  (2.4 core-h), built only if B says (a) does not explain the excess.
+- **D. A site table on the midpoints of the line nodes**, seed 20261125: the 30
+  midpoints in ground zenith angle (the horizon included) and the 14 midpoints in
+  tangent altitude. For each midpoint, the mean of its two neighbours in the base site
+  table against the direct table.
+  - E = N_interpolated / N_direct − 1 over the ground midpoints, in the ranges of B1
+    and for ground zenith 0 to 60°, 60° to 80° and 80° to 90°; jackknife over the
+    sectors. The draws of different nodes are independent, so the expected error is
+    about 0.3% for all ranges together.
+  - If the line-node term of step A (below) is a bias of the interpolation: E_all
+    about −3%. If |E_all| is below 1% and within two errors of zero, the term is read
+    as chance. Reported, with the quantity of B2.
+- The seven tables are built by the manager with `boundary.py build` as committed
+  (`c2/manager/g20/sky/`, `sky_seed2/`, `sky_mid/`), about 0.7 core-h. They are check
+  tables. No solve uses them.
+
+**What follows, fixed before the steps.**
+- G2.0 stays on record as TRIGGER whatever the check finds.
+- If (a) explains the excess: the 56 further tables of the 2.5° grid are built now
+  (planned for G2.4(a), 5.4 core-h), by the solver agent. G2.0 is evaluated again on
+  the 2.5° grid with the same stored states and verdicts, no tracing, and reported
+  next to the first. Prediction: the excess at 5 to 10 GV falls to half or less. The
+  cap-averaged deficits of the two grids are compared with no solve. The spacing for
+  the solves is chosen on that comparison and goes to the PI with the cost (G2.6).
+  The cost of a solve does not depend on the spacing. G2.4(a) is run as written in
+  any case.
+- If (a) does not explain it: a second set of tables with another seed, then the line
+  nodes. Written down before it is run.
+- The solve of the site at M = 12 waits for the outcome. The cost measurements on
+  short runs do not depend on the content of the sky and go on.
+- The manager has opened the reference of G2.3. Nothing in this check uses it: every
+  comparison is between the sky and direct back-tracing.
+
+**Step A, result** (`c2/manager/g20/step_a.out`, `step_a2.out`). The sky value
+recomputed from the tables equals the stored one.
+- 4 to 10 GV, 19 132 states, mean d +0.0088 ± 0.0013. Slopes: c_y +0.0141 ± 0.0041,
+  c_x +0.0044 ± 0.0044, c_n −0.0085 ± 0.0043; constant +0.0019 ± 0.0052.
+- d by the place between two locations in y: +0.0033 ± 0.0020 near a location,
+  +0.0100 ± 0.0023 between, +0.0127 ± 0.0024 at mid distance.
+- The allowed fraction of the verdicts against y is strongly convex: 0.0034, 0.0159,
+  0.0337, 0.0813, 0.1504, 0.2622 in bands of 2.5° from −7.5° to +7.5°.
+- Reading: A points to the latitude. The slope on c_y is the predicted one and the
+  constant is compatible with zero. B decides.
+- Not predicted: the slope on c_n is negative, −0.0085 ± 0.0043 at 4 to 10 GV,
+  −0.0219 ± 0.0083 at 10 to 20 GV, −0.0049 ± 0.0015 over all states. Near a line node
+  the sky is 0.010 above the verdicts, between the nodes 0.004. Not understood. The
+  errors leave out the frozen draws of the tables, which states near the same node
+  share. Step D was added to measure it.
+- d against the place in the rigidity half-interval, 4 to 10 GV, in quarters from low
+  to high: +0.0288, +0.0156, −0.0001, −0.0091 (± 0.0026). A gradient is expected with
+  one draw per half-interval, since the transmission rises with rigidity. Its mean is
+  the excess.
+
 ## Results log
 
 Result files are under `/home/pigrange/mc3d_work/runs/native3d/` (`c0/gates/`, `c1/gates/`).
@@ -1448,6 +1561,24 @@ Result files are under `/home/pigrange/mc3d_work/runs/native3d/` (`c0/gates/`, `
     batch size of the full-sky solve (G2.6). Site sky table: 50 220 states, 290 core-s.
     Compute of the agent: about 2.5 core-h of 4.
   - The setting goes into `RESULTS_C2.md` at the freeze.
+- **2026-11-23. G2.0: TRIGGER in one class of 100** (solver agent, milestone B; result
+  file `c2/solver/gates/G2.0/G2.0.md`, sha256 beginning `298f839300be9ea1`; report
+  `c2/solver/WP_SOLVER_REPORT_B.md`).
+  - 64 916 covered states below 60 GV: 62 916 hit the ground, 2 000 miss it. Sky
+    0.1741, verdicts 0.1718.
+  - Trigger: 5 to 10 GV, cos Z at injection 0.25 to 0.5, south, 659 states. Sky
+    0.1062, verdicts 0.0774, difference +0.0288, tolerance 0.0208. The same class
+    triggers among the states that hit. No class triggers among those that miss.
+  - 500 states above 60 GV on lines that miss the ground: all allowed.
+  - Checked by the manager. The class table recomputed from the stored states gives
+    the same numbers. The difference is systematic at the foot of the cutoff edge:
+    +0.0108 ± 0.0017 at 5 to 10 GV. The manager did not trace the states again.
+  - The check of the sky that the gate text asks for is the dated entry "G2.0
+    triggered". The solve of the site at M = 12 waits for it.
+  - Milestone B so far, besides the gate: the 25 sky tables of the 5° grid
+    (`c2/solver/sky/`, `SKIES.md`); `assemble3d.py` with six tests, which the manager
+    ran again (6 passed); timing output and a compilation cache in `solver3d.py`.
+    `test_solver3d.py` has not been run in full since that change.
 
 ## Decisions of the PI
 
