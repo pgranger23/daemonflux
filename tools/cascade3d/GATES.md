@@ -342,6 +342,11 @@ cycle of C1. The three numbers are written here as a dated entry before any solv
 output with the cutoff is compared with a tally. The count of (a) is also reported
 against 95% of the cells counted, the plan's wording.
 
+Amended on 2026-11-23, before the reference was combined or compared with anything: the
+thresholds are those of a third null model, half of the runs against the other half.
+The paragraph above and the one below are kept as first written. The amendment, its
+reasons and what it costs are in "C2, dated entries".
+
 What the choice costs. With three gated parts at 95% each, an exactly right solver
 fails at least one of them in up to 14% of the cases. Where the two null models
 differ, taking the larger number makes a right solver fail that part more often than
@@ -363,7 +368,8 @@ Reported, not gated:
 reference altitude at which a line of sight is attached to a location, each move no
 cell of Φ_cut of G2.3 (cap of 10°) by more than 0.5%. The two variations (the spacings,
 the altitudes) are fixed here as a dated entry once `DESIGN.md` names the location grid
-and the reference altitude, before any C2 solve with the cutoff.
+and the reference altitude, before any C2 solve with the cutoff. Fixed on 2026-11-23
+("C2, dated entries"), together with two additions: G2.7 (gated) and G2.8 (reported).
 
 **G2.5 Numerical convergence with the azimuth (gated; an addition to the plan).** At
 one location, the grid location nearest the site, with the cutoff, on the ground flux
@@ -384,6 +390,262 @@ manager's recommendation is fixed in advance: stop the phase if, after one diagn
 cycle, G2.3(a) fails, or if G2.4 does not converge on a finer location grid (the plan's
 stop rule). Compute: the plan's about 100 core-h. What goes materially beyond is brought
 to the PI before it is spent.
+
+## C2, dated entries
+
+The entries that section C2 announces ("written here as a dated entry"), and the
+amendments of its gates. Each is committed before the run it governs. Files named
+`c2/...` are under `/home/pigrange/mc3d_work/runs/native3d/`.
+
+### 2026-11-23. Count thresholds of G2.3 (N_a, N_b, N_c): amendment
+
+**Standing.** The fault was found on 2026-11-20 while the reference ran, and the session
+ended before the amendment was written. The twenty runs ended on 2026-11-20 at 19:24.
+So this text is committed after the reference exists, which the first text did not
+intend. What holds at the time of this commit:
+- the runs are not combined, and no file of G2.3 statistics exists;
+- the manager, who wrote the amendment and its scripts, has opened no tally of
+  `c2/mcref/` (only the progress log, the run script and directory listings);
+- no C2 solver code exists.
+
+The PI was given the fault and the rule below and approved it on 2026-11-23 ("Proceed as
+proposed"; last section).
+
+**What changes.** N_a, N_b and N_c are the 5th-percentile counts of a third null model,
+half of the runs against the other half (`c2_stats.null_split`). They are no longer the
+larger of the Gaussian and the resampling numbers. Everything else of G2.3 stands: the
+statistics, the tolerances, the cells counted, the 95%, the reported parts.
+
+- For a random half A of the twenty runs and its complement B,
+  d = (stat(A) − stat(B)) / 2 stands for the deviation of the reference from the truth.
+- The error that goes with it is the jackknife error with d taken out:
+  e² = (ν σ² − d²) / (ν − 1), ν = 19.
+- One draw counts the items in which a solver at the reference value is inside the
+  tolerance of a reference at value + d with error e. 20 000 draws.
+- N is the largest count that at most 5% of the draws fall below.
+
+The numbers of the first rule are computed and reported next to the new ones
+(`threshold_first_rule`). They decide nothing.
+
+**Why.** Before any tally was opened, the manager tested the first rule on synthetic
+references with known truth (`gates/calib_null_c2.py`). A synthetic reference has twenty
+runs of Poisson events. The exactly right solver is the truth itself. Three models of
+how the twelve azimuth cells of a ring share their primaries: `indep` (not at all),
+`corr` (same neutrinos, independent verdicts), `nested` (same neutrinos, verdicts nested
+in rigidity, which is what twelve rotated copies of one primary give). The table gives
+how often the exactly right solver falls below the threshold of part (a); 5% is
+intended. "Events" is the number of events per azimuth cell and run with no cutoff in
+the best-filled cell; the counts fall by a factor 100 over the ten bands. 200 references
+per line unless stated. A negative number in the last column: the threshold could be
+raised by that much.
+
+| Model, events | Cells on the 3% floor | First rule | Half against half | Cells to lower it for 5% |
+|---|---|---|---|---|
+| indep, 300 | 0.1% | 100% | 6.0% | 2 |
+| indep, 1500 | 14% | 99% | 3.0% | −3 |
+| corr, 60 | 14% | 100% | 38% | 20 |
+| corr, 300 | 72% | 39% | 3.5% | −1 |
+| nested, 60 | 14% | 88% | 11.5% | 12 |
+| nested, 150 | 44% | 66% | 5.5% | 6 |
+| nested, 300 | 72% | 43% | 5.5% | 2 |
+| nested, 1000 | 99% | 16% | 7.5% | 4 |
+| nested, counts of the dry run (300 references) | 36% | 82% | 13.3% | 22 |
+| nested, the same with counts 29% too high (300) | 44% | 72% | 11.0% | 22 |
+| corr, the same with counts 29% too high (150) | 44% | 95% | 24% | 13 |
+
+"Counts of the dry run": the event counts per ring of the field-free reference of C1
+with the azimuth kept (10^7 primaries, the size of the reference of G2.3), with a
+synthetic cutoff factor. The first of the three lines is the nearest to what the
+reference is expected to be. The other two were run with an estimate of the counts that
+is too high by 29% on average (corrected since in `calib_null_c2.py`). Statistical
+error of a rate: 1.5 to 3 points.
+
+Causes of the first rule's failure:
+1. The Gaussian null model treats σ as known. It is a jackknife estimate with 19 degrees
+   of freedom, and 2σ then covers 94.0%, not 95.45%.
+2. With independent items the null model understates the spread of the count when the
+   twelve azimuth cells of a ring share their primaries.
+3. In part (a) the resampling number never exceeded the Gaussian one, in any reference.
+   "The larger of the two" was always the Gaussian number.
+
+**What is left in the amended rule.** At the expected event counts an exactly right
+solver fails part (a) in about 13% of the cases with the `nested` model, not in 5%. In
+cells with few events and a cutoff factor near 1, the deviation of a cell and its error
+estimate are correlated (skewed counts). The half-against-half model makes them
+independent and counts about 12 cells of about 4770 as inside too often. A threshold
+about 20 cells lower would give 5%. Parts (b) and (c): 0 to 4% in every test.
+
+**Calibration at the reference's own event counts (reported).** The strictness that is
+left is measured on the reference and reported. It is not corrected. Commands, fixed
+here before the reference is combined (REF is the combined reference):
+
+    calib_null_c2.py nested 0 0 150 SEED OUT_SEED.json REF.npz ref    SEED = 51 52 53 54
+    calib_null_c2.py --calib CALIB.json OUT_51.json OUT_52.json OUT_53.json OUT_54.json
+    null_count_c2.py REF.npz --outdir DIR --calib CALIB.json
+
+That is 600 synthetic references of twenty runs, model `nested`, drawn at the event
+counts and the cutoff factors estimated from the reference (cap of 10°), with 400 draws
+of each null model per reference. Output: the rate at which the exactly right solver
+falls below the half-against-half threshold, and Δ_a, the smallest number of cells by
+which the threshold would have to be lowered for a rate of at most 5%.
+
+How it is read, fixed here:
+- The gate decides on N_a of the half-against-half model of the reference itself. The
+  calibration changes no threshold.
+- A count of (a) below N_a and at or above N_a − Δ_a is a FAIL. It goes to the PI with
+  Δ_a and the measured rate.
+- If the measured rate is above 10%, or if there is no calibration, the result of (a)
+  carries that as a caveat, pass or fail.
+- Parts (b) and (c), and the thresholds of the 5° cap (part g, reported): no
+  calibration.
+
+Validation of the calibration (2026-11-23, `c2/manager/calib/valid/`). Truth known,
+`nested`, counts of the dry run: rate 13.3 ± 2.0%, 22 ± 7 cells for 5% (300
+references). The calibration was then run on three synthetic references drawn from that
+truth, from their tallies alone, 150 references each: 12.7%, 9.3% and 17.3% (each ± 3
+points; pooled 13.1 ± 1.6%), Δ_a = 26, 10 and 20. It recovers the rate within the
+statistics. Δ_a from 150 references is uncertain by 5 to 14 cells; with the 600 fixed
+above about 4 are expected. Not modelled by the calibration: event weights, and several
+neutrinos of one shower falling in different cells. The half-against-half model itself
+works on the runs and keeps both.
+
+**What N_a detects.** Fraction of synthetic references on which a wrong solver fails
+(`nested`, 150 to 1000 events, 60 references each):
+- cutoff factor 1% too high everywhere: (a) fails in 95 to 97%;
+- 2% or more too high: 100%;
+- East-West error of 2% cos(az): (a) and (b) 100%;
+- horizon 2% too high, falling to 0 at the vertical: (a) 100%, (c) 93%.
+
+The plan's wording, 95% of the cells counted, detects a uniform error of about 2%. N_a
+is about twice as strict. `g2_3.py` reports both counts. The gate is N_a.
+
+**What the choice costs, restated.** With (a) at about 13% and (b) and (c) at up to 4%
+each, an exactly right solver fails at least one gated part in 15 to 20% of the cases.
+The first text said up to 14%.
+
+**Check on real tallies.** The scripts were run on the field-free reference of C1 with
+the azimuth kept (`c2/manager/dryrun_fieldfree_az.npz`, ten runs; K = 1 by construction;
+not the reference of G2.3). The solver K = 1 counts 4766 of 4800 cells. Half against
+half: median 4768, N5 4758. First rule: 4750. In this file 86% of the cells are on the
+3% floor, where both rules behave.
+
+### 2026-11-23. Entries before the first C2 solve with the cutoff
+
+The design of C2 is `DESIGN_C2.md` (the design agent's note of 2026-11-20 as delivered,
+sha256 beginning `d56a0733ff04f05a`). The manager's review is `REVIEW_DESIGN_C2.md`. The
+design is accepted with the conditions below. Where the note and this section differ,
+this section holds.
+
+In short: azimuth as Fourier orders m = 0 to M about the local vertical. The flux with
+the cutoff is the C1 solve minus a linear map of the boundary deficit,
+Φ_cut = Φ_C1 − J[D], D = B⁰ − B. J is the tangent of the C1 scheme with guarded
+derivative rules. The cap average is one boundary. The cutoff skies come from
+`cutoff.trace_gated`, per location of a grid about the site.
+
+**G2.7 Linearisation (gated; an addition to the plan).** The exact derivative of the C1
+solve is unstable below 1.6 GeV (`DESIGN_C2.md`, 1.6; measured on a reduced geometry).
+The guarded tangent is not the exact derivative of anything, so its accuracy is known
+only against nonlinear solves. Test, on the full geometry and settings of the frozen C1
+solve (`RESULTS_C1.md`, section 5; kernel set of G2.3), with two deficits that the
+nonlinear C1 scheme can solve because they are symmetric in azimuth:
+1. the isotropic step of the design's test 1: a smooth step in rigidity at 11.5 GV, 15%
+   wide, R = p for protons and 2p for neutrons;
+2. the azimuth average (order m = 0) of the deficit of the cutoff sky at the site, from
+   `boundary.py`.
+
+For each, Φ_lin = Φ_C1 − J[D] against Φ_nl, the nonlinear solve with the boundary
+B⁰ − D, in the 400 cells of G1.3. Pass, for both deficits:
+- (i) |Φ_lin − Φ_nl| ≤ 0.005 Φ_nl in every cell;
+- (ii) |Φ_lin − Φ_nl| ≤ 0.01 (Φ_C1 − Φ_nl) in every cell with Φ_nl ≤ 0.95 Φ_C1.
+
+Ground muons are reported. First setting: the prototype's (ρ = 0.1 on the source shape,
+the source integral and the loss interpolation; the Simpson correction not guarded). On
+the reduced geometry it gave 0.42% for (i) and 0.23% for (ii), so the margin of (i) is
+small.
+
+If it fails: one tuning cycle (guard on the Simpson correction; ρ per piece). Every
+variant is run in full on both deficits and every result is reported. The setting that
+passes is frozen in `RESULTS_C2.md`. If none passes, the gate is reported as failed. The
+fallback of the design (chains in φ, two to three times the cost per boundary) is not
+started without the PI. No solve of the mode path with a cutoff sky is run before
+G2.7 has passed.
+
+**G2.8 Mode path in the straight-ahead limit (reported, with a trigger; an addition).**
+The orders m ≥ 1 have no nonlinear counterpart on the same code path. This check tests
+their bookkeeping (frames, signs, phases, normalisation of the deficit). At the site,
+the six zenith lines of G2.2 × 36 azimuth sectors of 10°, straight-ahead limit:
+- path A: the nonlinear solve of each direction with that direction's own boundary (the
+  path of G2.2);
+- path B: the mode path with M = 18, which holds 36 sector values exactly, synthesised
+  at the sector centres.
+
+A difference above 1% for any of the four neutrino species, in any MCEq bin from 0.1 to
+100 GeV, triggers a check of the mode path before the freeze. The check does not test
+the kernel moments of order m ≥ 1: in the straight-ahead limit every order has the same
+transport. If the mode path cannot be run in the straight-ahead limit at reasonable
+cost, the agent says so and the check is reported as not done.
+
+**G2.0, the draw and the frames.** The gate text leaves two points open.
+- Draw: `cutoff.sample_test_states(seed, n)` with its default (`cap_deg=None`),
+  rigidity below 60 GV. With `cap_deg=10` the lines that miss the ground would be left
+  out, and they have their own code path in `boundary.py`.
+- Location of a state: its line's first ground crossing or, for a line that misses the
+  ground, the point under its tangent point. A state is covered if that location is
+  within 10° of the site. Only covered states are traced. The others are counted.
+- Size: at least 20 000 covered states, of which at least 2 000 on lines that miss the
+  ground.
+- Quadrants: in the local frame of the injection point.
+- The classes and the trigger of the gate are evaluated on all covered states and,
+  separately, on those that hit and those that miss the ground. For the last subset the
+  classes are the four rigidity classes only.
+- Reported in addition: 500 states above 60 GV on lines that miss the ground, traced.
+
+**G2.4, the two variations.**
+- (a) Spacing of the location grid: 5° (25 nodes on [−10°, 10°]² in azimuthal
+  equidistant coordinates about the site) against 2.5° (81 nodes, which contain the 25).
+- (b) Reference altitude: h_ref = 0 (a line of sight belongs to the location under its
+  ground point) against h_ref = 15 km with the displaced location (the location of a
+  ground cell is the point under its line's crossing of 15 km). Evaluated as in
+  `DESIGN_C2.md`, 3.4: six shifted cap averages (shift 0, ±4° east, ±4° north, and 4°
+  east with 4° north), interpolated quadratically in the shift, from sky tables at
+  15 km on a 5° grid over [−15°, 15°]².
+- Before the solves of (b), the interpolation error of the six-shift stencil is
+  measured on the deficit itself, with no solve, against deficits built directly at the
+  displacement of a set of test directions. If it exceeds 0.001 of the no-cutoff
+  boundary anywhere, shifts are added first.
+
+Pass for each, as the gate says: no cell of Φ_cut of G2.3 (cap of 10°, 4800 cells)
+moves by more than 0.5%.
+
+**G2.5(a), how "doubling the φ nodes (or azimuthal modes)" is read.** M against 2M,
+from the partial sums of one run at 2M. In the design the orders are independent. The
+agent shows this once on a reduced geometry: a run at M equals the partial sum of a run
+at 2M to 1e-8. The μ grid and L are doubled in separate runs. The first solve (the
+site, M = 12) gives the test for M = 6. If M = 6 fails it, M = 12 for all solves takes
+C2 to or beyond the plan's compute and goes to the PI with G2.6.
+
+**G2.1 and G2.5(b)** hold by construction in this design (D = 0 returns the C1 solve;
+a rotation of the sky is a phase of the orders). They are run as written and test the
+bookkeeping of the assembly only. G2.7 is the test of the m = 0 part.
+
+**G2.2, how "H3a" is read.** The boundary of this gate uses the group weights of H3a,
+as G1.1 did, on both sides. The solver side is the straight-ahead nonlinear path, one
+chain per direction, not the mode path.
+
+**G2.3(h)** is not evaluated in C2. The assembly does not cover the far side
+(`DESIGN_C2.md`, 3.5).
+
+**Conventions.** Transmission 0 on the lines of the ray family that never reach the
+injection sphere. Transmission 1 above 60 GV. The azimuth of the cells is the arrival
+azimuth of `tools/mc3d/scoring.py`.
+
+**Reported with the skies:** the singular values of the deficits of the grid locations
+(no solve). They say how many independent boundaries a set of locations needs, which
+sets the cost of C5.
+
+**Order.** G2.7, then the first solve with the full sky (the site, M = 12), whose cost
+goes to the PI (G2.6) before the solves of G2.3. G2.0 is evaluated on the skies before
+that solve.
 
 ## Results log
 
@@ -1006,3 +1268,22 @@ Result files are under `/home/pigrange/mc3d_work/runs/native3d/` (`c0/gates/`, `
   6. Muon clock: `kamioka_3D_v2l.npz` is left as it is, with one documentation entry
      (`tools/mceq3d/INTEGRATION.md`, 18.7). New Monte Carlo runs use
      `--muon-clock converged`.
+- **2026-11-23, after the manager's report on the count thresholds of G2.3.** The PI was
+  given three findings, the manager's intended rule and five remaining steps.
+  - Findings: the threshold rule of the first text fails an exactly right solver in 68
+    to 95% of synthetic references at the expected event counts; the half-against-half
+    rule gives about 11% there in the most realistic model and 24% in a less realistic
+    one; and the threshold from a null model detects a uniform error of 1% of the
+    cutoff factor, where the plan's "95% of the cells" detects about 2%.
+  - Rule: the half-against-half threshold decides. The calibration at the reference's
+    own event counts is reported next to it. A failure by fewer cells than the measured
+    bias is still a FAIL and is brought to the PI with that number.
+  - Steps: the dated amendment; the calibration wired into `null_count_c2.py` and
+    `g2_3.py`, with tests and one validation on a synthetic reference; commit and push;
+    the entries before the first solve (G2.7, G2.8, the draw of G2.0, the variations of
+    G2.4); a new solver agent.
+
+  The PI answered "Proceed as proposed". Recorded as approval of the rule and of the
+  five steps. The report also said that the amendment could no longer be committed
+  before the reference was complete, and why. Not decided by this answer: M = 12 for all
+  solves, the fallback of G2.7, the far side, anything of C3.

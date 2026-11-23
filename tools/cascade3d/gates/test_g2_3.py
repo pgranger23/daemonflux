@@ -3,6 +3,7 @@ solver output)."""
 
 import json
 import os
+import subprocess
 import sys
 
 import numpy as np
@@ -73,6 +74,21 @@ def test_exact_and_wrong_solvers(tmp_path):
     assert res["items"] == {"a": 4800, "b": 100, "c": 10}
     assert res["counts"]["a"] >= 0.93 * 4800 and res["counts"]["c"] >= 9
     assert rc == (0 if res["pass"] else 1)
+    # the threshold is that of the half-against-half null model; the first rule is
+    # carried next to it and decides nothing
+    null = json.load(open(os.path.join(d, "null", "null_count_c2.json")))
+    for p in "abc":
+        part = null["parts"][p]
+        assert part["threshold"] == part["split_n5"] == res["thresholds"][p]
+        assert part["threshold_first_rule"] == max(part["gauss_n5"],
+                                                   part["resample_n5"])
+        assert res["thresholds_first_rule"][p] == part["threshold_first_rule"]
+        assert res["passed_first_rule"][p] == (
+            res["counts"][p] >= part["threshold_first_rule"])
+    assert res["pass_first_rule"] == all(res["passed_first_rule"].values())
+    # no calibration at the reference's own event counts was given: flagged
+    assert 0 <= null["a_floor_share"] <= 1 and res["a_calibration_flag"]
+    assert res["a_calibration"] is None and not res["a_failed_within_delta"]
     assert not res["e_trigger"]
     assert abs(np.mean(res["d_mean_r"]) - 1) < 0.01
     assert abs(np.mean(res["f"]["mean_q"]) - 1) < 0.01
@@ -99,6 +115,59 @@ def test_exact_and_wrong_solvers(tmp_path):
     tilt = np.linspace(1.08, 1.0, 10)[:, None]
     rc, bad = run(d, dict(cells, phi_cut=cells["phi_cut"] * tilt), axes, "tilt")
     assert rc == 1 and not bad["passed"]["c"]
+
+
+def test_calibration_at_the_reference(tmp_path):
+    """calib_null_c2.py (mode ref) -> --calib -> null_count_c2.py -> g2_3.py: the
+    calibration is carried next to the threshold and changes nothing in it."""
+    d = str(tmp_path)
+    cells, axes = write_inputs(d)
+    ref = os.path.join(d, "ref.npz")
+    outs = [os.path.join(d, "calib_s%d.json" % seed) for seed in (5, 6)]
+    script = os.path.join(HERE, "calib_null_c2.py")
+    for seed, out in zip((5, 6), outs):
+        subprocess.run([sys.executable, script, "nested", "0", "0", "2", str(seed), out,
+                        ref, "ref"], check=True, stdout=subprocess.DEVNULL)
+    cal = os.path.join(d, "calib.json")
+    subprocess.run([sys.executable, script, "--calib", cal] + outs, check=True,
+                   stdout=subprocess.DEVNULL)
+    c = json.load(open(cal))
+    assert c["references"] == 4 and c["seeds"] == [5, 6] and c["delta_a"] >= 0
+    assert c["rate_after"] <= 0.05 <= 1 and c["cap_index"] == 3
+    # the same two runs twice, or a second file of the same name, are refused
+    assert subprocess.run([sys.executable, script, "--calib",
+                           os.path.join(d, "twice.json"), outs[0], outs[0]],
+                          capture_output=True).returncode != 0
+    assert subprocess.run([sys.executable, script, "--calib", cal] + outs,
+                          capture_output=True).returncode != 0
+
+    N.main([ref, "--outdir", os.path.join(d, "null_cal"), "--nsamp", "300", "--calib",
+            cal])
+    plain = json.load(open(os.path.join(d, "null", "null_count_c2.json")))
+    null = json.load(open(os.path.join(d, "null_cal", "null_count_c2.json")))
+    assert null["parts"] == plain["parts"]
+    a = null["a_calibration"]
+    assert a["delta_a"] == c["delta_a"] and a["references"] == 4
+    assert a["threshold_less_delta"] == null["parts"]["a"]["threshold"] - c["delta_a"]
+    assert null["a_calibration_flag"] == (c["rate_split"] > N.RATE_FLAG)
+
+    np.savez(os.path.join(d, "exact.npz"), **cells, **axes)
+    rc = G.main(["--ref", ref, "--solver", os.path.join(d, "exact.npz"), "--null",
+                 os.path.join(d, "null_cal", "null_count_c2.json"), "--outdir", d,
+                 "--name", "exact"])
+    res = json.load(open(os.path.join(d, "exact.json")))
+    assert rc == (0 if res["pass"] else 1) and res["a_calibration"] == a
+    low = res["thresholds"]["a"] - a["delta_a"]
+    assert res["a_failed_within_delta"] == (low <= res["counts"]["a"]
+                                            < res["thresholds"]["a"])
+    assert "own event counts" in open(os.path.join(d, "exact.md")).read()
+
+    # a calibration made on another reference is refused
+    c["sha256"] = "0" * 64
+    json.dump(c, open(os.path.join(d, "other.json"), "w"))
+    with pytest.raises(SystemExit):
+        N.main([ref, "--outdir", os.path.join(d, "null_other"), "--nsamp", "300",
+                "--calib", os.path.join(d, "other.json")])
 
 
 def test_input_errors(tmp_path):

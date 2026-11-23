@@ -4,6 +4,7 @@ import os
 import sys
 
 import numpy as np
+import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import c2_stats as st  # noqa: E402
@@ -99,3 +100,42 @@ def test_n5():
     assert st.n5(c) == 100      # P(count < 100) = 0.04
     c = np.r_[np.full(6, 90), np.full(94, 100)]
     assert st.n5(c) == 90       # P(count < 100) = 0.06, P(count < 90) = 0
+
+
+def test_null_split_identity_and_counts():
+    rng = np.random.default_rng(11)
+    s_runs, n_runs = _runs(rng, nrun=20)
+    phi_0, k = _truth()
+    ref = st.reference(s_runs, n_runs)
+    # for the flux itself (a mean of the runs) the error of a draw is the spread
+    # within the two halves: nu err^2 - d^2 = (SS_A + SS_B) / m, so that e^2 is the
+    # pooled variance within the halves over m, with m - 2 degrees of freedom
+    m, h = 20, 10
+    idx = np.random.default_rng(3).permutation(m)[:h]
+    rest = np.setdiff1d(np.arange(m), idx)
+    val, err, ok = ref["d"]
+    d = (s_runs[idx].mean(0) - s_runs[rest].mean(0)) / 2
+    within = (((s_runs[idx] - s_runs[idx].mean(0)) ** 2).sum(0)
+              + ((s_runs[rest] - s_runs[rest].mean(0)) ** 2).sum(0))
+    assert np.allclose((m - 1) * err**2 - d**2, within / m, rtol=1e-9, atol=1e-12)
+
+    parts = ("a", "b", "c", "d")
+    sp = st.null_split(parts, ref, s_runs, n_runs, 300, np.random.default_rng(4))
+    exact = st.solver_tallies(phi_0[..., None] * k, phi_0)
+    for p in parts:
+        c = st.count(p, st.STATS[p](*exact), ref)
+        lo, hi = np.percentile(sp[p], [0.5, 99.5])
+        assert lo - 2 <= c <= hi + 2, (p, c, lo, hi)
+    # reproducible, and a wrong solver stays far below the threshold
+    again = st.null_split(("a",), ref, s_runs, n_runs, 300, np.random.default_rng(4))
+    assert np.array_equal(again["a"], sp["a"])
+    wrong = st.solver_tallies(phi_0[..., None] * k * 1.08, phi_0)
+    assert st.count("a", st.stat_k(*wrong), ref) < st.n5(sp["a"]) - 500
+
+
+def test_null_split_needs_an_even_number_of_runs():
+    rng = np.random.default_rng(12)
+    s_runs, n_runs = _runs(rng, nrun=9)
+    ref = st.reference(s_runs, n_runs)
+    with pytest.raises(ValueError):
+        st.null_split(("a",), ref, s_runs, n_runs, 5, rng)

@@ -187,3 +187,34 @@ def null_resample(parts, ref, s_runs, n_runs, nsamp, rng):
             with np.errstate(invalid="ignore", divide="ignore"):
                 out[p][i] = (inside(p, STATS[p](sb, nb), val, err) & ok).sum()
     return out
+
+
+def null_split(parts, ref, s_runs, n_runs, nsamp, rng):
+    """Counts of an exactly right solver, half of the runs against the other half
+    (amendment of 2026-11-23 in ``GATES.md``): {part: counts}.
+
+    For a random half A of the runs and its complement B, d = (stat(A) - stat(B)) / 2
+    stands for the deviation of the reference from the truth: it has the same variance
+    and it keeps the correlations between the items.  The error that goes with it is
+    the jackknife error with d taken out, e^2 = (nu err^2 - d^2) / (nu - 1), nu = runs
+    - 1; for a mean of Gaussian runs e is independent of d and has nu - 1 degrees of
+    freedom.  A draw counts a solver at the reference value against a reference at
+    value + d with error e.  The number of runs must be even.
+    """
+    m = s_runs.shape[0]
+    if m % 2 or m < 4:
+        raise ValueError("null_split needs an even number of runs, at least four")
+    h, nu = m // 2, m - 1
+    ts, tn = s_runs.sum(0), n_runs.sum(0)
+    out = {p: np.empty(nsamp, int) for p in parts}
+    for i in range(nsamp):
+        idx = rng.permutation(m)[:h]
+        sa, na = s_runs[idx].sum(0), n_runs[idx].sum(0)
+        for p in parts:
+            val, err, ok = ref[p]
+            with np.errstate(invalid="ignore", divide="ignore"):
+                d = (STATS[p](sa / h, na / h)
+                     - STATS[p]((ts - sa) / h, (tn - na) / h)) / 2
+                e = np.sqrt(np.clip((nu * err**2 - d**2) / (nu - 1), 0, None))
+                out[p][i] = (inside(p, val, val + d, e) & ok).sum()
+    return out

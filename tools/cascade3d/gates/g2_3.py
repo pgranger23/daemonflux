@@ -1,8 +1,10 @@
 """Gate G2.3 (cutoff and azimuth against the Monte Carlo); writes G2.3.md / G2.3.json.
 
 Written 2026-11-20, before the reference of G2.3 is complete and before any C2 solver
-exists.  Gate text: ``tools/cascade3d/GATES.md``, section C2.  The statistics are those
-of ``c2_stats.py``, the same functions that give the count thresholds
+exists; thresholds amended 2026-11-23 (``GATES.md``, "C2, dated entries"), after the
+reference was complete and before it was combined.  Gate text:
+``tools/cascade3d/GATES.md``, section C2.  The statistics are those of
+``c2_stats.py``, the same functions that give the count thresholds
 (``null_count_c2.py``).
 
 Inputs:
@@ -12,7 +14,9 @@ Inputs:
   rows, azimuth bins), with ``e_band_edges_GeV``, ``cosz_edges_down``,
   ``azimuth_edges_deg``, ``cap_theta_deg`` and ``species``.
 - ``--null``: ``null_count_c2.json`` of the same reference (its sha256 is checked) for
-  cap index 3: the thresholds N_a, N_b, N_c.
+  cap index 3: the thresholds N_a, N_b, N_c (``threshold``) and, for the record,
+  those of the first rule (``threshold_first_rule``) and the calibration of the
+  threshold of (a) at the reference's own event counts (``a_calibration``).
 - ``--solver``: the assembled solver cells, unit of ``cell_<species>`` of
   ``run_solve.py`` (the unit of the reference):
 
@@ -30,8 +34,9 @@ Inputs:
   --cap 1``), quoted in part (g).
 
 PASS = the counts of (a), (b) and (c) in the cap of 10 degrees each reach their
-threshold.  Exit status 0 = PASS, 1 = FAIL, 2 = input error.  The result files are
-never overwritten.
+threshold.  The result under the first rule is written next to it
+(``pass_first_rule``) and does not enter the exit status.  Exit status 0 = PASS,
+1 = FAIL, 2 = input error.  The result files are never overwritten.
 
 Usage::
 
@@ -70,7 +75,11 @@ Reference: `sky3d.py` at Kamioka, cutoff on, no bending, twenty runs; tallies `s
 - (c) gated: per band, H = K(cos Z 0 to 0.2) / K(cos Z 0.8 to 1) within max(2%, 2σ),
   in at least N_c of the 10 bands.
 N_a, N_b, N_c: the counts an exactly right solver reaches in 95% of the cases, from
-the reference alone (`null_count_c2.py`).
+the reference alone (`null_count_c2.py`): half of the runs against the other half
+(amendment of 2026-11-23, written after the runs of the reference ended, before
+they were combined and before any solver with the cutoff existed). The result
+under the first rule (the larger of the Gaussian and the resampling null models)
+is given next to it and decides nothing.
 Reported: (d) r = Φ_cut,solver / `s`; (e) level of K per band, a band outside
 max(2%, 2σ) triggers one diagnosis cycle; (f) plan wording, solver 3D with the cutoff
 over its straight-ahead limit with no cutoff against `s/t`; (g) (a) to (c) for the cap
@@ -172,6 +181,7 @@ def main(argv=None):
     if null["sha256"] != sha or null["cap_index"] != CAP:
         _bad("the thresholds are not those of this reference and of cap index %d" % CAP)
     thr = {p: int(null["parts"][p]["threshold"]) for p in GATED}
+    thr1 = {p: int(null["parts"][p]["threshold_first_rule"]) for p in GATED}
     check_axes(ref, sol)
     s_runs, n_runs = np.asarray(ref["s_runs"], float), np.asarray(ref["n_runs"], float)
     phi_cut, phi_0 = np.asarray(sol["phi_cut"], float), np.asarray(sol["phi_0"], float)
@@ -190,6 +200,7 @@ def main(argv=None):
             _bad("part (%s): %d items counted, the thresholds file has %d"
                  % (p, items[p], null["parts"][p]["items"]))
     passed = {p: counts[p] >= thr[p] for p in GATED}
+    passed1 = {p: counts[p] >= thr1[p] for p in GATED}
     ok = all(passed.values())
     n95 = math.ceil(0.95 * items["a"])
     res = {"gate": "G2.3", "pass": bool(ok), "command": " ".join(argv or sys.argv[1:]),
@@ -198,6 +209,11 @@ def main(argv=None):
            "solver": os.path.abspath(a.solver), "solver_sha256": _sha(a.solver),
            "runs": int(s_runs.shape[0]), "thresholds": thr, "items": items,
            "counts": counts, "passed": {p: bool(v) for p, v in passed.items()},
+           "thresholds_first_rule": thr1,
+           "passed_first_rule": {p: bool(v) for p, v in passed1.items()},
+           "pass_first_rule": bool(all(passed1.values())),
+           "a_calibration": null.get("a_calibration"),
+           "a_calibration_flag": bool(null.get("a_calibration_flag", True)),
            "a_95_percent": {"needed": n95, "met": bool(counts["a"] >= n95)},
            "a_not_counted": _cells(~ev["a"]["counted"]),
            "a_outside_by_axis": _outside_by_axis(ev["a"]),
@@ -213,10 +229,35 @@ def main(argv=None):
          "- Thresholds `%s`, sha256 `%s`." % (res["null"], res["null_sha256"]),
          "- Solver `%s`, sha256 `%s`." % (res["solver"], res["solver_sha256"]), "",
          GATE, "", "## Gated parts, cap of 10°", "",
-         "| Part | Items counted | Inside | Needed | Result |", "|---|---|---|---|---|"]
+         "| Part | Items counted | Inside | Needed | Result | First rule: needed, "
+         "result |", "|---|---|---|---|---|---|"]
     for p in GATED:
-        L.append("| (%s) %s | %d | %d | %d | **%s** |" % (
-            p, NAMES[p], items[p], counts[p], thr[p], "PASS" if passed[p] else "FAIL"))
+        L.append("| (%s) %s | %d | %d | %d | **%s** | %d, %s |" % (
+            p, NAMES[p], items[p], counts[p], thr[p], "PASS" if passed[p] else "FAIL",
+            thr1[p], "pass" if passed1[p] else "fail"))
+    L += ["", "Under the first rule the gate would %s." % (
+        "pass" if res["pass_first_rule"] else "fail")]
+    cal = res["a_calibration"]
+    res["a_failed_within_delta"] = False
+    if cal is None:
+        L += ["", "**The threshold of (a) was not calibrated at this reference's event "
+              "counts (`null_count_c2.py --calib`): the result of (a) goes to the PI "
+              "with this caveat.**"]
+    else:
+        low = thr["a"] - int(cal["delta_a"])
+        res["a_failed_within_delta"] = bool(low <= counts["a"] < thr["a"])
+        L += ["", "Threshold of (a) at the reference's own event counts (model %s, %d "
+              "synthetic references): an exactly right solver falls below it in "
+              "%.1f%% of the cases (5%% intended); lowered by %d cells, to %d, the "
+              "rate is %.1f%%. Reported: the gate decides on the threshold of the "
+              "table." % (cal["model"], cal["references"], 100 * cal["rate_split"],
+                          cal["delta_a"], low, 100 * cal["rate_after"])]
+        if res["a_failed_within_delta"]:
+            L += ["**(a) fails by fewer cells than this measured strictness of its "
+                  "threshold: FAIL, to the PI with this number.**"]
+        if res["a_calibration_flag"]:
+            L += ["**The measured rate is above 10%: the result of (a) goes to the "
+                  "PI with this caveat.**"]
     nc = res["a_not_counted"]
     L += ["", "(a) against 95%% of the cells counted, the plan's wording: %d needed, "
           "%s." % (n95, "met" if counts["a"] >= n95 else "not met"),
@@ -279,8 +320,13 @@ def main(argv=None):
         if n5["sha256"] != sha or n5["cap_index"] != CAP5:
             _bad("--null5 is not of this reference and of cap index %d" % CAP5)
         res["g"]["thresholds"] = {p: int(n5["parts"][p]["threshold"]) for p in GATED}
-        line += "; counts of an exactly right solver: " + ", ".join(
-            "(%s) %d" % (p, res["g"]["thresholds"][p]) for p in GATED)
+        res["g"]["thresholds_first_rule"] = {
+            p: int(n5["parts"][p]["threshold_first_rule"]) for p in GATED}
+        line += "; reached by an exactly right solver in 95% of the cases: "
+        line += ", ".join(
+            "(%s) %d (first rule %d)" % (p, res["g"]["thresholds"][p],
+                                         res["g"]["thresholds_first_rule"][p])
+            for p in GATED)
     L += ["", "(g) Cap of 5°, inside: %s." % line]
 
     if all(k in ref.files for k in ("us_runs", "un_runs")) and all(
