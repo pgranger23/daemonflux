@@ -1579,6 +1579,52 @@ Result files are under `/home/pigrange/mc3d_work/runs/native3d/` (`c0/gates/`, `
     (`c2/solver/sky/`, `SKIES.md`); `assemble3d.py` with six tests, which the manager
     ran again (6 passed); timing output and a compilation cache in `solver3d.py`.
     `test_solver3d.py` has not been run in full since that change.
+- **2026-11-23. Check of the sky after G2.0: the 5° spacing in latitude makes the
+  excess** (manager; `c2/manager/g20/step_bcd.out`, sha256 beginning
+  `e8de2c38d91fc9f4`; steps and criterion in the dated entry "G2.0 triggered",
+  committed at 16:55 before any check table was read; the last table was finished at
+  17:00). Seven check tables, built with `boundary.py build` as committed, 0.5 core-h.
+  Nothing here uses the reference or a solve.
+  - **B1, the criterion.** Bilinear value of the 5° tables against the direct table
+    with the same draws: allowed count at 4.27 to 10.73 GV over the ground line nodes.
+    At (2.5°, 2.5°): +15.3% ± 3.1%, 4.9 errors from zero. The criterion was +5.5% and
+    two errors: **(a) explains the excess.** The prediction was about +11%.
+  - It is the latitude. (0, +2.5°): +15.6% ± 3.2%. (0, −2.5°): +22% ± 7%.
+    (+2.5°, 0): −1.3% ± 0.7%. (−2.5°, 0): +1.0% ± 0.9%.
+  - Above the foot, at (2.5°, 2.5°): +0.8% ± 1.0% at 10.73 to 19.07 GV and
+    −0.05% ± 0.12% above. The predicted deficit at the top of the edge is not seen.
+    Tangent line nodes at the foot: +3.1% ± 2.4%.
+  - **B2, in the solver's quantity**: transmission of the proton boundary per energy
+    bin, mean over the ground line nodes and the sectors. At (0, +2.5°) the bilinear
+    value is too high by 9% to 23% per bin from 3.2 to 7.9 GeV (errors 3% to 5%), by
+    4% ± 3% at 7.9 to 10 GeV and by less than 1.3% above. Below 3.2 GeV, where the
+    transmission is 2% or less, by 29% ± 10% and more.
+  - B2 summed over the bins below 60 GV, by number and by energy. (0, +2.5°):
+    +6.2% ± 0.8% and +2.7% ± 0.5% (neutrons +5.9% and +2.3%). (0, −2.5°):
+    +3.3% ± 0.7% and +1.3% ± 0.4%. (+2.5°, 0): −0.45% ± 0.16% by number.
+    (−2.5°, 0): +0.27% ± 0.24%.
+  - Read against the scales (estimate, not measured). The error is zero at a table
+    and largest half-way, so a cap average carries about two thirds of the mean of
+    north and south: about 3% by number and 1.3% by energy at 5°. That is above the
+    0.5% of G2.4 and of the size of the 3% floor of G2.3(a). The 5° grid is not fine
+    enough in latitude. The comparison of the two grids below measures it.
+  - **C, a second realisation of the site table** (seed 20261124) against the base:
+    foot count −2.1% ± 2.0%, all rigidities −0.18% ± 0.20%, boundary by number
+    −0.5% ± 0.5%. The frozen draws of a table are not the cause.
+  - **D, the line nodes.** Mean of two neighbouring ground nodes against the direct
+    table on the 30 midpoints: allowed count −0.07% ± 0.20% over all rigidities,
+    −1.3% ± 2.5% at the foot. By the reading fixed before, the line-node term of
+    step A is chance. Tangent midpoints: −7.0% ± 2.8% at the foot (2.5 errors),
+    −0.5% ± 0.3% over all rigidities. Noted, not followed up yet.
+  - **Consequence, as fixed before.** G2.0 stays TRIGGER. The solver agent was told
+    the outcome at 17:03 and builds the 56 further tables of the 2.5° grid. G2.0 is
+    then evaluated again on that grid from the stored states, and the cap-averaged
+    deficits of the two grids are compared with no solve. The spacing for the solves
+    goes to the PI with G2.6. The site solve at M = 12 waits.
+  - **Step E, added before it was run** (`c2/manager/g20/CHECK.md`, sha256 beginning
+    `d37e86f5845ed30d`): the error of the spacings 2.5° and 1.25° in latitude, from
+    direct tables at (0, ±1.25°) and (0, ±0.625°) with the draws of the base tables.
+    Prediction: a quarter and a sixteenth of the values at 5°. Reported, no criterion.
 
 ## Decisions of the PI
 
