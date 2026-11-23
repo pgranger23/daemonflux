@@ -1723,6 +1723,112 @@ Result files are under `/home/pigrange/mc3d_work/runs/native3d/` (`c0/gates/`, `
     weight 1 (`c2/solver/b4cost/B1.log`), so it does not depend on the spacing of
     the location grid. Its cost goes to the PI (G2.6) with the spacing, before any
     solve of G2.3.
+- **2026-11-23. G2.0 evaluated again on the 2.5° grid: no trigger. The cap averages
+  of the two grids: only the spacing in latitude counts** (manager;
+  `c2/manager/g20/g20_2p5.out`, sha256 beginning `19a594b5feed018c`, script
+  `g20_grid.py` `08a353691db69185`, values `g20_2p5_states.npz` `7c156cfe48280211`;
+  `cap_compare.out` `df8f6fddc42d8907`, script `cap_compare.py` `fd158d79afb8c3f1`).
+  No tracing, no solve, no reference; one core, minutes.
+  - The tables. The solver agent built the 56 further tables of the 2.5° grid
+    between 20:15 and 20:40 (4.98 core-h; `c2/solver/sky/SKIES_2p5.md`), with the
+    seed and settings of the 25. All 81 load with seed 20261123 and h_ref = 0. At
+    the five locations of the manager's check tables (`c2/manager/g20/sky/`) the
+    arrays `allowed`, `R` and `az` are equal to the agent's.
+  - G2.0 stays on record as TRIGGER: the gate was evaluated on the skies of the 5°
+    grid. What follows is the evaluation fixed in the bullet of the check of the
+    sky, with the 64 916 stored states and verdicts of the gate. Control: the stored sky
+    value recomputed on the 5° grid for 1755 states, largest difference 0.
+  - On the 2.5° grid no class triggers (5°: one). Largest |difference| over
+    tolerance 0.93, in the class that triggered: R 5 to 10 GV, cos Z at injection
+    0.25 to 0.5, S, n = 659, +0.0194 against 0.0208 (5°: +0.0288).
+  - Prediction fixed before (the excess at 5 to 10 GV falls to half or less): met.
+    Mean of (sky − verdict): +0.0108 ± 0.0017 at 5°, +0.0032 ± 0.0016 at 2.5°,
+    ratio 0.29 (square law: 0.25). At 4 to 10 GV: +0.0088 ± 0.0013 and
+    +0.0027 ± 0.0012.
+  - By the place between the 5° locations in latitude, 4 to 10 GV, near a node,
+    between, half-way: +0.0014, +0.0069, +0.0117 at 5°; +0.0025, +0.0031, +0.0026
+    at 2.5° (errors 0.0016 to 0.0028). The dependence on the place is gone.
+  - Not predicted. At 10 to 20 GV the 2.5° grid gives −0.0047 ± 0.0022 (5°:
+    −0.0020 ± 0.0025). One class carries it: W, cos Z 0.5 to 1, n = 1218,
+    −0.0149 ± 0.0068, and −0.0154 on the 5° grid, so it is not the spacing. It is
+    2.2 errors in one class of about a hundred, and one of twelve rigidity ranges
+    printed. Noted, not followed; the cap comparison below shows no difference
+    between the grids in that range (−0.17% ± 0.18%).
+  - Cap averages (`cap_compare.out`). The boundary of a cap is linear in the
+    `allowed` arrays, so the cap-averaged array of a test grid is compared with
+    that of the 2.5° grid; ground line nodes; the draws are the same in all
+    tables; errors by the jackknife over the 36 sectors. The cap weights were
+    checked against `LocationGrid.cap_weights` for both grids. Test over 2.5°
+    grid minus 1: allowed count at 4.27 to 10.73 GV, proton boundary by number,
+    by energy.
+
+    | cap | test grid, east × north | foot count | by number | by energy |
+    |---|---|---|---|---|
+    | 10° | 5° × 5° | +3.86% ± 0.51% | +1.65% ± 0.12% | +0.51% ± 0.07% |
+    | 10° | 5° × 2.5° | −0.06% ± 0.08% | −0.03% ± 0.03% | −0.03% ± 0.01% |
+    | 10° | 2.5° × 5° | +3.95% ± 0.51% | +1.69% ± 0.11% | +0.55% ± 0.07% |
+    | 5° | 5° × 5° | +8.4% ± 1.5% | +2.50% ± 0.29% | +1.01% ± 0.17% |
+    | 5° | 5° × 2.5° | −0.26% ± 0.23% | −0.09% ± 0.06% | −0.05% ± 0.03% |
+    | 5° | 2.5° × 5° | +8.6% ± 1.5% | +2.59% ± 0.30% | +1.07% ± 0.17% |
+    | 2.5° | 5° × 5° | +7.4% ± 1.4% | +2.09% ± 0.25% | +0.83% ± 0.15% |
+    | 2.5° | 5° × 2.5° | −0.15% ± 0.22% | −0.05% ± 0.06% | −0.04% ± 0.03% |
+    | 2.5° | 2.5° × 5° | +7.5% ± 1.4% | +2.15% ± 0.25% | +0.87% ± 0.14% |
+
+  - Cap of 10°, 5° grid against 2.5° grid, further numbers. Neutron boundary:
+    +1.47% ± 0.11% by number, +0.40% ± 0.07% by energy. Proton transmission per
+    energy bin: +4% to +9% at 2.5 to 6.3 GeV (transmission 0.02 to 0.17), +1.3% at
+    6.3 to 7.9 GeV, +0.6% at 7.9 to 10 GeV, within 0.25% above. Tangent line
+    nodes at the foot: +1.2% ± 0.8%. First harmonic over the sectors of the
+    proton boundary by number, sine part: −0.5130 against −0.5180, difference
+    +0.0049 (cap of 5°: +0.0167; cap of 2.5°: +0.0132); with 5° × 2.5° the
+    differences are −0.0004 to −0.0008. No error was computed for the harmonics.
+  - Reading. The spacing in longitude does nothing at this level: 5° in the east
+    direction reproduces the 2.5° grid to 0.03% (cap of 10°) and 0.09% (cap of 5°).
+    The whole difference comes from the spacing in latitude. For the cap of 10° it
+    is 1.65% by number, below the 2.4% that the estimate of step E gave (three
+    quarters of 3.2%); the measurement replaces the estimate.
+  - Error of the 2.5° grid itself, by the square law of step E (a third of the
+    difference; not measured): cap of 10°, 0.55% by number and 0.17% by energy;
+    cap of 5°, 0.83% and 0.34%. With 1.25° in latitude (a twelfth): 0.14% and
+    0.04%; 0.21% and 0.08%. These are numbers of the boundary, not of the flux
+    cells of G2.4.
+  - Consequences (manager). G2.4(a) as written, 5° against 2.5°, is expected to
+    fail; it is run as written and reported as it comes. The 2.5° grid is not shown
+    to be under 0.5%. The spacing for the cap solves goes to the PI with the cost
+    (G2.6). The options: the 2.5° grid as built; or 1.25° in latitude with 5° in
+    longitude (85 tables, 40 of them new, about 3.9 core-h, and a change of
+    `LocationGrid` that the solver agent puts at half a day), with a convergence
+    test of its own written here before its run. No table finer than 2.5° is
+    built and the grid code is not changed before that decision.
+- **2026-11-23. Milestone B after the trigger: cost split from short runs; the site
+  solve at M = 12 started** (solver agent, hand-back at 20:43;
+  `c2/solver/WP_SOLVER_REPORT_B.md`, sections after "Continuation"). Code
+  checkpoint `d7ede51` (`assemble3d.grid_deficit`, `run_solve3d.py --cap/--spacing`,
+  a test on 81 mock tables); no solve with the full sky in it.
+  - Tests: `test_solver3d.py` 15 passed (762.83 s); `test_assemble3d.py` 7 passed
+    (288.85 s).
+  - Cost runs at M = 12 with 1, 2 and 4 tangent-linear solves in a batch, one
+    process on 4 cores, site table, frozen C1 geometry and kernel set, guard of
+    G2.7 (`c2/solver/b4cost/`): 23.1, 31.9 and 52.1 core-min; 8.6, 11.6 and
+    17.2 GB. Sweep residual 1.5e-8 or below.
+  - Split: 13.3 core-min fixed per process (the primal march and the compilation),
+    9.7 core-min per tangent, 5.7 GB plus 2.9 GB per tangent. The design had 0.33
+    to 0.41 of a C1 solve per tangent; measured 0.78. Four cores per process are
+    about 1.5 times as efficient as eight. The primal is recomputed by each batch.
+  - Projected, not measured: the site solve at M = 12 (25 tangents) about 5 core-h,
+    at M = 6 about 2.5; the same for each cap boundary, whatever the number of
+    tables. All solves of C2 without G2.8: about 34 core-h at M = 6 and 68 at
+    M = 12, against 10 to 20 in the plan. G2.4(b) alone (six caps at 15 km) is 15
+    to 31. This is the first input to G2.6 and goes to the PI with the measured
+    site solve.
+  - Released to the agent at 20:46 (manager): the site solve at M = 12 in batches
+    of 5 on 4 cores (stop above 8 core-h or 24 GB per process); G2.5(a) for the
+    azimuthal orders (M = 6 against 12 from the partial sums) and G2.5(c), with a
+    script written before the fluxes are read; the report with G2.6. Not
+    released: the doubled μ grid and L, G2.5(b), G2.8, any cap solve, G2.3, G2.4.
+  - Asked, for the report: how the doubling of the μ grid treats the tangent
+    altitudes of the sky table; whether tests that compare two boundaries about
+    1% apart can solve the difference alone at lower cost with a known error.
 
 ## Decisions of the PI
 
