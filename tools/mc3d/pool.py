@@ -276,8 +276,19 @@ class EventPool:
     """On-disk-cached pools of pre-generated events, keyed by (pdg, E-bin)."""
 
     def __init__(self, cache_dir, n_pool=2000, seed=1, grid=None,
-                 model_hi="Sibyll23d", model_lo="DpmjetIII193", readonly=False):
+                 model_hi="Sibyll23d", model_lo="DpmjetIII193", readonly=False,
+                 roll=False):
         self.cache_dir = cache_dir
+        #: opt-in (2026-11-23): rotate every drawn event by a random angle
+        #: about the projectile axis.  The generators return their events
+        #: with a fixed reaction plane (impact parameter along +x): the
+        #: tracked mesons of the pools have <cos phi> = -0.02 to -0.085 about
+        #: the beam (DPMJET-III below the 80 GeV splice, 6 to 15 sigma per
+        #: projectile and energy range; about -0.01 for SIBYLL meson
+        #: projectiles), and ``shower._rotate_from_z`` maps the generator x
+        #: axis onto a fixed geographic direction.  Off by default: every
+        #: earlier run, and its random stream, is unchanged.
+        self.roll = bool(roll)
         self.n_pool = int(n_pool)
         self.seed = int(seed)
         self.grid = grid or GRID
@@ -436,6 +447,10 @@ class EventPool:
         px = d["px"][a:b].astype(np.float64)
         py = d["py"][a:b].astype(np.float64)
         pz = d["pz"][a:b].astype(np.float64) * f
+        if self.roll:
+            phi = 2.0 * np.pi * rng.random()
+            c, s = np.cos(phi), np.sin(phi)
+            px, py = c * px - s * py, s * px + c * py
         out = []
         for q, x, y, z in zip(pid, px, py, pz):
             m = MASS.get(int(q), 0.0)

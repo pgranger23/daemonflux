@@ -254,11 +254,11 @@ class ChromoBackend:
 
     def __init__(self, cache_dir=None, n_pool=2000, seed=1, tables=None,
                  xs="mceq", model="Sibyll23d", model_lo="DpmjetIII193",
-                 readonly=False):
+                 readonly=False, roll=False):
         from pool import EventPool, POOL_PROJECTILES
         self.pool = EventPool(cache_dir, n_pool=n_pool, seed=seed,
                               model_hi=model, model_lo=model_lo,
-                              readonly=readonly)
+                              readonly=readonly, roll=roll)
         self._proj = frozenset(POOL_PROJECTILES)
         self.xs = str(xs)
         self._cs = MCEqYieldBackend(tables or DEFAULT_TABLES)

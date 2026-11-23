@@ -168,7 +168,7 @@ class Options:
                  keep_reals=False, reanchor=False, mu_bend="full", crn=False,
                  primary_energy=None, mu_cf=False, primary_model="H3A",
                  resim_rmin=0.0, resim_groups=None, upgoing=False,
-                 thresholds="legacy", muon_clock="legacy"):
+                 thresholds="legacy", muon_clock="legacy", event_roll=False):
         self.cutoff = bool(cutoff)
         self.bend_primary = bool(bend_primary)
         self.muon_field = bool(muon_field)
@@ -232,6 +232,10 @@ class Options:
         if muon_clock not in ("legacy", "converged"):
             raise ValueError("muon_clock must be 'legacy' or 'converged'")
         self.muon_clock = str(muon_clock)
+        #: opt-in (2026-11-23): random rotation of every interaction event
+        #: about its projectile axis (``pool.EventPool.roll``); off by
+        #: default (every earlier run)
+        self.event_roll = bool(event_roll)
 
     def signature(self):
         s = [self.cutoff, self.bend_primary, self.muon_field, self.r_thr,
@@ -251,6 +255,8 @@ class Options:
             s += [-3.0, 1.0]
         if self.muon_clock != "legacy":         # existing manifests stay valid
             s += [-4.0, 1.0]
+        if self.event_roll:                     # existing manifests stay valid
+            s += [-5.0, 1.0]
         return np.array(s, float)
 
     def needs_field(self):
@@ -566,7 +572,8 @@ def _init(cache, n_pool, e_nu_min, lat, lon, caps, model, opts, fieldgrid,
     from interactions import ChromoBackend
     from shower import Config
     _CTX["backend"] = ChromoBackend(cache_dir=cache, n_pool=n_pool,
-                                    xs="mceq", readonly=True)
+                                    xs="mceq", readonly=True,
+                                    roll=opts.event_roll)
     _CTX["cfg"] = Config(collinear=False, bfield=None, energy_loss=True,
                          e_nu_min=e_nu_min, decay_mode="kinematic",
                          polarisation=True, thr_scheme=opts.thresholds,
@@ -1417,6 +1424,8 @@ def trace_replay_task(job):
             dd["thr_scheme"] = np.array([opts.thresholds])
         if opts.muon_clock != "legacy":      # legacy outputs stay unchanged
             dd["mu_clock"] = np.array([opts.muon_clock])
+        if opts.event_roll:                  # legacy outputs stay unchanged
+            dd["event_roll"] = np.array([True])
         sky._atomic_savez(tfile(outdir, tag, ti), dd, compressed=True)
         out.append((ti, float(meta[7])))
         if not opts.keep_cfiles:
@@ -1542,6 +1551,8 @@ def run(nshower, nproc, groups, theta_inj, caps, cache, opts, n_pool=2000,
            "thr_scheme": np.array([opts.thresholds])}
     if opts.muon_clock != "legacy":          # legacy manifests stay unchanged
         man["mu_clock"] = np.array([opts.muon_clock])
+    if opts.event_roll:                      # legacy manifests stay unchanged
+        man["event_roll"] = np.array([True])
     sky._atomic_savez(mpath, man)
     fld = None
     if opts.needs_field():
@@ -1688,6 +1699,11 @@ def main(argv=None):
                          "runs; beta*gamma of the start of each step) or "
                          "converged (momentum loss capped per step, "
                          "second-order proper time)")
+    ap.add_argument("--event-roll", action="store_true",
+                    help="rotate every interaction event by a random angle "
+                         "about its projectile axis (the generators return "
+                         "a fixed reaction plane); off by default, as in all "
+                         "earlier runs")
     ap.add_argument("--merge-only", action="store_true")
     a = ap.parse_args(argv)
     if a.merge_only:
@@ -1701,7 +1717,8 @@ def main(argv=None):
                    primary_energy=a.primary_energy, mu_cf=a.mu_cf,
                    primary_model=a.model, resim_rmin=a.resim_rmin, keep_cfiles=not a.no_keep_cfiles,
                    resim_groups=a.resim_groups, upgoing=a.upgoing,
-                   thresholds=a.thresholds, muon_clock=a.muon_clock)
+                   thresholds=a.thresholds, muon_clock=a.muon_clock,
+                   event_roll=a.event_roll)
     alloc = None
     if a.alloc:
         d = np.load(a.alloc)

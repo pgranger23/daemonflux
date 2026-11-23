@@ -76,6 +76,40 @@ def test_pool_draw_conserves_species_and_energy():
                     assert abs(en ** 2 - m * m - float(pv @ pv)) < 1e-3 * en ** 2
 
 
+def test_event_roll_is_a_rigid_random_rotation_about_the_beam(tmp_path):
+    """``roll=True`` turns every drawn event by one angle about the projectile
+    axis: species, energies, p_z and p_T are those of the unrolled draw, the
+    angle is the same for all particles of an event and uniform over events.
+    ``roll=False`` (default) draws nothing more and is unchanged."""
+    plain = P.EventPool(str(tmp_path), n_pool=200, seed=5)
+    rolled = P.EventPool(str(tmp_path), n_pool=200, seed=5, roll=True)
+    assert not plain.roll
+    r0, r1 = np.random.default_rng(3), np.random.default_rng(3)
+    phis = []
+    for _ in range(300):
+        a = plain.draw(r0, 2212, 95.0)
+        b = rolled.draw(r1, 2212, 95.0)
+        r0.random()                 # the roll draws exactly one number
+        assert [x[0] for x in a] == [x[0] for x in b]
+        if not a:
+            continue
+        pa, pb = np.array([x[2] for x in a]), np.array([x[2] for x in b])
+        assert np.allclose([x[1] for x in a], [x[1] for x in b], rtol=1e-12)
+        assert np.allclose(pa[:, 2], pb[:, 2], rtol=1e-12)
+        assert np.allclose(np.hypot(pa[:, 0], pa[:, 1]),
+                           np.hypot(pb[:, 0], pb[:, 1]), rtol=1e-9)
+        d = np.arctan2(pb[:, 1], pb[:, 0]) - np.arctan2(pa[:, 1], pa[:, 0])
+        z = np.exp(1j * d)
+        assert np.abs(z - z[0]).max() < 1e-6        # one angle per event
+        phis.append(np.angle(z[0]))
+    phis = np.array(phis)
+    assert len(phis) > 250
+    # uniform: first two harmonics within 4 sigma, both half-circles filled
+    for k in (1, 2):
+        assert abs(np.cos(k * phis).mean()) < 4 * np.sqrt(0.5 / len(phis))
+        assert abs(np.sin(k * phis).mean()) < 4 * np.sqrt(0.5 / len(phis))
+
+
 def test_bin_choice_is_linear_in_log_e():
     """The stochastic choice between the two bracketing bin centres must give
     a mean ln E equal to the requested ln E (that is what removes the
