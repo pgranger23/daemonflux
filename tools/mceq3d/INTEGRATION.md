@@ -1686,6 +1686,24 @@ v2k is unchanged (`ea0b2bfe...a9c6`). Builder: `build-v2l` / `gates-v2l` (same c
   cos Z 0.6-1, 0.3-0.6 and 0.1-0.3. It is bounded only at 3 to 11% in the row cos Z 0-0.1, and the field-on and up-going cells are not
   covered by the pair. Records: `tools/cascade3d/GATES.md` (Results log), `$W/runs/native3d/c1/mcref2/CLOCK_PAIR.md`. New Monte
   Carlo runs use `sky3d.py --muon-clock converged` (opt-in; the default reproduces the earlier runs bit for bit).
+* **Event plane not turned (added 2026-11-23; found in C2 of the native 3D study; the table is not changed by this entry).** The event
+  generators return every event with the same reaction plane, and `tools/mc3d` put it on a fixed geographic direction, so every
+  interaction pushed its mesons toward the same side. Every Monte Carlo run behind this table has this error; every tally with azimuth
+  bins that `tools/mc3d` produced before 2026-11-23 has it. Measured on two sets of twenty runs of 5x10^5 primaries, cutoff on, no
+  bending, cap of 10 deg, with `--event-roll` minus without:
+  * the no-cutoff tally of one copy per shower (`n`) had an East-West first harmonic of -0.036 +- 0.002 below 0.4 GeV (-0.055 +- 0.004
+    at cos Z 0-0.3); with the roll it is -0.002 +- 0.002;
+  * in `s` (twelve copies of each shower, turned about the vertical) the North-South first harmonic moves by -0.0021 +- 0.0004 below
+    0.4 GeV (-0.0025 +- 0.0009 at cos Z 0-0.3) and the East-West one by -0.0003 +- 0.0006 (+0.0007 +- 0.0015);
+  * no change is seen in the cutoff factor of `s` (mean over the cells of a band at cos Z 0-0.3: errors 0.4 to 2.1%, no band beyond
+    2 errors; per band over all rows, one band of ten at 2.1 errors), in the horizontal-over-vertical ratio (one band of ten at 2.2
+    errors), or in the flux level (`n` +0.3 +- 0.4%, `s` +0.5 +- 0.5%).
+
+  For this table, which was made with bending and whose tallies `s` and `t` both hold twelve turned copies, these numbers are an
+  estimate and not a measurement: a shift of 0.002 to 0.003 in the first harmonic of the azimuth pattern below 0.4 GeV, and nothing
+  detectable in the azimuth mean. Records: `tools/cascade3d/GATES.md` (entry "Azimuth artefact of the Monte Carlo", Results log of
+  2026-11-23), `$W/runs/native3d/c2/manager/dipole/two_refs.out`. New Monte Carlo runs use `sky3d.py --event-roll` (opt-in; the
+  default leaves every earlier run, its signature and its random stream unchanged).
 
 ### 18.8 Note on the table of 17.9
 The species means of the table in 17.9 (MC level / v2h) are arithmetic means over the four species. The v2k brief used the geometric mean (the pre-registered ln rho statistic);

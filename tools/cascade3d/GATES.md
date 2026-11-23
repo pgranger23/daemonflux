@@ -1899,6 +1899,102 @@ Result files are under `/home/pigrange/mc3d_work/runs/native3d/` (`c0/gates/`, `
   - Asked, for the report: how the doubling of the μ grid treats the tangent
     altitudes of the sky table; whether tests that compare two boundaries about
     1% apart can solve the difference alone at lower cost with a known error.
+- **2026-11-23. The two references of G2.3 compared: the roll removes the artefact
+  from `n`; in `s` it moves a_c by −0.002 below 0.4 GeV and nothing else is seen**
+  (manager; `c2/manager/dipole/two_refs.py`, output `two_refs.out`, run at 22:17
+  after commit `80db4c7`; the fixed list of the entry "Reference of G2.3 replaced";
+  cap of 10°; reported, not a gate). First reference `c2/mcref/c2ref_cutoff.npz`, new
+  reference `c2/mcref_roll/c2roll_cutoff.npz`, twenty runs each. No solver output was
+  read. This bullet holds content of the references: the solver agent is told not to
+  read it before the freeze.
+  - Item 1, `n`, pooled over the three lowest bands. All rows: sine −0.0360 ± 0.0020
+    in the first reference and −0.0021 ± 0.0022 in the new one (1.0 errors from zero).
+    cos Z 0 to 0.3: −0.0550 ± 0.0039 and −0.0024 ± 0.0042 (0.6). **The criterion is met
+    in both sets of rows: the roll removes the artefact.** New minus first:
+    +0.0339 ± 0.0030 and +0.0526 ± 0.0057. The cosine component is within 1.1 errors
+    of zero in both references. Per band in the new reference, all rows, from 0.1 GeV
+    up: sine −0.0031 ± 0.0029, +0.0025 ± 0.0043, −0.0055 ± 0.0048, +0.0060 ± 0.0056,
+    +0.0023 ± 0.0033.
+  - Item 2, `s`, pooled over the three lowest bands, new minus first. a_c:
+    −0.00213 ± 0.00041 for all rows (5.2 errors) and −0.00250 ± 0.00090 for cos Z 0 to
+    0.3 (2.8). a_s: −0.00030 ± 0.00063 and +0.00072 ± 0.00146. The shift of a_c has the
+    sign and the size of the estimate (0.002 to 0.005) and of the one-run measure
+    (−0.0019 and −0.0020). It is a fifth to a quarter of the floor of part (b).
+  - Item 3, per band and row, new minus first. a_c: largest 0.0143 ± 0.0067 (band 4,
+    row 0); rms of the differences over their errors 1.27; 4 above 0.01, 2.3 expected.
+    a_s: largest 0.0212 ± 0.0074 (band 8, row 1); rms 0.85; 4 above 0.01, 6.0 expected.
+    Either component above 0.01: 7 pairs of 100. The excess of a_c is in the three
+    lowest bands: the sum of the squared differences over their errors is 87.0 for 30
+    pairs there (mean −1.25) and 73.1 for 70 pairs above (`two_refs_tails.out`). That
+    is the shift of item 2 seen pair by pair.
+  - Item 4, K per cell, 4800 cells counted in both. Rms of the differences over their
+    errors 1.036; beyond 2: 250; beyond 3: 24. Gaussian errors give 218 and 13.0;
+    errors from two sets of twenty runs (Student t, 38 degrees of freedom) give rms
+    1.027, 253 and 22.8. Cells that differ by more than 3% of K: 1107 (1073 expected).
+    Mean relative difference per band for cos Z 0 to 0.3, from 0.1 GeV up:
+    −0.07 ± 0.70%, +1.02 ± 1.26%, −0.25 ± 1.05%, −1.64 ± 1.44%, +2.28 ± 1.23%,
+    +0.42 ± 1.54%, +0.76 ± 1.47%, +1.51 ± 1.01%, +1.93 ± 2.10%, +0.05 ± 0.44%. No band
+    is beyond 2 errors. The estimate "up to about 1% in the cutoff factor of a cell"
+    below 0.4 GeV is neither seen nor excluded: the errors there are 0.7 to 1.3%.
+  - Item 5, differences over their errors per band. K: +0.5, +0.4, −0.4, −1.7, +1.2,
+    +0.4, +0.4, +2.1, +1.0, −0.9 (sum of squares 11.2 for 10). H: −0.2, +0.1, −0.5,
+    −1.1, +2.2, +0.8, −0.1, +1.7, +1.1, −1.1 (12.5 for 10).
+  - Outside the fixed list: flux level, new over first, cap of 10° (`roll_levels.out`).
+    `n` 1.0034 ± 0.0042 and `s` 1.0047 ± 0.0048 over all bands; per band nothing beyond
+    1.9 errors (sums of squares 10.1 and 12.9 for 10).
+  - Reading. The artefact was a dipole of 3.6% (5.5% near the horizon) in a tally the
+    gate uses only through its azimuth mean. In the tally the gate compares cell by
+    cell it is a shift of a_c by 0.002 below 0.4 GeV. No change of a_s, K, H or the
+    level is seen at the precision of two references of this size. G2.3 is evaluated
+    against the new reference only, as decided.
+  - **Two observations outside the fixed list, on the references alone.** They were
+    found by looking through 100 pairs of band and row in several tallies after the
+    data were seen. Their significances are overstated by that choice.
+    1. Sine component of `n` near the vertical in the new reference
+       (`roll_n_rows.out`, `roll_n_rows_up.out`). Pooled over the bands: row 9 (cos Z
+       0.9 to 1) −0.0065 ± 0.0016, row 8 −0.0059 ± 0.0024; rows 0 to 7 within 1.4
+       errors of zero. It sits above 0.25 GeV (rows 8 and 9, bands 2 to 9: −0.0096
+       and −0.0106, 3.0 and 5.2 errors). At row 9 the sign is the same in all eight
+       bands from 0.25 GeV up; the one significant band is 0.25 to 0.4 GeV
+       (−0.0099 ± 0.0024, negative in 17 of 20 runs). The bands share their showers,
+       so the common sign is weaker evidence than eight independent values. Nothing
+       in the two lowest bands, where the artefact was largest. The first reference
+       shows nothing there: row 9, bands 2 to 9, −0.0024 ± 0.0033 against
+       −0.0115 ± 0.0025 in the new one with the same weights (`roll_s_rows.out`); new
+       minus first is 2.2 errors.
+       - Read of the code of the run (`c2/mcref_roll/code/tools/mc3d/pool.py`,
+         `decays.py`): the roll angle is uniform and drawn independently of the
+         event; the decays are isotropic about the parent. With the roll, no cutoff
+         and no bending, the set-up is mirror symmetric about the meridian of the
+         site, so a sine component of `n` has no source that we know.
+       - Test that bears on the gate (`roll_s_rows.out`): `s`, filled from twelve
+         turned copies of each shower, does not carry it. a_s of `s`, new minus first,
+         bands 2 to 9: −0.0005 ± 0.0009 at row 8 and −0.0002 ± 0.0007 at row 9. No row
+         from 5 to 9 is beyond 1.2 errors in either group of bands.
+       - Standing: a fluctuation (of the order of 1 to 2% after the choice of the row,
+         by a rough count) or unexplained. It does not reach a quantity of G2.3: `n`
+         enters only through its azimuth mean. A second set of runs would settle it
+         (about 37 core-h). Not proposed.
+    2. North-south component of the up-going tally without cutoff, `un`, at its edge
+       row 6 (cos Z −0.4 to −0.3), in both references (`roll_un_caps.out`). Cosine
+       component, three lowest bands, caps of 2.5, 5, 7.5 and 10°: new
+       −0.0077 ± 0.0169, −0.0015 ± 0.0079, +0.0193 ± 0.0063, +0.0273 ± 0.0040; first
+       −0.0125 ± 0.0239, −0.0049 ± 0.0104, +0.0085 ± 0.0058, +0.0207 ± 0.0037. It
+       grows with the radius of the cap, compatible with its square. Row 7 at 10°:
+       +0.0050 ± 0.0020 (new), −0.0008 ± 0.0017 (first).
+       - Rows 8 and 9, the rows part (h) uses, cap of 10°: cosine −0.0041 ± 0.0043
+         (new) and −0.0057 ± 0.0055 (first); sine −0.0612 ± 0.0048 in the first
+         reference (the artefact) and −0.0043 ± 0.0044 in the new one.
+       - Reading, plausible and not established: the injection patch ends 40° from the
+         site, and a neutrino of |cos Z| 0.35 entered the Earth 41° away. Row 6 sits
+         on the edge of the patch, and a ground point off the site then loses a part
+         of its sky that depends on the azimuth. It is not an effect of the roll.
+       - Rows 6 and 7 of the up-going tallies are used by no part of G2.3. They are
+         not to be used for a statement on the azimuth. Rows 8 and 9 are inside the
+         patch.
+  - The known limitation for the product table is written in
+    `tools/mceq3d/INTEGRATION.md`, section 18.7, with items 2 to 4 as an estimate.
+  - Compute: single-core minutes.
 
 ## Decisions of the PI
 
