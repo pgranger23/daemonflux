@@ -1625,6 +1625,46 @@ Result files are under `/home/pigrange/mc3d_work/runs/native3d/` (`c0/gates/`, `
     `d37e86f5845ed30d`): the error of the spacings 2.5° and 1.25° in latitude, from
     direct tables at (0, ±1.25°) and (0, ±0.625°) with the draws of the base tables.
     Prediction: a quarter and a sixteenth of the values at 5°. Reported, no criterion.
+- **2026-11-23. Step E of the check of the sky: the error falls with the square of
+  the spacing in latitude** (manager; `c2/manager/g20/step_e.out`, sha256 beginning
+  `d6acd04ad15ff097`; `step_e.py`). Four direct tables at (0, ±1.25°) and
+  (0, ±0.625°) in `c2/manager/g20/sky_fine/` (sha256 beginning `a5d082b223b54158`,
+  `1702ab39e18fd879`, `b0ff59aeb6145aaf`, `74c7e6b5400f9060`), with the draws of the
+  base tables, 0.32 core-h. No reference, no solve. Compared: the mean of two tables
+  one spacing apart in latitude against the direct table half-way, ground line nodes.
+  - Control: the rows of 5° repeat step B (+15.6% and +22% at the foot).
+  - Allowed count at 4.27 to 10.73 GV. Spacing 2.5°: +3.1% ± 1.6% north and
+    +6.2% ± 2.4% south (predicted +4% and +5.5%). Spacing 1.25°: +1.9% ± 2.1% north
+    and −0.9% ± 1.8% south (predicted +1% and +1.4%).
+  - Proton boundary summed over the bins below 60 GV, by number. Spacing 2.5°:
+    +0.72% ± 0.44% north and +1.47% ± 0.48% south (predicted +1.5% and +0.8%).
+    Spacing 1.25°: +0.48% ± 0.55% north and +0.21% ± 0.38% south (predicted +0.4%
+    and +0.2%).
+  - Mean of north and south, by number and by energy. 5°: +4.75% ± 0.54% and
+    +1.97% ± 0.29%. 2.5°: +1.10% ± 0.33% and +0.49% ± 0.15%. 1.25°: +0.35% ± 0.34%
+    and +0.16% ± 0.15%. Ratios to 5° by number: 0.23 and 0.07, against 0.25 and
+    0.0625 predicted.
+  - Reading. The mean of the two sides follows the square law. Taken alone at 2.5°,
+    the north is 1.7 errors below its prediction and the south 1.3 errors above. At
+    1.25° no value differs from zero: the tables bound the error there at about 1%
+    (two errors); the 0.3% is the square law carried down from 5°, not a
+    measurement.
+  - Per energy bin at 2.5°, 3.2 to 10 GeV: between −0.4% and +3.3% in the north
+    (errors 1.2% to 2.5%), between −1.9% and +13% in the south (errors 1.1% to
+    4.2%; the +13% ± 4% is the bin of 3.2 to 4.0 GeV, transmission 0.02). Above
+    10 GeV 0.6% or less on both sides.
+  - Tangent line nodes at the foot, 2.5°: −3.4% ± 1.4% north, +2.9% ± 2.9% south;
+    1.25°: −1.0% ± 2.0% and −3.6% ± 1.7%. No common sign.
+  - Estimate for a cap average (two thirds of the mean of the two sides; not
+    measured), by number and by energy: 5° 3.2% and 1.3%; 2.5° 0.7% and 0.3%; 1.25°
+    in latitude 0.2% and 0.1% by the square law. The 2.5° grid is at the 0.5% of
+    G2.4, not clearly under it. The comparison of the cap averages on the 81 tables
+    measures the difference between 5° and 2.5°.
+  - State. The usage limit stopped the session and the solver agent from about
+    17:25 to 20:15. None of the 56 tables of the 2.5° grid existed then. The agent
+    was told at 20:15 to build them and was given the numbers above (they hold
+    nothing of the reference). Its cost runs with 1, 2 and 4 tangents had ended
+    before the stop and are not yet in its report.
 
 ## Decisions of the PI
 
