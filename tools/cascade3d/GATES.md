@@ -647,6 +647,151 @@ sets the cost of C5.
 goes to the PI (G2.6) before the solves of G2.3. G2.0 is evaluated on the skies before
 that solve.
 
+### 2026-11-23. The reference of G2.3 and its count thresholds
+
+**Reference.** `c2/mcref/c2ref_cutoff.npz`, sha256
+`d293001c5e766f7ae0dadeb0a9b5ea2962185b796e2ab9431612322c01de0d39`, combined on
+2026-11-23 from the twenty runs (report: `c2/mcref/WP23_REPORT.md`).
+- Size: 5×10^5 primaries per run, 10^7 in all, with `--upgoing`. Cost: 36.93 core-h of
+  CPU.
+- Level of `n` against the field-free reference of C1 (`c1/mcref2`, tally `s`):
+  0.9997 ± 0.0043.
+- Cutoff factor per band, cap of 10°: 0.4135, 0.4657, 0.5449, 0.6327, 0.7103, 0.7866,
+  0.8681, 0.9354, 0.9653, 0.9948 (errors 0.0014 to 0.0034; band 8: 0.0105).
+
+**Thresholds.** Computed from the reference alone with the commands fixed in the
+amendment above. Files in `c2/manager/thresholds/`: `calib.json` (sha256 beginning
+`b8cbf29302ad1441`), `cap10/null_count_c2.json` (`c75056921859f12d`),
+`cap5/null_count_c2.json` (`5e7ff953009ad9fb`).
+
+| Part | Items counted | Threshold | First rule (decides nothing) |
+|---|---|---|---|
+| (a) cutoff factor per cell | 4800 | **N_a = 4639** | 4655 |
+| (b) East-West harmonic per band and row | 100 | **N_b = 98** | 97 |
+| (c) horizontal over vertical per band | 10 | **N_c = 8** | 8 |
+
+Reported parts, cap of 10°: (d) 4504 of 4800, (f) 391 of 400. Cap of 5° (part g): (a)
+4533 of 4776, (b) 95 of 100, (c) 8 of 10. In part (a), 2562 of the 4800 cells have the
+3% floor as their tolerance.
+
+**Calibration of (a) at the reference's own event counts.** 600 synthetic references,
+model `nested`. An exactly right solver falls below N_a in 14.3 ± 1.4% of them (5%
+intended; first rule 60.2%). Δ_a = 13: at 4626 the rate is 4.2%. As fixed in the
+amendment:
+- the gate decides on N_a = 4639;
+- the rate is above 10%, so the result of (a) carries it as a caveat, pass or fail;
+- a count from 4626 to 4638 is a FAIL that goes to the PI with these numbers.
+
+**Standing.** These thresholds belong to this reference file. If the reference is
+replaced (next entry), they are recomputed for the new file with the same commands,
+before any comparison.
+- The commands were fixed in commit `529b596`, before the reference was combined. The
+  numbers follow from them and from the file.
+- The threshold files were written between 15:31 and 15:38. The first solver output
+  with a cutoff, a nonlinear solve of G2.7, was written at 15:43. This entry is
+  committed after G2.7 (results log), so the file times are the record of that order.
+- No output of the C2 solver has been compared with a tally. The manager opened the
+  reference after commit `529b596` and has since read the result of G2.7. The manager
+  compares neither with the other.
+
+**Cap radius (reported).** The cutoff factor of the 10° cap is higher than that of the
+smaller caps below 1 GeV: by 4.6 ± 1.2%, 3.8 ± 0.8% and 2.1 ± 0.3% against the caps of
+2.5°, 5° and 7.5° in the lowest band, and by nothing above 1 GeV. The three ratios
+follow the square of the cap radius in every band (χ² 0.1 to 2.1 for two degrees of
+freedom; `c2/manager/dipole/caps.out`). That is what the average of a smooth, convex
+function of the location gives: with K ∝ R_c^-1.7 and R_c ∝ cos⁴ of the geomagnetic
+latitude, the estimate for the 10° cap is about 5%. Read as physical. It says that the
+solver's cap average must carry the second order in the location, which G2.4 (a) tests.
+
+### 2026-11-23. Azimuth artefact of the Monte Carlo: the event plane was not turned
+
+**Found.** With no cutoff and no bending the flux at the site is flat in azimuth. The
+tally `n` of the reference (copy 0 of each primary) is not. Sine component of `n`,
+species and rows summed, cap of 10°, mean of the twenty runs:
+- per band from 0.1 GeV up: −0.0507 ± 0.0027, −0.0360 ± 0.0031, −0.0163 ± 0.0031,
+  −0.0064 ± 0.0034, −0.0070 ± 0.0036; the cosine component is zero within the errors;
+- pooled over the three lowest bands: −0.0361 ± 0.0020 for all rows, −0.0552 ± 0.0039
+  for cos Z 0 to 0.3.
+
+More flux arrives from the west, most of all near the horizon and below 0.4 GeV
+(`c2/manager/dipole/roll_test_before.out`, `rows.out`).
+
+**Cause.** The event generators return every event with the same reaction plane, and
+the Monte Carlo did not turn it.
+- In the event pools the sum of the meson p_x per event is negative in every group of
+  DPMJET-III pools (5 to 15 standard deviations per group) and for the meson
+  projectiles of SIBYLL above 100 GeV (22 to 31). The sum of p_y is zero within the
+  errors. The mean cos φ of the mesons about the beam goes down to −0.086 for
+  DPMJET-III and to −0.013 for SIBYLL
+  (`c2/manager/dipole/pool_azimuth_pools_fix_full.out`).
+- `lorentz.rotate_to` puts the generator x axis on a fixed geographic direction: the
+  cross product of the Earth's axis and the projectile direction. Every interaction
+  therefore pushes its mesons toward the same side.
+- This is an error of `tools/mc3d`. No run before today turned the events.
+
+**Test, with its criterion written before the run was read**
+(`c2/manager/dipole/CRITERION.md`). One run with the new option `--event-roll`: seed
+1500000000, 5×10^5 primaries, otherwise the command of the reference; 2.64 core-h of
+CPU; `c2/mcref_roll/sky/c2roll_s00_total.npz`, sha256 beginning `4c55f4eca615bb06`.
+Statistic S: the sine component of `n` pooled over the three lowest bands. One run
+without the roll scatters by 0.0090. Criterion: confirmed if |S| ≤ 0.018.
+- Result: S = −0.0085, which is 0.9 standard deviations from zero and 3.1 from the mean
+  without the roll. **Confirmed.**
+- Reported: cos Z 0 to 0.3, −0.0159 (0.9 from zero, 2.3 from the mean without the
+  roll); the lowest band alone, −0.0221 (1.8 from zero, 2.4 from the mean without the
+  roll).
+- What one run shows: the roll removes most or all of the dipole. The remainder is
+  0.24 ± 0.25 of the value without the roll (`roll_test_after.out`).
+
+**Effect on G2.3.** `n` enters G2.3 only through its azimuth mean, so its dipole does
+not enter. `s` is filled from twelve copies of each shower, turned about the vertical of
+the site. By argument, not measured: over the copies the sideways push averages out
+except for a turn about the vertical (proportional to the sine of the latitude, 0.59),
+which turns the East-West pattern of `s` by a small angle.
+- Estimated size: 0.002 to 0.005 in the cosine component near the horizon below
+  0.4 GeV (floor of (b): 0.01); up to about 1% in the cutoff factor of a cell there
+  (floor of (a): 3%); a few to about ten cells in the count of (a). For comparison:
+  Δ_a = 13, and the median of the null count is 28 cells above N_a.
+- Measured with the one run (reported, no criterion; `roll_s_after.out`; in brackets the
+  standard deviations of one run). Cosine component of `s` pooled over the three lowest
+  bands, roll minus no roll: −0.0019 (1.8) for all rows, −0.0020 (0.7) for cos Z 0 to
+  0.3. Sine component: −0.0017 (1.1) and +0.0034 (0.8). Cutoff factor per band: no band
+  beyond 1.6. Horizontal over vertical: no band beyond 1.5. The sign and the size of the
+  cosine shift are those of the estimate. It is not significant: one run cannot measure
+  an effect of this size, and these deviations are wider than Gaussian (rms 1.15 to
+  1.22 on the reference runs).
+- Flux level of the run with the roll in the band 4 to 6.3 GeV: 23% (`n`) and 26% (`s`)
+  above the mean of the reference runs (2.1 and 3.5 standard deviations). The cutoff
+  factor does not move (0.7). The reference has one run 34% above its mean in `n` in
+  that band. Read as rare heavy showers, not as an effect of the roll. Not followed up.
+
+**Where the artefact is and where it is not.**
+- Not in the solver. Its kernel sets are Legendre moments about the projectile
+  (`kernelset_mc.py`), which is the average over the angle about the beam. The
+  reference and the solver therefore differ by this artefact.
+- Not at first order in the comparisons of C1. They used azimuth averages, and a turn
+  about the vertical does not change an azimuth average (argument, not measured).
+- In every tally with azimuth bins that `tools/mc3d` has produced, among them the Monte
+  Carlo behind the product table `kamioka_3D_v2l.npz`. Its size there is not measured
+  and is expected to be that of the estimate above. It becomes a known limitation in
+  `tools/mceq3d/INTEGRATION.md` once it is measured.
+
+**Code.** `sky3d.py --event-roll` (`pool.EventPool(roll=True)`): every drawn event is
+turned by a random angle about its projectile. Off by default: every earlier run, its
+signature and its random stream are unchanged. Test:
+`test_pool.py::test_event_roll_is_a_rigid_random_rotation_about_the_beam`.
+
+**Standing of the reference: open, for the PI.** The gate text names the twenty seeds
+of the reference, and a second Monte Carlo reference is beyond the compute authorised.
+Put to the PI on 2026-11-23:
+- (A) keep the reference, with the artefact on record at its estimated size;
+- (B) replace it by twenty runs with `--event-roll` (seeds 1500000000 + 20000000 j; the
+  run above is j = 0). The thresholds are then recomputed with the same commands before
+  any comparison. The present reference is kept and is compared with nothing but the
+  new one.
+
+Until the PI has answered, no solver output with the cutoff is compared with a tally.
+
 ## Results log
 
 Result files are under `/home/pigrange/mc3d_work/runs/native3d/` (`c0/gates/`, `c1/gates/`).
@@ -1201,6 +1346,31 @@ Result files are under `/home/pigrange/mc3d_work/runs/native3d/` (`c0/gates/`, `
 - **Compute of the closing cycle:** about 10 core-h of the 15 (kernel sets and variants
   about 3, G1.0 to G1.2 and unit tests about 5, G1.3 to G1.5 1.75, checks 0.3). No
   Monte Carlo was run.
+- **G2.7: PASS on the first setting** (2026-11-23; solver agent, milestone A; result
+  file `c2/solver/gates/G2.7/G2.7.md`, sha256 beginning `7a94fbd6f5d97ec3`; report
+  `c2/solver/WP_SOLVER_REPORT_A.md`). Guard: ρ = 0.1 on the source shape, the source
+  integral and the loss interpolation; the Simpson correction not guarded. The tuning
+  cycle was not run.
+  - Deficit 1 (isotropic step): (i) 0.439% against 0.5%; (ii) 0.237% against 1%, over
+    291 cells. Deficit 2 (site sky, order 0): (i) 0.386%; (ii) 0.237%, over 308 cells.
+    Every worst value is in one cell: anti-nu_e, 0.10 to 0.16 GeV, cos Z 0 to 0.1.
+  - The margin of (i) is small, as the gate text expected. Only the two lowest bands
+    are above 0.011%.
+  - Ground muons (reported): up to 4.9% and 4.0% of the flux, 7.6% and 7.7% of the
+    deficit, both at 0.224 GeV and cos Z 0.05.
+  - Checked by the manager. Both criteria recomputed from the stored cells give the
+    same numbers. The C1 cells of the gate files equal the stored cells of the frozen
+    C1 solve bit for bit. The 26 unit tests pass in the agent's log; the manager re-ran
+    the eleven of `test_boundary.py`. The manager did not re-run the solves.
+  - Deviations from the design, as the agent reports them: three up-scatter passes in
+    the tangent (design: two); Φ_lin in the cells built as in section 3.3 of the
+    design; the deficit clipped to [0, B⁰] against a rounding excess of 1e-15.
+  - Cost. Nonlinear solves: 17.5 core-min and 5.2 GB each. Tangent run (primal and two
+    tangents): 47.9 core-min and 11.3 GB, about 15 core-min per tangent. The design had
+    0.33 to 0.41 of a C1 solve per tangent (4 to 5 core-min). To be measured at the
+    batch size of the full-sky solve (G2.6). Site sky table: 50 220 states, 290 core-s.
+    Compute of the agent: about 2.5 core-h of 4.
+  - The setting goes into `RESULTS_C2.md` at the freeze.
 
 ## Decisions of the PI
 
