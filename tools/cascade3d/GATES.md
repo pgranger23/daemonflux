@@ -1665,6 +1665,64 @@ Result files are under `/home/pigrange/mc3d_work/runs/native3d/` (`c0/gates/`, `
     was told at 20:15 to build them and was given the numbers above (they hold
     nothing of the reference). Its cost runs with 1, 2 and 4 tangents had ended
     before the stop and are not yet in its report.
+- **2026-11-23. Step F of the check of the sky: the tangent nodes stay; the errors
+  of the ground nodes hold** (manager; `c2/manager/g20/step_f.out`, sha256 beginning
+  `481dc91db566509a`; `step_f.py`, `2a811c6cc60e1392`, written while the first of
+  its tables was built; fixed before in `CHECK.md`, section of 20:20, sha256 of the
+  file beginning `ac3716c319f04e6e`). Three more tables, 0.22 core-h on one core:
+  the midpoints of the line nodes with seeds 20261126 and 20261127 (`sky_mid/`,
+  sha256 beginning `b36863d4bceeaf0d`, `13bd1189cf0ff32a`) and the site with seed
+  20261128 (`sky_seed3/`, `28d30df71977bbec`). With the tables of C and D: three
+  realisations of the site table and three of the midpoint table. No reference, no
+  solve.
+  - F2, tangent midpoints at 4.27 to 10.73 GV: interpolated 412.8 counts against
+    426.3 direct, −3.2% ± 1.4% (error from the scatter of the three, as fixed). The
+    reading fixed before asks for beyond −4% and beyond two errors: not met. The
+    node set stays; no further table waits on it.
+  - What that reading does not say. The value is two errors from zero and has the
+    sign of D. Over all rigidities the tangent midpoints give −0.42% ± 0.17%, at 19
+    to 60 GV −0.26% ± 0.13% (errors from the states, below). A small error of the
+    linear value in the tangent altitude is likely, about 3% of the count at the
+    foot at the midpoints. The −7.0% of D was that and chance. Ground midpoints:
+    +0.8% ± 1.3% at the foot, 0.00% ± 0.10% over all rigidities.
+  - F1 as written cannot decide: the scatter of three totals has two degrees of
+    freedom. Against the jackknife it gives 1.7 and 1.8 for the ground nodes at the
+    foot in the two sets, 1.1 and 1.0 for the tangent nodes at the foot, 0.1 and
+    0.5 for the ground nodes at 10.73 to 19.07 GV.
+  - Two additions, written after `step_f.out` was read (not in `CHECK.md`):
+    `step_f_add.py`, the same test on the proton boundary sums (1.3 to 1.7;
+    `step_f_add.out`, `5cfa6242ed586926`), and `step_f_add2.py`
+    (`step_f_add2.out`, `28b71a1ccf0e2e5e`). The second takes the variance of a
+    count from the states. The draws of a state are independent of all others, so
+    the variance is the sum of p (1 − p), estimated for each state from its three
+    realisations: thousands of states in place of two degrees of freedom.
+  - Jackknife over the sectors against the value from the states. Ground nodes:
+    0.89 to 1.08 for the counts in the three ranges, 0.91 to 0.99 for the proton
+    boundary sums. Tangent nodes: 0.75 to 0.90. Scatter of the three totals against
+    the states: mean square 1.17 over the twelve sets, 1 ± 0.29 expected; the 1.5
+    and 1.9 of the ground nodes at the foot are the largest of them.
+  - Reading. The jackknife is right for the ground nodes to about 10%. The errors
+    of B, C, D and E for the ground nodes stand; nothing is requoted. For the
+    tangent nodes it is 10% to 25% too small: the tangent values of C, D and E are
+    read with errors larger by that. Step C, tangent nodes at the foot: +3.7% with
+    ± 2.7% from the states, 1.3 errors.
+  - F2 with the errors from the states (`step_f_add3.out`, `e7bab89eb4fac938`), at
+    the foot, at 10.73 to 19.07 GV, above, and over all. Tangent: −3.2% ± 1.6%,
+    −0.03% ± 0.37%, −0.26% ± 0.13%, −0.42% ± 0.17%. Ground: +0.8% ± 1.3%,
+    −0.21% ± 0.21%, 0.00% ± 0.05%, 0.00% ± 0.10%.
+  - Consequences (manager). The check of the tables themselves is closed: they are
+    right at their locations and nodes, the ground line nodes interpolate within
+    the errors, the tangent nodes within the bound fixed before. What is left of
+    the check is the spacing in latitude (the 81 tables, the cap comparison), which
+    goes to the PI. The effect of the line nodes on the flux belongs to G2.5(a),
+    the doubling of the μ grid. The solver agent is asked how that doubling treats
+    the tangent altitudes; a refinement, if one is needed, is written as a dated
+    entry before that run.
+  - The site solve at M = 12 is released (manager, after step F). It was held on
+    2026-11-23 until the check of the sky. It reads the site table alone, with
+    weight 1 (`c2/solver/b4cost/B1.log`), so it does not depend on the spacing of
+    the location grid. Its cost goes to the PI (G2.6) with the spacing, before any
+    solve of G2.3.
 
 ## Decisions of the PI
 
