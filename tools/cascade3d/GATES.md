@@ -2489,6 +2489,118 @@ Result files are under `/home/pigrange/mc3d_work/runs/native3d/` (`c0/gates/`, `
     3.50, G2.2 0.35, G2.8 0.71, G2.0 0.04, evaluations 0.1, unit tests 0.45);
     manager about 0.4. Stage 1 so far about 7.2 of its ceiling of 20; C2 about 106.
 
+- **2026-11-24. Stage 1, the cap solves at M = 8: three boundaries solved; G2.1 PASS;
+  G2.4(a) PASS (0.392%); G2.5(b) PASS; G2.5(c) PASS for each solve; G2.6 measured;
+  the settings frozen in `RESULTS_C2.md`** (solver agent until about 14:07, then the
+  manager; the manager's checks in `c2/manager/stage1/check_caps.*`). The agent
+  changed no repository file.
+  - Who did what.
+    - The solver agent exported commit 954abfb with `git archive` to
+      `c2/solver/code_954abfb/` and started the driver from that copy at 12:29
+      (`c2/solver/caps_M8/run_caps_M8_export.sh`: the committed `run_caps_M8.sh` with
+      the paths of the copy and the stop at 4.2 core-h per boundary). It ran G2.5(b),
+      and after the first solve G2.1 and G2.5(c).
+    - The agent stopped on a usage limit at about 14:07. It wrote no report. Its
+      driver went on alone.
+    - The driver stopped at 15:44:11. The second process of `cap10_A` failed at
+      import after 1.3 s (`No module named 'numpy.core._multiarray_umath'`): the AFS
+      token of the session had expired, and numpy is read from the repository's
+      `.venv` on AFS. A failure of the environment. The failed process wrote no
+      output.
+    - The manager renewed the token (`aklog`), kept the two logs of the failed
+      attempt (`cap10_A/b2_failed_154411.*`) and started the same driver again for
+      `cap10_A` at 16:19:40 (`caps_M8/caps_restart.out`). It kept the first process
+      (exit 0 at 15:44:10) and ran the three others. No setting, script or input was
+      changed.
+    - The agent was not started again, to save usage. The manager ran what was left
+      with the committed scripts, from the exported copy: G2.5(c) of `cap5_B` and of
+      `cap10_A`, and G2.4(a). Rule 5 concerns G2.3, which the manager does not run.
+  - Code state. The manager compared 15 modules of the exported copy with commit
+    954abfb: all equal. `git_head.txt` of each solve: 954abfb, clean tree.
+  - The solves (`c2/solver/caps_M8/`; `/usr/bin/time -v`, user plus system, cores 0
+    to 3, one process at a time; peak memory in 10^6 kB):
+
+    | solve | cap, grid | b1 (5 tangents) | b2 | b3 | b4 | total | peak |
+    |---|---|---|---|---|---|---|---|
+    | `cap10_B` | 10°, B | 64.3 core-min | 48.5 | 47.8 | 48.4 | 208.9 = 3.48 core-h | 19.7 GB |
+    | `cap5_B` | 5°, B | 57.8 | 45.5 | 46.5 | 46.9 | 196.8 = 3.28 core-h | 20.9 GB |
+    | `cap10_A` | 10°, A | 57.6 | 49.5 | 47.8 | 47.5 | 202.3 = 3.37 core-h | 19.8 GB |
+
+    Wall: 12:29 to 14:04, 14:04 to 15:20, and 15:20 to 15:44 with 16:19 to 17:12.
+    The three: 608.0 core-min = **10.13 core-h** (projected 10.9). No boundary came
+    near the stop at 4.2 core-h. sha256 of the three `cells_M8.npz`: `f653022c…`,
+    `7cb9e8a1…`, `5a7fa191…`; of the twelve tangents files:
+    `c2/manager/stage1/check_caps.sha256`.
+  - **G2.1: PASS.** The assembly of the cap of 10° on grid B with every state allowed
+    gives a deficit and orders of exactly zero. Φ_0 of `cap10_B` equals the cells of
+    `c1/close/g13/pool2000.npz` (largest relative difference 0.0; limit 0.2%). No
+    tangent is solved: the bookkeeping only, as fixed. Result
+    `c2/solver/gates/G2.1/G2.1.md` (sha256 `54492ef4…`), run by the agent.
+  - **G2.4(a): PASS.** Grid A against grid B, cap of 10°, M = 8. Largest move
+    |Φ_A − Φ_B| / Φ_B 0.392% (limit 0.5%), at nue, 0.251 to 0.398 GeV, cos Z 0 to
+    0.1, azimuth 60 to 90°. With Φ_A as the denominator: 0.390%. Result
+    `c2/solver/gates/G2.4/G2.4a.md` (sha256 `fcba652c…`), run by the manager. Command:
+
+        $PY gates/g2_4.py a --cells-b $C/cap10_B/cells_M8.npz \
+            --cells-a $C/cap10_A/cells_M8.npz --solve-b $C/cap10_B --solve-a $C/cap10_A
+
+    (`gates/` of the exported copy; `$C` = `$N3/c2/solver/caps_M8`.)
+    - Cells above 0.1%: 1767 of 4800; above 0.3%: 133; above 0.5%: none.
+    - Worst cell per band, 0.1 to 10 GeV: 0.35, 0.38, 0.39, 0.37, 0.33, 0.27, 0.19,
+      0.15, 0.12, 0.06%.
+    - Written before the run: "The largest cell may come close to 0.5%." The margin
+      is 0.11 points.
+    - Reading, as fixed: if the error goes with the square of the spacing, the error
+      of grid B is a third of the move, about 0.13%. The square law was supported
+      "roughly" by step E, at the level of the boundary.
+    - The gate is one half of G2.4. G2.4(b), the reference altitude, is stage 2 and
+      has not run. The spacing in x is not tested by a solve.
+  - **G2.5(b): PASS.** At the site, M = 8, tangents of `site_M16`, the sky turned by
+    three sectors: every cell within 7.8e-16 of the unturned flux moved by one
+    azimuth bin (limit 0.5%). The orders of the turned table equal the unturned
+    orders with their phases turned to 1.2e-15. By construction, as fixed. Result
+    `c2/solver/gates/G2.5/G2.5_rotation.md` (sha256 `20db81ac…`), run by the agent.
+  - **G2.5(c): PASS for each cap solve.** Largest same-bin sweep residual of the
+    primal and of the 17 tangents: 1.49e-8 in each of the three (energy bin 22;
+    limit 1e-4). Results `c2/solver/gates/G2.5/G2.5_c_cap10_B.md` (`10e360ec…`,
+    agent), `G2.5_c_cap5_B.md` (`f789cc90…`, manager), `G2.5_c_cap10_A.md`
+    (`f051bc8d…`, manager).
+  - **G2.6.** One boundary of 17 tangents at M = 8: 3.3 to 3.5 core-h, 20 to 21 GB at
+    the peak (the process of five tangents), 1 h 16 to 1 h 35 of wall on four cores
+    with the node shared. A process of four tangents: 45 to 50 core-min, 17 GB. The
+    set of solves of G2.3 (`cap10_B`, `cap5_B`): 405.7 core-min = 6.76 core-h. One
+    location solve costs the same as one cap boundary. G1.5 asked for 2 core-min and
+    2 GB per location.
+  - Checks by the manager (`check_caps.py`, `check_caps.out`; no solve, no tracing,
+    nothing of the reference):
+    - the twelve tangents files hold the settings as fixed: cap, spacings, M = 8,
+      kernel set `32b4215d…`, guard, cores 0 to 3, each of the 17 tangents once;
+    - 81, 27 and 45 tables carry weight (`cap10_B`, `cap5_B`, `cap10_A`); each file on
+      disk has the sha256 stored at the solve; the weights equal the manager's
+      quadrature to 1.4e-16;
+    - the manager's own sum of the tangents gives each `cells_M8.npz` exactly;
+    - Φ_0 equals the C1 cells exactly, and the primal is the same array in the three;
+    - the cutoff factor is finite and positive in the 4800 cells of each solve, and
+      above 1 by at most 5.0e-5;
+    - the manager's own difference of the cells of A and B gives the numbers of
+      G2.4(a) again (3.9198e-3; 1767, 133, 0);
+    - reported: the cap of 5° against the cap of 10° on grid B differs by up to 13.9%
+      in a cell, median 0.74%.
+  - Freeze. `RESULTS_C2.md`, section 1, committed with this entry: code state
+    954abfb, the settings, the three solves with their hashes, the commands of the
+    G2.3 file and of G2.3. Stage 2 has not run: G2.4 and G2.5 are incomplete.
+  - Blindness. Nothing of the reference went to the solver agent. The manager's
+    checks of this entry read no reference and compare no solver output with a
+    tally. The result file of G2.4(a) prints the smallest and the largest cutoff
+    factor of the 4800 cells on grid B; the manager read it and set it against
+    nothing.
+  - Compute: the cap solves 10.13 core-h; the gate evaluations and the manager's
+    checks under a core-minute. Stage 1 so far about 17.4 of its ceiling of 20; C2
+    about 116.
+  - Next, as fixed: G2.3 by an agent that wrote neither the solver, the kernel sets
+    nor the skies, on the frozen state; then the report to the PI before anything
+    else is run.
+
 ## Decisions of the PI
 
 - **2026-11-19, after the report of G1.0 to G1.2 (interim use of decision point 1).** The PI
