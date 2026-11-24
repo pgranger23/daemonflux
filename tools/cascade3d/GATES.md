@@ -1052,6 +1052,116 @@ amendment:
 - This entry holds content of the reference. The solver agent is told not to read it
   before the freeze.
 
+### 2026-11-24. After the site solve: azimuth order, location grid, G2.4(a), two stages
+
+Decision of the PI of 2026-11-24 (last section), on the Results-log entry of 2026-11-23
+"Site solve at M = 12". Committed before every run it governs. At this commit there is
+no tangent of an order above 12, no cap solve, no run of G2.1, G2.2, G2.4, G2.5(b) or
+G2.8, and no table of a new grid node in the solver's sky directory. (The manager's
+check tables of step E at (0, ±1.25°) exist; they serve as a cross-check below.) The
+entries of 2026-11-23 hold where this one does not change them.
+
+**1. Azimuth order: M = 8 for every solve of C2.**
+- G2.5(a) on the orders stays FAILED at M = 6 (0.507% against 0.5%). M = 6 is not used.
+- The test of M = 8 is the gate's, as read on 2026-11-23: M = 8 against M = 16 at the
+  site, from the partial sums of one run at 16. That run is the site solve of
+  2026-11-23 (orders 0 to 12, kept as it is) plus the eight tangents of the orders 13
+  to 16: same solver code (unchanged since commit d7ede51), same settings, same sky
+  table (sha256 beginning `0a382659062ef54d`).
+- Cells and evaluation as on 2026-11-23: `gates/g2_5.py orders --M 16`. The script is
+  committed with this entry. With `--M 12` it gives the numbers of the result file of
+  2026-11-23 again.
+- Pass: no cell of the 4800 moves by more than 0.5% between M = 8 and M = 16.
+- If it fails, it is reported as failed, and no cap solve is run before the PI has
+  decided.
+- What was seen before this entry: the partial sums of the site run up to order 12.
+  M = 8 against 12 moves at most 0.137%, and the choice of 8 was made with that in
+  view. The orders 13 to 16 are not solved yet. Expected for the test, from the entry
+  of 2026-11-23: 0.16 to 0.30%, most of it draw noise of the table.
+- What the test does not cover: the sector width of the sky tables (36 sectors of 10°,
+  orders up to 18). No gate doubles it. On record for it: G2.0 by quadrant, G2.8 at
+  M = 18, and the three seeds of the site table (in the boundary no signal above the
+  draw noise beyond order 10).
+- A boundary at M = 8 has 17 tangents.
+
+**2. Location grid of the cap solves: 5° in x (east), 1.25° in y (north).**
+- Grid B: x = −10, −5, 0, 5, 10 and y from −10 to 10 in steps of 1.25, in the
+  azimuthal equidistant coordinates about the site; 85 nodes. 45 of its tables exist
+  (those of the 2.5° grid at these x). 40 are built: the same seed (the same draws),
+  h_ref = 0, the same line nodes, sectors and rungs as the 81.
+- Reason (entry "G2.0 triggered" and the Results log of 2026-11-23): only the spacing
+  in latitude counts. By the square law the cap-averaged proton boundary of the 2.5°
+  grid is off by about 0.55% by number (cap of 10°) and that of grid B by about 0.14%.
+- `LocationGrid` takes one spacing per axis. With equal spacings it gives the weights
+  of the present class (unit test).
+- Checks by the manager: the cap weights of grid B against his own quadrature
+  (`c2/manager/g20/cap_compare.py`); the new tables at (0, ±1.25°) against those of
+  step E (equal allowed arrays expected).
+- G2.0 is evaluated again on grid B from the stored states and verdicts of the gate
+  (no tracing), classes and trigger as written. The evaluation on the 5° grid
+  (TRIGGER) stays on record.
+- Reported with the tables: the singular values of the 85 deficits.
+
+**3. G2.4(a): the pair is replaced before its run.**
+- Not run: 5° against 2.5° (entry of 2026-11-23). G2.0 triggered on the 5° grid, the
+  cap-averaged proton boundaries of the two differ by 1.65% ± 0.12% by number (cap of
+  10°), so a failure was foreseen; and no solve uses the 5° grid.
+- The pair now: grid A (5° in x, 2.5° in y, 45 nodes) against grid B (85 nodes, which
+  contain the 45). Cap of 10°, M = 8, everything else equal.
+- Pass, as the gate says: no cell of Φ_cut of G2.3 (4800 cells) moves by more than
+  0.5% between A and B.
+- Reading. B is the finer grid of the pair and the grid of the solves. If the error
+  goes with the square of the spacing (step E supports this roughly), the error of B
+  is a third of the move.
+- Expected, written before the run: the cap-averaged boundaries of A and B differ by
+  about 0.4% by number. The largest cell may come close to 0.5%.
+- A FAIL is reported as failed and goes to the PI (stop rule of decision point 2). The
+  next finer grid, 0.625° in y, would need 80 more tables.
+- The spacing in x is not tested by a solve. On record for it, at the level of the
+  boundary only: 5° against 2.5° in x, at 2.5° in y, moves the cap-averaged proton
+  boundary by −0.027% ± 0.026% by number (cap of 10°). This narrows "halving the
+  spacing of the location grid" to the latitude. The PI was asked in these words
+  ("2.5° against 1.25° in latitude").
+
+**4. Order of the work: two stages.** From here on this replaces the paragraph "Order"
+of 2026-11-23, and it amends the bullet of section C2 on rule 4.
+- Stage 1, released by the decision, in this order:
+  1. the orders 13 to 16 at the site, and G2.5(a) on the orders for M = 8;
+  2. the grid code, the 40 tables, G2.0 on grid B, the report of the skies; G2.2 and
+     G2.8, which need no cap solve;
+  3. if 1 passed, the cap solves at M = 8: cap of 10° on B (G2.3), cap of 5° on B
+     (G2.3(g)), cap of 10° on A (G2.4(a)); with them G2.1, G2.4(a), G2.5(b), G2.5(c)
+     for every solve, and G2.6;
+  4. the freeze, `RESULTS_C2.md`;
+  5. G2.3, by an agent that wrote neither the solver, the kernel sets nor the skies.
+- Stage 2, not released: G2.4(b) (the reference altitude) and the doublings of the μ
+  grid and of L of G2.5(a). The PI decides on it with the result of G2.3. Until they
+  have run, G2.4 and G2.5 are incomplete and are reported as such.
+- Rule 4, as amended. The settings are written in `RESULTS_C2.md` after G2.0, G2.1,
+  G2.2, G2.4(a), G2.5(a) on the orders, G2.5(b), G2.5(c), G2.7 and G2.8, and before the
+  solver's output with the cutoff is compared with a Monte Carlo tally for the first
+  time. G2.4(b) and the two doublings are run on the frozen state. If one of them
+  fails and a setting is changed, the change is listed there with its reason and G2.3
+  is re-run in full.
+- What the staging costs. G2.3 is first evaluated on a state whose μ grid, L and
+  reference altitude are tested without the cutoff only (C1, G1.2: every neutrino cell
+  within 0.16%). A re-run of G2.3 after a change is a second comparison with the same
+  reference. Both results are then reported.
+- Guard. The agents that write the solver and the skies do not open the reference,
+  its thresholds or the result files of G2.3 until stage 2 has run, unless the PI
+  decides otherwise. A setting changed after the freeze follows from the numerical
+  gate that failed and from nothing else.
+- After G2.3 the manager reports to the PI before anything else is run (stage 2, or a
+  diagnosis cycle).
+- Compute of stage 1: about 17 to 18 core-h (orders 1.7; tables 3.9; three cap
+  boundaries of 17 tangents 10.5; the other checks 1 to 2). C2 then stands at about
+  116 core-h. What stage 1 needs beyond 20 core-h goes to the PI before it is spent.
+
+**5. Not changed.** G2.1, G2.2, G2.3, G2.5(b), G2.5(c), G2.6, G2.7 and G2.8 as written.
+The kernel sets, h_ref = 0, the line nodes, the 36 sectors. One draw per state in each
+table: the draw noise measured on 2026-11-23 is accepted for C2. It is small against
+the 3% floor of G2.3(a), and the tables of grids A and B hold the same draws.
+
 ## Results log
 
 Result files are under `/home/pigrange/mc3d_work/runs/native3d/` (`c0/gates/`, `c1/gates/`).
@@ -2271,3 +2381,32 @@ Result files are under `/home/pigrange/mc3d_work/runs/native3d/` (`c0/gates/`, `
   authorised. Not decided by this answer: the cost of the solves (G2.6 goes to the
   PI before the solves of G2.3, as before), M = 12 for all solves, the fallback of
   G2.7, anything of C3, anything about the product table.
+- **2026-11-24, after the manager's report on the site solve (G2.6) and on G2.5(a).**
+  The PI was given:
+  - the measured cost: 4.87 core-h and 20 GB for one location at M = 12, about four
+    times the design's estimate; about 2.6 core-h at M = 6 and 3.5 at M = 8 (derived);
+  - G2.5(a) on the orders FAILED at M = 6 (0.507% against 0.5%, one cell of 4800),
+    with the manager's reading (mostly draw noise of one sky table; true truncation
+    estimated at 0.1 to 0.25%) and the fact that M = 12 cannot be tested by doubling
+    with tables of 36 sectors;
+  - the compute used, about 98 to 99 of the plan's 100 core-h;
+  - the outlook for C5 (1450 locations, about 5000 core-h on CPU at M = 8), the table
+    noise, and the disclosure on blindness of the Results-log entry of 2026-11-23.
+
+  Three recommendations were put:
+  1. M = 8 for all solves, tested as the gate reads against M = 16 at the site (1.7
+     core-h; expected move 0.16 to 0.30%); if it fails, back to the PI.
+  2. Location grid of 5° in longitude by 1.25° in latitude (40 new tables, about 3.9
+     core-h). The pair of G2.4(a) replaced, before its run, by 2.5° against 1.25° in
+     latitude; otherwise the pair as written would be run and its foreseen failure
+     recorded.
+  3. Two stages. Stage 1: the new tables, the test of the orders, the two cap solves,
+     the grid test, the cheap checks, then G2.3 by an independent agent; 17 to 18
+     core-h, C2 at about 116. Stage 2: G2.4(b) and the doublings of the μ grid and of
+     L; 30 to 38 core-h; decided with the result of G2.3. The catch was said: if a test
+     of stage 2 later forces a change, G2.3 is re-run in full.
+
+  The PI answered "Follow your recommendations". Recorded as approval of the three,
+  with the pair of G2.4(a) replaced. The dated entry of 2026-11-24 fixes the details.
+  Not decided by this answer: stage 2, an order above 8, more draws per table, the
+  fallback of G2.7, anything of C3, anything about the product table.

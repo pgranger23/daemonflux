@@ -23,10 +23,16 @@ in later runs and get their own result files):
   against ``gates/G2.7/cells_s0.1_i0.1_l0.1_mx_D2.npz`` (the same boundary, the
   azimuth average of the site's deficit, up to rounding of the clipping order).
 
+With ``--M 16`` the same evaluation tests M = 8 against M = 16 (``GATES.md``, entry of
+2026-11-24, point 1, quoted in the result file): the tangents of the orders 0 to 16 are
+read from ``--solve-dir`` (those of the run of 2026-11-23 and the eight of the orders 13
+to 16), and the files are named ``G2.5_orders_M8.*``.  With ``--M 12`` the names and the
+numbers are those of 2026-11-23.
+
 Usage::
 
     $PY tools/cascade3d/gates/g2_5.py orders --solve-dir DIR --tags b1,b2,b3,b4,b5 \
-        --outdir OUT [--g27 CELLS.npz]
+        --outdir OUT [--M 16] [--g27 CELLS.npz]
 
 Exit status 0 = (a)-orders and (c) pass, 1 = a FAIL, 2 = input error.
 """
@@ -64,6 +70,21 @@ at 2M to 1e-8. The μ grid and L are doubled in separate runs. The first solve (
 site, M = 12) gives the test for M = 6. If M = 6 fails it, M = 12 for all solves takes
 C2 to or beyond the plan's compute and goes to the PI with G2.6."""
 
+GATE_1124 = """\
+**Entry of 2026-11-24, 1. Azimuth order: M = 8 for every solve of C2.**
+- G2.5(a) on the orders stays FAILED at M = 6 (0.507% against 0.5%). M = 6 is not used.
+- The test of M = 8 is the gate's, as read on 2026-11-23: M = 8 against M = 16 at the
+  site, from the partial sums of one run at 16. That run is the site solve of
+  2026-11-23 (orders 0 to 12, kept as it is) plus the eight tangents of the orders 13
+  to 16: same solver code (unchanged since commit d7ede51), same settings, same sky
+  table (sha256 beginning `0a382659062ef54d`).
+- Cells and evaluation as on 2026-11-23: `gates/g2_5.py orders --M 16`. The script is
+  committed with this entry. With `--M 12` it gives the numbers of the result file of
+  2026-11-23 again.
+- Pass: no cell of the 4800 moves by more than 0.5% between M = 8 and M = 16.
+- If it fails, it is reported as failed, and no cap solve is run before the PI has
+  decided."""
+
 
 def sha256(path):
     h = hashlib.sha256()
@@ -87,9 +108,12 @@ def cmd_orders(a):
     import assemble3d as A3
     import run_solve3d as RS
 
-    md = os.path.join(a.outdir, "G2.5_orders.md")
-    js = os.path.join(a.outdir, "G2.5_orders.json")
-    for p in (md, js):
+    stem = "G2.5_orders" if a.M == 12 else f"G2.5_orders_M{a.M // 2}"
+    gate = GATE if a.M == 12 else GATE + "\n\n" + GATE_1124
+    md = os.path.join(a.outdir, stem + ".md")
+    js = os.path.join(a.outdir, stem + ".json")
+    npz = os.path.join(a.outdir, stem + "_cells.npz")
+    for p in (md, js, npz):
         if os.path.exists(p):
             raise SystemExit(f"{p} exists; result files are never overwritten")
     tags = a.tags.split(",")
@@ -122,7 +146,7 @@ def cmd_orders(a):
                         "n_nonpositive": int(bad.sum()),
                         "n_above_1e-3": int(np.sum(rel > 1e-3)),
                         "worst_per_band": [float(x) for x in rel.max(axis=(0, 2, 3))],
-                        "order0_vs_M12": worst(rel0, be, ce, ae)},
+                        f"order0_vs_M{a.M}": worst(rel0, be, ce, ae)},
            "c": {"max_per_bin": res.tolist(), "max": float(res.max()),
                  "argmax_bin": int(np.argmax(res)),
                  "primal_max": float(res_p.max()), "tangent_max": float(res_t.max()),
@@ -139,15 +163,14 @@ def cmd_orders(a):
             "file": a.g27, "sha256": sha256(a.g27),
             "order0_lin_vs_g27_lin_max_rel": float(np.max(np.abs(lin0 / g["lin"] - 1))),
             "c1_vs_g27_c1_max_rel": float(np.max(np.abs(c1 / g["c1"] - 1)))}
-    np.savez(os.path.join(a.outdir, "G2.5_orders_cells.npz"), phi_M12=ref,
-             phi_M6=cells[a.M // 2], phi_M0=cells[0],
-             phi_0=A3.phi0_cells(d["mu0"], d["I0"], ks), e_band_edges_GeV=be,
-             cosz_edges=ce, azimuth_edges_deg=ae, species=np.array(SPECIES))
+    np.savez(npz, phi_0=A3.phi0_cells(d["mu0"], d["I0"], ks), e_band_edges_GeV=be,
+             cosz_edges=ce, azimuth_edges_deg=ae, species=np.array(SPECIES),
+             **{f"phi_M{M}": c for M, c in cells.items()})
     with open(js, "w") as fh:
         json.dump(out, fh, indent=1)
     ok = pass_a and pass_c
     L = ["# Gate G2.5, azimuthal orders and sweep residual (part of the gate)", "",
-         GATE, "",
+         gate, "",
          "This file covers (a) for the azimuthal orders and (c). The mu grid and L "
          "doublings of (a) and part (b) are not in it; the gate is complete only "
          "with them.", "",
@@ -162,7 +185,7 @@ def cmd_orders(a):
          "Worst per band (0.1 to 10 GeV, ascending): " + ", ".join(
              f"{x:.1e}" for x in out["a_orders"]["worst_per_band"]) + ".", "",
          f"Reported: order 0 alone against M = {a.M}: largest move "
-         f"{out['a_orders']['order0_vs_M12']['value']:.3e}.", "",
+         f"{out['a_orders'][f'order0_vs_M{a.M}']['value']:.3e}.", "",
          f"## (c): **{'PASS' if pass_c else 'FAIL'}**", "",
          f"Largest same-bin sweep residual over the energy bins: {res.max():.2e} "
          f"(bin {int(np.argmax(res))}); primal {res_p.max():.2e}, tangents "
