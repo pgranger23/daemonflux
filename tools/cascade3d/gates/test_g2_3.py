@@ -170,6 +170,25 @@ def test_calibration_at_the_reference(tmp_path):
                 "--calib", os.path.join(d, "other.json")])
 
 
+def test_caps_not_read_may_be_nan(tmp_path):
+    d = str(tmp_path)
+    cells, axes = write_inputs(d)
+    rc0, full = run(d, cells, axes, "full")
+    part = dict(cells, phi_cut=np.array(cells["phi_cut"]),
+                phi_0=np.array(cells["phi_0"]))
+    for i in (0, 2):
+        part["phi_cut"][i], part["phi_0"][i] = np.nan, np.nan
+    rc1, two = run(d, part, axes, "two")
+    names = ("command", "solver", "solver_sha256")
+    assert rc1 == rc0 and all(two[k] == full[k] for k in full if k not in names)
+    for i in (G.CAP, G.CAP5):               # a cap that is read must be whole
+        bad = dict(part, phi_cut=np.array(part["phi_cut"]))
+        bad["phi_cut"][i, 0, 0, 0, 0] = np.nan
+        with pytest.raises(SystemExit) as e:
+            run(d, bad, axes, "bad%d" % i)
+        assert e.value.code == 2
+
+
 def test_input_errors(tmp_path):
     d = str(tmp_path)
     cells, axes = write_inputs(d)
@@ -183,3 +202,54 @@ def test_input_errors(tmp_path):
         json.dump(j, open(null, "w"))
         run(d, cells, axes, "sha")
     assert e.value.code == 2
+
+
+def test_solver_file_from_two_cap_solves(tmp_path):
+    """``g2_3_file.py``: two cap solves stacked on the cap axis, read by the gate."""
+    import g2_3_file as F
+
+    d = str(tmp_path)
+    cells, axes = write_inputs(d)
+    ksf = os.path.join(d, "ks.npz")
+    open(ksf, "wb").write(b"kernel set")
+    import g2_4
+    sha = g2_4.sha256(ksf)
+    ax = {"e_band_edges_GeV": BAND, "cosz_edges": COSZ, "azimuth_edges_deg": AZ,
+          "species": np.array(G.SPECIES)}
+
+    def solve(name, cap, spacing=(5.0, 1.25), scale=1.0):
+        s = os.path.join(d, name)
+        os.makedirs(s)
+        meta = {"boundary": {"cap_deg": cap, "spacing_deg": list(spacing)}, "M": 8,
+                "guard": {"shape": 0.1}, "ks_sha256": sha}
+        np.savez(os.path.join(s, "tangents_b1.npz"), cost_json=json.dumps(meta))
+        np.savez(os.path.join(s, "cells_M8.npz"), phi_cut=scale * cells["phi_cut"][0],
+                 phi_0=cells["phi_0"][0], **ax)
+        return s
+
+    st0 = os.path.join(d, "straight.npz")
+    np.savez(st0, cost_json=json.dumps({"straight": True, "ks": ksf}),
+             cell_band_edges=BAND, cell_cosz_edges=COSZ,
+             **{"cell_" + sp: cells["phi_straight_0"][i]
+                for i, sp in enumerate(G.SPECIES)})
+    c10, c5 = solve("cap10", 10.0), solve("cap5", 5.0, scale=0.5)
+    out = os.path.join(d, "solver.npz")
+    args = ["--cap10", c10, "--cap5", c5, "--straight", st0]
+    assert F.main(args + ["--out", out]) == 0
+    z = np.load(out)
+    assert np.array_equal(z["phi_cut"][3], cells["phi_cut"][0])
+    assert np.array_equal(z["phi_cut"][1], 0.5 * cells["phi_cut"][0])
+    assert np.isnan(z["phi_cut"][[0, 2]]).all() and np.isnan(z["phi_0"][[0, 2]]).all()
+    assert np.array_equal(z["phi_straight_0"], cells["phi_straight_0"])
+    rc = G.main(["--ref", os.path.join(d, "ref.npz"), "--solver", out, "--null",
+                 os.path.join(d, "null", "null_count_c2.json"), "--outdir", d,
+                 "--name", "fromfile"])
+    res = json.load(open(os.path.join(d, "fromfile.json")))
+    assert rc in (0, 1) and "f" in res and "h" not in res
+    with pytest.raises(SystemExit):         # never overwritten
+        F.main(args + ["--out", out])
+    with pytest.raises(SystemExit):         # the caps exchanged
+        F.main(["--cap10", c5, "--cap5", c10, "--straight", st0, "--out", out + "x"])
+    with pytest.raises(SystemExit):         # a solve on grid A
+        F.main(["--cap10", solve("capA", 10.0, (5.0, 2.5)), "--cap5", c5,
+                "--straight", st0, "--out", out + "y"])

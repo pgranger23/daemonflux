@@ -274,3 +274,92 @@ def test_g20_harness_200_states(mock_tables):
     direct = mock_verdict(r, u, R)[0].astype(float)
     assert abs(T.mean() - direct.mean()) < 0.03
     assert np.mean(np.abs(T - direct) < 0.5) > 0.9
+
+
+# --------------------------------------------- location grid, spacing per axis
+WREF = os.path.join(N3, "c2", "solver", "grid_ref", "weights_before_d7ede51.npz")
+
+
+def test_isotropic_grid_bit_identical_to_before():
+    """With one spacing the class gives the nodes, point weights and cap weights it
+    gave before it took one spacing per axis (stored from the code of d7ede51)."""
+    if not os.path.exists(WREF):
+        pytest.skip("reference weights not available")
+    d = np.load(WREF)
+    for s in (5.0, 2.5):
+        k = str(s).replace(".", "p")
+        g = B.LocationGrid(s, 10.0)
+        idx, w, ins = g.weights_xy(d["x"], d["y"])
+        assert np.array_equal(idx, d["idx_" + k]) and np.array_equal(w, d["w_" + k])
+        assert np.array_equal(ins, d["in_" + k])
+        assert np.array_equal(g.x, d["nx_" + k]) and np.array_equal(g.y, d["ny_" + k])
+        for c in (10, 5):
+            assert np.array_equal(g.cap_weights(float(c)), d[f"cap{c}_" + k])
+        assert np.array_equal(g.cap_weights(10.0, n_quad=60), d["cap10q60_" + k])
+        assert np.array_equal(B.LocationGrid((s, s), (10.0, 10.0)).cap_weights(10.0),
+                              d["cap10_" + k])
+
+
+def test_anisotropic_grid_weights():
+    """Grid A (5 x 2.5) and grid B (5 x 1.25): node counts, partition of unity,
+    exactness for functions bilinear in x and y, node_index, A inside B."""
+    ga, gb = B.LocationGrid((5.0, 2.5)), B.LocationGrid((5.0, 1.25))
+    assert ga.n == 45 and gb.n == 85 and gb.label() == "5x1.25"
+    rng = np.random.default_rng(3)
+    x, y = rng.uniform(-10, 10, 500), rng.uniform(-10, 10, 500)
+    x[:4], y[:4] = [-10, 10, 0, 5], [-10, 10, 1.25, -8.75]
+    for g in (ga, gb):
+        idx, w, ins = g.weights_xy(x, y)
+        assert ins.all() and np.allclose(w.sum(1), 1, atol=1e-14, rtol=0)
+        for f in (lambda u, v: 1 + 0 * u, lambda u, v: u, lambda u, v: v,
+                  lambda u, v: 3 - 2 * u + 0.5 * v + 0.1 * u * v):
+            assert np.max(np.abs((f(g.x[idx], g.y[idx]) * w).sum(1) - f(x, y))) < 1e-12
+        for p in range(g.n):
+            assert g.node_index(g.x[p], g.y[p]) == p
+        _i, _w, out = g.weights_xy(np.array([10.5, 0]), np.array([0, -10.2]))
+        assert not out.any()
+    for p in range(ga.n):
+        q = gb.node_index(ga.x[p], ga.y[p])
+        assert ga.x[p] == gb.x[q] and ga.y[p] == gb.y[q]
+    assert np.allclose(ga.positions(), gb.positions()[[gb.node_index(a, b) for a, b in
+                                                        zip(ga.x, ga.y)]])
+
+
+@pytest.mark.parametrize("cap", [10.0, 5.0])
+def test_anisotropic_cap_weights(cap):
+    """Cap weights of grids A and B: sum to one, mirror symmetric in x and in y,
+    centred, zero outside the cap and its border cells; the cap mean of a function
+    linear in x and y is exact on both grids."""
+    for g in (B.LocationGrid((5.0, 2.5)), B.LocationGrid((5.0, 1.25))):
+        W = g.cap_weights(cap)
+        assert abs(W.sum() - 1) < 1e-12 and np.all(W >= 0)
+        Wg = W.reshape(g.axis_x.size, g.axis_y.size)
+        assert np.allclose(Wg, Wg[::-1], rtol=1e-12, atol=1e-15)
+        assert np.allclose(Wg, Wg[:, ::-1], rtol=1e-12, atol=1e-15)
+        assert abs(W @ g.x) < 1e-12 and abs(W @ g.y) < 1e-12
+        far = (np.abs(g.x) > cap + g.spacing_xy[0]) | (np.abs(g.y) > cap +
+                                                        g.spacing_xy[1])
+        assert np.all(W[far] == 0)
+        assert abs(W @ (2 + g.x - 3 * g.y) - 2) < 1e-12
+
+
+def test_grid_b_names_and_xy_check(tmp_path):
+    """table_path stays as it was (one decimal): the names of grid B are unique and
+    those of the 2.5-deg grid unchanged; check_table refuses a table whose stored
+    coordinates are not the node's."""
+    gb, g25 = B.LocationGrid((5.0, 1.25)), B.LocationGrid(2.5)
+    names = [B.table_path("d", (x, y)) for x, y in zip(gb.x, gb.y)]
+    assert len(set(names)) == 85
+    assert B.table_path("d", (0.0, 1.25)).endswith("sky_h0_x+00.0_y+01.2.npz")
+    assert B.table_path("d", (0.0, 3.75)).endswith("sky_h0_x+00.0_y+03.8.npz")
+    assert B.table_path("d", (-7.5, 2.5)).endswith("sky_h0_x-07.5_y+02.5.npz")
+    n25 = {B.table_path("d", (x, y)) for x, y in zip(g25.x, g25.y)}
+    shared = [B.table_path("d", (x, y)) for x, y in zip(gb.x, gb.y)
+              if abs(y / 2.5 - round(y / 2.5)) < 1e-12]
+    assert len(shared) == 45 and set(shared) <= n25
+    d = B.SkyTable.states((0.0, 1.25), seed=1)
+    t = B.SkyTable(d)
+    gb.check_table(t, gb.node_index(0.0, 1.25))
+    with pytest.raises(ValueError):
+        gb.check_table(t, gb.node_index(0.0, 2.5))
+    assert B.parse_spacing("5") == 5.0 and B.parse_spacing("5,1.25") == (5.0, 1.25)

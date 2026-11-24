@@ -1,10 +1,10 @@
 """Report of the sky tables of a location grid (cascade3d C2, "Reported with the
 skies").
 
-For the 25 tables of the 5-deg grid (h_ref = 0): sha256, statistics, cost, and the
+For the tables of a location grid (h_ref = 0): sha256, statistics, cost, and the
 singular values of the deficits of the locations (no solve).  The deficit of a
 location is D_x(line node, sector, bin) of ``boundary.deficit_lines`` (GSFG:GH), as a
-row of a matrix (25 x n); the singular values are given for the matrix itself and
+row of a matrix (locations x n); the singular values are given for the matrix itself and
 for its rows minus their mean, relative to the largest, with the number of values
 above 1e-2, 1e-3 and 1e-4 of the largest (the number of independent boundaries a set
 of locations needs at that accuracy).  Columns are weighted equally (the deficit in
@@ -36,7 +36,8 @@ def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--sky-dir", default=os.path.join(N3, "c2", "solver", "sky"))
     ap.add_argument("--out", required=True)
-    ap.add_argument("--spacing", type=float, default=5.0)
+    ap.add_argument("--spacing", default="5",
+                    help="one spacing or x,y [deg], e.g. 5,1.25")
     a = ap.parse_args(argv)
     if os.path.exists(a.out):
         raise SystemExit(f"{a.out} exists")
@@ -44,11 +45,12 @@ def main(argv=None):
     names = list(ks.species)
     b0 = ks.phi_top[[names.index("p+"), names.index("n0")]]
     gw = B.GroupWeights(ks.e_bins)
-    g = B.LocationGrid(a.spacing, 10.0)
+    g = B.LocationGrid(B.parse_spacing(a.spacing), 10.0)
     rows, stats = [], []
     for i in range(g.n):
         p = B.table_path(a.sky_dir, (g.x[i], g.y[i]), 0.0)
         t = B.SkyTable.load(p)
+        g.check_table(t, i)
         s = t.summary()
         s.update({"x": float(g.x[i]), "y": float(g.y[i]), "file": os.path.basename(p),
                   "sha256": B._sha256(p), "seed": int(t.seed)})
@@ -62,7 +64,7 @@ def main(argv=None):
         out[name] = {"relative": r.tolist(),
                      "n_above": {e: int(np.sum(r > float(e)))
                                  for e in ("1e-2", "1e-3", "1e-4")}}
-    L = [f"# Sky tables of the {a.spacing:g}-deg location grid (h_ref = 0)", "",
+    L = [f"# Sky tables of the {g.label()}-deg location grid (h_ref = 0)", "",
          "| x | y | file | sha256 | states | traced | allowed | core-s |",
          "|---|---|---|---|---|---|---|---|"]
     for s in stats:

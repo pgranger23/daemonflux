@@ -149,32 +149,63 @@ def xy_of(r, site=SITE):
 
 
 class LocationGrid:
-    """Nodes at multiples of ``spacing`` covering [-half_width, half_width]^2.
+    """Nodes at multiples of the spacing covering [-hw_x, hw_x] x [-hw_y, hw_y].
 
     Parameters
     ----------
-    spacing, half_width : float
-        Degrees of arc (5 and 10: 25 nodes, the base of C2; 2.5: 81 nodes).
+    spacing : float or (float, float)
+        Degrees of arc, one value for both axes or (x east, y north): 5 (25 nodes),
+        2.5 (81 nodes), (5, 2.5) grid A (45 nodes), (5, 1.25) grid B (85 nodes).
+    half_width : float or (float, float)
+        Degrees of arc (default 10 for both axes); a multiple of the spacing.
     site : (lat, lon)
         Centre; node (0, 0) is the site.
+
+    With equal spacings the nodes, weights and cap weights are those of the class
+    before it took one spacing per axis (``test_boundary``: bit for bit).
+    Node index: ``i * ny + j`` with i along x and j along y.
     """
 
     def __init__(self, spacing=5.0, half_width=10.0, site=SITE):
-        n = int(round(half_width / spacing))
-        if abs(n * spacing - half_width) > 1e-9:
+        sx, sy = (float(v) for v in np.broadcast_to(np.asarray(spacing, float), 2))
+        hx, hy = (float(v) for v in np.broadcast_to(np.asarray(half_width, float),
+                                                    2))
+        nx = int(round(hx / sx))
+        ny = int(round(hy / sy))
+        if abs(nx * sx - hx) > 1e-9 or abs(ny * sy - hy) > 1e-9:
             raise ValueError("half_width must be a multiple of spacing")
-        self.spacing, self.half_width, self.site = float(spacing), float(
-            half_width), tuple(site)
-        self.axis = spacing * np.arange(-n, n + 1)
-        X, Y = np.meshgrid(self.axis, self.axis, indexing="ij")
+        self.spacing_xy, self.half_width_xy = (sx, sy), (hx, hy)
+        self.site = tuple(site)
+        self.isotropic = (sx == sy) and (hx == hy)
+        # scalar attributes of the isotropic grid (kept for its callers)
+        self.spacing = sx if self.isotropic else (sx, sy)
+        self.half_width = hx if self.isotropic else (hx, hy)
+        self.axis_x = sx * np.arange(-nx, nx + 1)
+        self.axis_y = sy * np.arange(-ny, ny + 1)
+        if self.isotropic:
+            self.axis = self.axis_x
+        X, Y = np.meshgrid(self.axis_x, self.axis_y, indexing="ij")
         self.x, self.y = X.ravel(), Y.ravel()
         self.n = self.x.size
 
+    def label(self):
+        """"5" or "5x1.25" (degrees)."""
+        sx, sy = self.spacing_xy
+        return f"{sx:g}" if sx == sy else f"{sx:g}x{sy:g}"
+
     def node_index(self, x, y):
         """Index of the node at (x, y) (exact multiples)."""
-        i = int(round((x + self.half_width) / self.spacing))
-        j = int(round((y + self.half_width) / self.spacing))
-        return i * self.axis.size + j
+        i = int(round((x + self.half_width_xy[0]) / self.spacing_xy[0]))
+        j = int(round((y + self.half_width_xy[1]) / self.spacing_xy[1]))
+        return i * self.axis_y.size + j
+
+    def check_table(self, table, p, tol=1e-9):
+        """Raise unless ``table`` stores the coordinates of node ``p`` (the file
+        name rounds them to one decimal)."""
+        xy = np.asarray(table.xy, float)
+        if abs(xy[0] - self.x[p]) > tol or abs(xy[1] - self.y[p]) > tol:
+            raise ValueError(f"table at {tuple(xy)} is not node {p} "
+                             f"({self.x[p]}, {self.y[p]})")
 
     def positions(self):
         """Unit positions (n, 3) of the nodes."""
@@ -184,17 +215,17 @@ class LocationGrid:
         """Bilinear weights of points (x, y): ``(idx (n, 4), w (n, 4), inside)``."""
         x = np.atleast_1d(np.asarray(x, float))
         y = np.atleast_1d(np.asarray(y, float))
-        na = self.axis.size
-        fx = (x + self.half_width) / self.spacing
-        fy = (y + self.half_width) / self.spacing
-        inside = (fx >= -1e-12) & (fx <= na - 1 + 1e-12) & (fy >= -1e-12) & (
-            fy <= na - 1 + 1e-12)
-        i0 = np.clip(np.floor(fx).astype(int), 0, na - 2)
-        j0 = np.clip(np.floor(fy).astype(int), 0, na - 2)
+        nx, ny = self.axis_x.size, self.axis_y.size
+        fx = (x + self.half_width_xy[0]) / self.spacing_xy[0]
+        fy = (y + self.half_width_xy[1]) / self.spacing_xy[1]
+        inside = (fx >= -1e-12) & (fx <= nx - 1 + 1e-12) & (fy >= -1e-12) & (
+            fy <= ny - 1 + 1e-12)
+        i0 = np.clip(np.floor(fx).astype(int), 0, nx - 2)
+        j0 = np.clip(np.floor(fy).astype(int), 0, ny - 2)
         tx = np.clip(fx - i0, 0.0, 1.0)
         ty = np.clip(fy - j0, 0.0, 1.0)
-        idx = np.stack([i0 * na + j0, (i0 + 1) * na + j0, i0 * na + j0 + 1,
-                        (i0 + 1) * na + j0 + 1], 1)
+        idx = np.stack([i0 * ny + j0, (i0 + 1) * ny + j0, i0 * ny + j0 + 1,
+                        (i0 + 1) * ny + j0 + 1], 1)
         w = np.stack([(1 - tx) * (1 - ty), tx * (1 - ty), (1 - tx) * ty, tx * ty], 1)
         return idx, w, inside
 
@@ -847,6 +878,16 @@ def sky_transmission(r_cm, u, R, tables, grid, cover_deg=10.0):
             continue
         cover[i] = False
     return T, cover, hit
+
+
+def parse_spacing(text):
+    """"5" -> 5.0, "5,1.25" -> (5.0, 1.25) (command-line option of the gates)."""
+    v = [float(t) for t in str(text).split(",")]
+    if len(v) == 1:
+        return v[0]
+    if len(v) != 2:
+        raise ValueError("spacing: one value or two (x,y)")
+    return tuple(v)
 
 
 def table_path(sky_dir, xy, h_ref_km=0.0, spacing_tag=""):

@@ -1162,6 +1162,114 @@ The kernel sets, h_ref = 0, the line nodes, the 36 sectors. One draw per state i
 table: the draw noise measured on 2026-11-23 is accepted for C2. It is small against
 the 3% floor of G2.3(a), and the tables of grids A and B hold the same draws.
 
+### 2026-11-24. Before the cap solves: G2.8 read; G2.1, G2.4(a), G2.5(b); the G2.3 file
+
+Written by the manager after the hand-back of the first part of stage 1 (Results log,
+"Stage 1, first part") and committed before every run it governs. At this commit there
+is no cap solve, no run of G2.1, G2.4(a) or G2.5(b), and no output of the solver with
+the cutoff has been compared with a Monte Carlo tally. The entry "After the site
+solve" holds. This one fixes what the gate texts leave open. No pass criterion is
+changed.
+
+**1. G2.8: triggered under its text; the check it asks for is done.**
+- The text says: "the mode path with M = 18, which holds 36 sector values exactly,
+  synthesised at the sector centres". The two halves do not agree.
+  `boundary.fourier_sectors` gives the orders of the function whose means over the 36
+  sectors are the 36 table values (each order is divided by the sinc of the sector
+  average). The means of the series over the sectors hold the 36 values exactly. Its
+  point values at the sector centres do not.
+- Result (Results log): the sector means against path A, 0.040%; the point values at
+  the sector centres, 4.7%. Under the words "at the sector centres" the second number
+  counts. It is above 1%: the trigger fired and is recorded as fired. The agent's
+  result file says "no trigger" under the first reading and gives both numbers. The
+  file is kept as written.
+- The check of the mode path (the manager, `c2/manager/stage1/check_g28.py`): path A,
+  which has no orders, solved with the boundary of the point values.
+  - It moves by −4.66% in the cell where path B at the point values is at −4.68% (nue,
+    cos Z 1, sector 32, 0.112 GeV), by +3.4% in sector 7 and by +1.5% in sector 20.
+  - The point values are another boundary. They differ from the sector values by up
+    to 0.158 of the uncut boundary, and their transmission runs from −0.14 to 1.15.
+  - So the 4.7% is the response of the transport to that other boundary. The frames,
+    signs, phases and normalisation of the mode path, which G2.8 is for, are tested by
+    the sector means, at 0.040%.
+- For the solves. A sector value of a table estimates a sector mean (one draw per
+  state, the azimuth drawn within the sector). The cells integrate the series over
+  each azimuth bin of 30° (`bin_mean_basis`): means, in the convention of the orders.
+  No code is changed.
+- Untested, as the gate says: the kernel moments of the orders m ≥ 1.
+- The text of G2.8 stands, with this record. A rewording is for the PI.
+
+**2. G2.1: "transmission 1 everywhere".**
+- Read as: transmission 1 on every chain of the family. That includes the 11 tangent
+  chains that never reach the injection sphere (tangent altitudes 100 to 112.8 km).
+  In the solves with the cutoff they have transmission 0, as the conventions say.
+  The deficit is then zero everywhere and Φ_0 is the C1 solve.
+- The script (`gates/g2_1.py`) builds this boundary through the assembly of the cap
+  of 10° on grid B: the 85 tables with every state allowed, the cap weights, the chain
+  interpolation. It checks that the deficit and every order are exactly zero, solves
+  no tangent, and compares the cells of the primal of the cap solve with
+  `c1/close/g13/pool2000.npz`. This tests the bookkeeping only (entry of 2026-11-23).
+- Φ_0 of G2.3 is this flux. The tally `n` of the Monte Carlo has no primary on a line
+  that never reaches the injection sphere; Φ_0 has the uncut boundary there. Along
+  such a line the air above 100 km is of the order of 1e-4 of an interaction length,
+  and the 11 chains are a small part of the family. The manager's estimate of their
+  share of a ground cell is below 1e-4. Estimated, not measured.
+
+**3. G2.4(a): the measure of the move.** |Φ_A − Φ_B| / Φ_B per cell; B is the grid of
+the solves. The same with Φ_A in the denominator is reported. Pass as written ("After
+the site solve", item 3).
+
+**4. G2.5(b): where and how.**
+- At the site (0, 0), at M = 8, on the tangents of the site solve (the orders 0 to 8
+  of the run at 16, code state d7ede51). The sky is turned by three sectors (30°).
+- The script (`gates/g2_5.py rotation`) takes the orders of the turned table and
+  checks that they are the orders of the unturned one with their phases turned (to
+  1e-12 of the largest order). The flux of the turned sky is then the same
+  combination of the solved tangents. No new solve.
+- Pass as written: every cell within 0.5% of the unturned flux moved by one azimuth
+  bin. It holds by construction (entry of 2026-11-23). No cap solve is turned: its
+  boundary is a weighted sum of tables and turns in the same way.
+
+**5. G2.5(c) for a cap solve.** `gates/g2_5.py residual`: the largest same-bin sweep
+residual of the primal and of every tangent of the solve, below 1e-4 in every energy
+bin. Run for each of the three cap solves.
+
+**6. The solver file of G2.3.**
+- `gates/g2_3_file.py` stacks the cells of the cap of 10° on B and of the cap of 5° on
+  B on the cap axis of the tallies (2.5°, 5°, 7.5°, 10°). The caps of 2.5° and 7.5°
+  are not solved and are NaN. It checks the cap, the grid, M, the guard and the kernel
+  set of each solve, and that Φ_0 is the same array in both. It reads no reference
+  and compares nothing.
+- `gates/g2_3.py`, one change, in its input check: a negative or non-finite value is
+  refused in the caps the script reads (10° and 5°), no longer in the two others.
+  Reason: the script was written before it was known which caps would be solved. No
+  statistic, threshold or part is touched. Test: with the two other caps NaN the
+  result equals that with all caps filled.
+- Part (f) takes the straight-ahead flux with no cutoff from the C1 solve
+  `c1/close/g13/pool2000_straight.npz` (the same kernel set, checked by its sha256).
+- Part (h), the up-going rows, is not evaluated: the cells of the solver are the ten
+  down-going rows. It is a reported part.
+- The file is made, and G2.3 is run, by the agent of G2.3 after the freeze.
+
+**7. Code state of the cap solves.**
+- They run from an exported copy of this commit (`git archive`), as the orders 13 to
+  16 ran from a copy of d7ede51, with `gates/run_caps_M8.sh`: three boundaries of 17
+  tangents, each in processes of 5, 4, 4 and 4 tangents, one process at a time on
+  four cores.
+- Solver code changed since d7ede51, the state of the site solve:
+  - `boundary.LocationGrid`: one spacing per axis. Equal spacings give bit-identical
+    nodes and weights (test against weights stored from d7ede51).
+  - `assemble3d.grid_deficit`: checks the stored xy of every table.
+  - `solver3d.TangentSolver.modal_ops`: a kernel set without angular channels gets
+    zero operators (needed by G2.8). The path with angular channels is unchanged.
+- So G2.5(a) on the orders and G2.5(b) stand on d7ede51, the cap solves on this
+  commit.
+
+**8. Compute.** Stage 1 so far: about 7.2 core-h (agent 6.8, manager 0.4). Projected:
+the cap solves 10.9 (3.6 per boundary), their evaluations and G2.3 minutes. About
+18.3 in all, under the ceiling of 20. If a boundary costs more than 4.2 core-h the run
+stops there, and the manager decides before the next one starts.
+
 ## Results log
 
 Result files are under `/home/pigrange/mc3d_work/runs/native3d/` (`c0/gates/`, `c1/gates/`).
@@ -2281,6 +2389,105 @@ Result files are under `/home/pigrange/mc3d_work/runs/native3d/` (`c0/gates/`, `
   - Compute: milestone B about 9.7 core-h of 12 released, the site solve
     included; the manager's checks single-core minutes. C2 so far about 98 to 99
     core-h of the plan's 100.
+- **2026-11-24. Stage 1, first part: G2.5(a) on the orders PASS at M = 8 (0.183%);
+  the 40 tables of grid B; G2.0 on grid B, no trigger; G2.2 PASS (0.30%); G2.8
+  triggered under its text, its check done** (solver agent, hand-back at 11:55;
+  `c2/solver/WP_SOLVER_REPORT_D.md`, sha256 `0a36c8ba…`; the manager's checks in
+  `c2/manager/stage1/`). The agent committed nothing. Its changes of the repository
+  were read by the manager and are committed with this entry.
+  - Orders 13 to 16 at the site: two processes of four tangents (b6, b7) from an
+    exported copy of d7ede51 (`c2/solver/code_d7ede51/`), 52.0 and 48.3 core-min,
+    peak 17.1 GB. Output `c2/solver/site_M16/` (`tangents_b6.npz` sha256
+    `d94e13fa…`, `tangents_b7.npz` `d9044451…`; b1 to b5 are links to `site_M12`).
+    The tangent inputs of the orders 0 to 12 are bit-identical for M = 12 and 16.
+  - **G2.5(a), azimuthal orders, M = 8 against M = 16: PASS.** Largest move 0.183%
+    (limit 0.5%; expected 0.16 to 0.30%), at nue, 2.51 to 3.98 GeV, cos Z 0 to 0.1,
+    azimuth 90 to 120°. 61 cells of 4800 move by more than 0.1%. Result
+    `c2/solver/gates/G2.5/G2.5_orders_M8.md` (sha256 `cec49c19…`). Command:
+
+        $PY tools/cascade3d/gates/g2_5.py orders --solve-dir $N3/c2/solver/site_M16 \
+            --tags b1,b2,b3,b4,b5,b6,b7 --M 16 --outdir $N3/c2/solver/gates/G2.5 \
+            --g27 $N3/c2/solver/gates/G2.7/cells_s0.1_i0.1_l0.1_mx_D2.npz
+
+    - Partial sums against 16 (reported): M = 8 1.83e-3, 9 1.64e-3, 10 1.24e-3, 11
+      1.17e-3, 12 1.17e-3, 13 9.6e-4, 14 7.3e-4, 15 4.3e-4.
+    - The manager's own sum of the tangents gives the gate's cells again (difference
+      0) and 1.8283e-3 (`check_abd.out`).
+    - M = 6 against 16 is 0.491%; against 12 it was 0.507%. The gate at M = 6 was
+      run against 12 and stays FAILED as recorded. M = 6 is not used.
+  - G2.5(c) of the site solve with the orders up to 16: 1.49e-8, PASS.
+  - Grid code and the 40 tables of grid B: 3.50 core-h, the builder of the d7ede51
+    copy, seed 20261123, h_ref 0. 121 tables are now in `c2/solver/sky/`; nothing
+    was overwritten. Report of the 85 nodes: `sky/SKIES_5x1p25.md` (sha256
+    `06f5cfe1…`). Singular values of the 85 deficits, relative to the largest: 3
+    above 1e-2, 51 above 1e-3, 85 above 1e-4; with the mean removed 76 above 1e-2.
+    Checks by the manager (`check_tables.out`, `check_abd.out`):
+    - the 81 older tables have their sha256 of before;
+    - the 85 tables of grid B are those of the report;
+    - the 40 new tables hold the same draws, line nodes, sectors and rungs;
+    - the tables at (0, ±1.25°) have the allowed arrays of the step-E tables;
+    - the cap weights of grids A and B (10° and 5°) equal the manager's quadrature
+      to 6.4e-16.
+  - **G2.0 on grid B: no trigger** (`c2/solver/gates/G2.0/G2.0_gridB.md`, sha256
+    `cfe3fb73…`; stored states and verdicts, nothing traced). Largest |difference| /
+    tolerance 0.78, in the class 10 to 20 GV, cos Z 0.5 to 1, W (sky 0.9237, allowed
+    0.9392). All covered states: sky 0.1716, allowed 0.1718. The manager's own
+    evaluation (`g20_gridB.py`) agrees. That class is at −0.0154 on the 5° grid and
+    −0.0155 on grid B: it does not come from the location grid. The evaluation on the
+    5° grid (TRIGGER) stays on record.
+  - **G2.2: PASS.** Worst neutrino cell −0.302% (antinue, cos Z 1, azimuth 0,
+    4.47 GeV; limit 1%). Ground muons, reported: worst +1.56% (cos Z 1, 0.141 GeV).
+    Result `c2/solver/gates/G2.2/G2.2.md` (sha256 `9343ea98…`), 20.4 core-min.
+    - How it is built. MCEq: H3a with the flux of each nucleus group multiplied by
+      T_g(k), the group's flux-weighted mean over bin k of the table's verdict at the
+      rung of its rigidity. Solver: the straight-ahead kernel set, one nonlinear
+      solve per direction, top boundary `phi_top` times the ratio of MCEq's nucleon
+      spectrum with and without the transmission.
+    - The lines at azimuth 0, 90, 180 and 270° lie on sector edges. Both sides take
+      the sector floor(azimuth / 10°), the rule of `sky_transmission`.
+    - Sanity checks of the agent: with T = 1 the wrapper gives the MCEq reference of
+      G1.1 to 6e-15; with the cutoff, MCEq's numu at cos Z 0.5, azimuth 90° is 0.28
+      of the uncut value at 0.28 GeV and 1.000 at 28 GeV.
+    - Limit. The step from the nucleus groups to the nucleon boundary is the same
+      code on both sides (crflux). The gate tests the transport of a cut spectrum.
+      It does not exercise `boundary.GroupWeights` nor the cap assembly.
+    - That part, checked by the manager (`check_gw.py`, `check_gw.out`): the group
+      shares per rung against a direct sum with its own rigidity formula, within
+      3.7e-5 (GSFG:GH and H3a); the deficit of each of the three cap boundaries (cap
+      of 10° on B, cap of 5° on B, cap of 10° on A) against a second computation
+      (own cap weights, own chain interpolation), within 2.8e-5 of the uncut
+      boundary, the resolution of the direct sum. No solve, no reference.
+  - **G2.8: the trigger fired under the text of the gate.** Path B (M = 18) against
+    path A (36 nonlinear solves per line), the four neutrino species, MCEq bins 0.1
+    to 100 GeV. Result `c2/solver/gates/G2.8/G2.8.md` (sha256 `fc6e55bb…`),
+    30.5 core-min.
+    - Means of the series over each sector: largest −0.040% (nue, cos Z 0.5, sector
+      7, 1.41 GeV); ground muons −0.15%.
+    - Point values of the series at the sector centres, the words of the gate:
+      largest −4.68% (nue, cos Z 1, sector 32, 0.112 GeV); ground muons −1.9%.
+    - The agent evaluated the trigger on the means, wrote "no trigger" in the result
+      file, reported the point values and asked for the reading.
+    - Reading and check: dated entry "Before the cap solves", item 1
+      (`check_g28.out`, 2.9 core-min). The point values belong to another boundary;
+      path A with that boundary gives −4.66% in the same cell. No fault of the mode
+      path was found.
+    - A code fix came with the gate: `TangentSolver.modal_ops` for a kernel set
+      without angular channels, with a test.
+  - Prepared by the agent and not run: `gates/g2_1.py` (sha256 `21ea5a6e…`),
+    `gates/g2_4.py` (`daf3a611…`), `gates/g2_5.py` with `rotation` and `residual`
+    (`4388530d…`), `gates/run_caps_M8.sh` (`cf3ac534…`). Read by the manager in
+    full. Their readings are fixed in the dated entry "Before the cap solves".
+  - Unit tests. Agent: `test_solver3d.py` 16 passed; the six other test files 48
+    passed. Manager, on the working tree: `test_boundary.py`, `test_assemble3d.py`,
+    `gates/test_g2_3.py`, `gates/test_c2_stats.py` 33 passed; `test_solver3d.py`
+    16 passed; `gates/test_g2_3.py` after the change of the dated entry (item 6)
+    5 passed.
+  - Blindness. Nothing of the reference went to the solver agent. The manager's
+    checks of this entry read no reference and compare no solver output with a
+    tally.
+  - Compute: agent 6.8 core-h of 8.5 released for this part (orders 1.67, tables
+    3.50, G2.2 0.35, G2.8 0.71, G2.0 0.04, evaluations 0.1, unit tests 0.45);
+    manager about 0.4. Stage 1 so far about 7.2 of its ceiling of 20; C2 about 106.
 
 ## Decisions of the PI
 

@@ -405,3 +405,31 @@ def test_toy3d_azimuthal_orders(toy_ref, guard):
     assert np.all(err < TOY_TOL), np.round(err, 4)
     # the orders differ from each other (the test sees the m dependence)
     assert np.max(np.abs(ref[1] - ref[0]) / ref[0]) > 0.02
+
+
+def test_straight_ahead_set_every_order_is_order_0(small):
+    """A kernel set without angular channels (straight ahead, as in G2.2 and G2.8):
+    the tangent solver runs, every order has the transport of order 0 (bit for bit),
+    and the order-0 tangent without guard is jax.jvp of Solver.solve."""
+    import sys
+
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "gates"))
+    from run_solve import straight_ahead
+
+    r, D = small["r"], small["D"]
+    ks = straight_ahead(small["ks"])
+    ts = S3.TangentSolver(r, ks, guard=S3.GUARD_NONE)
+    dt = -np.broadcast_to(D[:, :, None], D.shape + (r.Nl,))
+    res = ts.solve(np.stack([dt, dt, dt]), [0, 3, 18])
+    e, g = np.asarray(res["d_emis"]), np.asarray(res["d_F_ground"])
+    assert np.array_equal(e[0], e[1]) and np.array_equal(e[0], e[2])
+    assert np.array_equal(g[0], g[2])
+    sv = S.Solver(r, ks)
+    prm = {k: jnp.asarray(v) for k, v in ks.params().items()}
+
+    def f(pt):
+        o = sv.solve({**prm, "phi_top": pt})
+        return o["emis"], o["F_ground"]
+
+    _, (de, dg) = jax.jvp(f, (prm["phi_top"],), (-jnp.asarray(D),))
+    assert np.max(np.abs(np.asarray(de) - e[0])) <= 1e-10 * np.abs(e[0]).max()

@@ -785,9 +785,16 @@ class TangentSolver:
         return self.sv.guard
 
     def modal_ops(self, m):
-        """(W^m, Q^m) as device arrays; m = 0: C1's own ``WP``, ``QP``."""
+        """(W^m, Q^m) as device arrays; m = 0: C1's own ``WP``, ``QP``.
+
+        A kernel set without angular channels has no moments: every order has the
+        transport of order 0 and the operators are never read (zeros of shape
+        (NL, M, 1) keep the batch shapes)."""
         if m not in self._mw:
-            if m == 0:
+            if "WP" not in self.sv.geo:
+                z = jnp.zeros(self.rays.lev_node.shape + (1,))
+                self._mw[m] = (z, z)
+            elif m == 0:
                 self._mw[m] = (self.sv.geo["WP"], self.sv.geo["QP"])
             else:
                 W, Q = mode_weights(self.rays, self.sv.L, m)

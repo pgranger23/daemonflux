@@ -69,15 +69,15 @@ def cmd_run(a):
         raise SystemExit(f"{path} exists")
     w0, c0 = time.time(), cpu()
     ry, ks, sha = g2_7.build_geometry()
-    grid = B.LocationGrid(a.spacing, 10.0)
+    grid = B.LocationGrid(B.parse_spacing(a.spacing), 10.0)
     if a.cap > 0:
         weights = grid.cap_weights(a.cap)
-        where = {"cap_deg": a.cap, "spacing_deg": a.spacing}
+        where = {"cap_deg": a.cap, "spacing_deg": list(grid.spacing_xy)}
     else:
         x, y = (float(v) for v in a.xy.split(","))
         weights = np.zeros(grid.n)
         weights[grid.node_index(x, y)] = 1.0
-        where = {"xy": [x, y], "spacing_deg": a.spacing}
+        where = {"xy": [x, y], "spacing_deg": list(grid.spacing_xy)}
     gw = B.GroupWeights(ks.e_bins, model="GSFG:GH")
     nodes = B.line_nodes()
     cw = B.chain_weights(ry, nodes)
@@ -173,7 +173,8 @@ def main(argv=None):
     ap.add_argument("--xy", default="0,0")
     ap.add_argument("--cap", type=float, default=0.0,
                     help="cap radius [deg]: cap-average boundary (0: --xy)")
-    ap.add_argument("--spacing", type=float, default=5.0)
+    ap.add_argument("--spacing", default="5",
+                    help="one spacing or x,y [deg], e.g. 5,1.25")
     ap.add_argument("--M", type=int, default=12)
     ap.add_argument("--orders", default="all")
     ap.add_argument("--batch", type=int, default=2)

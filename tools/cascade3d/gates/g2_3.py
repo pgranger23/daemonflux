@@ -22,6 +22,8 @@ Inputs:
 
   - ``phi_cut`` (caps, species, bands, rows, azimuth bins): with the cutoff;
   - ``phi_0`` (caps, species, bands, rows): same assembly, transmission 1;
+  - only the caps of 10 and 5 degrees (indices 3 and 1) are read; the two others
+    may be NaN (``g2_3_file.py``; entry of 2026-11-24 in ``GATES.md``);
   - ``e_band_edges_GeV``, ``cosz_edges``, ``azimuth_edges_deg``, ``cap_theta_deg``,
     ``species``: checked against the reference;
   - optional ``phi_straight_0`` (species, bands, rows): straight-ahead limit with no
@@ -187,9 +189,11 @@ def main(argv=None):
     phi_cut, phi_0 = np.asarray(sol["phi_cut"], float), np.asarray(sol["phi_0"], float)
     if phi_cut.shape != s_runs.shape[1:] or phi_0.shape != s_runs.shape[1:-1]:
         _bad("shape of phi_cut %s or phi_0 %s" % (phi_cut.shape, phi_0.shape))
-    if not (np.isfinite(phi_cut).all() and np.isfinite(phi_0).all()
-            and (phi_0 > 0).all() and (phi_cut >= 0).all()):
-        _bad("phi_cut or phi_0 holds a negative or non-finite value")
+    used = [CAP5, CAP]      # the caps this script reads; the others may be NaN
+    if not (np.isfinite(phi_cut[used]).all() and np.isfinite(phi_0[used]).all()
+            and (phi_0[used] > 0).all() and (phi_cut[used] >= 0).all()):
+        _bad("phi_cut or phi_0 holds a negative or non-finite value in the cap of "
+             "10 or of 5 degrees")
     bands = _band_labels(np.asarray(ref["e_band_edges_GeV"], float))
 
     ev = evaluate(s_runs[:, CAP], n_runs[:, CAP], phi_cut[CAP], phi_0[CAP])

@@ -77,6 +77,7 @@ def grid_deficit(sky_dir, grid, weights, gw, ks, cw, h_ref_km=0.0, tables=None):
         else:
             path = B.table_path(sky_dir, (grid.x[p], grid.y[p]), h_ref_km)
             tabs[p] = B.SkyTable.load(path)
+        grid.check_table(tabs[p], p)
         used.append((p, float(w), path))
     return cap_deficit(tabs, weights, gw, ks, cw), used
 

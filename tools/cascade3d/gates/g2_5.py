@@ -34,6 +34,27 @@ Usage::
     $PY tools/cascade3d/gates/g2_5.py orders --solve-dir DIR --tags b1,b2,b3,b4,b5 \
         --outdir OUT [--M 16] [--g27 CELLS.npz]
 
+Part ``rotation`` (G2.5 b, written after ``G2.5_orders_M8``; the entry "G2.1 and
+G2.5(b)" of 2026-11-23: it holds by construction and tests the bookkeeping of the
+assembly): the site's deficit on the chains and the 36 sectors, and the same sky
+rotated by 30 deg about the vertical (the sector values moved by three sectors, from
+north through east).  The orders of the rotated deficit are the orders of the deficit
+rotated by the phase 30 m deg; this identity is checked on the deficit itself (to
+1e-12 of its largest order), and the response of the rotated sky is the same linear
+combination of the solved tangents (the map is linear; cos and sin parts share the
+operator).  Cells at M (default 8, the order of the C2 solves).  Pass: every cell of
+the rotated sky within 0.5% of the cell of the sky one azimuth bin earlier
+(phi_rot[bin b] against phi[bin b - 1]).
+
+Part ``residual`` (G2.5 c for any solve): per energy bin the largest same-bin sweep
+residual of the primal and of every tangent in the ``tangents_*.npz`` of a solve
+directory; pass below 1e-4 in every bin.
+
+    $PY tools/cascade3d/gates/g2_5.py rotation --solve-dir DIR --tags b1,...,b7 \
+        --M 8 --outdir OUT
+    $PY tools/cascade3d/gates/g2_5.py residual --solve-dir DIR --tags b1,b2,b3,b4 \
+        --outdir OUT --name NAME
+
 Exit status 0 = (a)-orders and (c) pass, 1 = a FAIL, 2 = input error.
 """
 
@@ -51,6 +72,7 @@ sys.path.insert(0, _HERE)
 
 N3 = os.environ.get("N3", "/home/pigrange/mc3d_work/runs/native3d")
 TOL_A, TOL_C = 0.005, 1e-4
+SKY = os.path.join(N3, "c2", "solver", "sky")
 SPECIES = ("nue", "antinue", "numu", "antinumu")
 
 GATE = """\
@@ -208,16 +230,146 @@ def cmd_orders(a):
     return 0 if ok else 1
 
 
+def cmd_rotation(a):
+    import assemble as A
+    import assemble3d as A3
+    import boundary as B
+    import g2_7
+    import run_solve3d as RS
+
+    md = os.path.join(a.outdir, "G2.5_rotation.md")
+    js = os.path.join(a.outdir, "G2.5_rotation.json")
+    for p in (md, js):
+        if os.path.exists(p):
+            raise SystemExit(f"{p} exists; result files are never overwritten")
+    tags = a.tags.split(",")
+    files = {t: os.path.join(a.solve_dir, f"tangents_{t}.npz") for t in tags}
+    d = RS.load_tangents(a.solve_dir, tags)
+    ks = d["ks"]
+    meta = json.loads(str(np.load(files[tags[0]])["cost_json"]))
+    xy = meta.get("boundary", {}).get("xy", [0.0, 0.0])
+    if [float(v) for v in xy] != [0.0, 0.0]:
+        raise SystemExit("the solve is not the site")
+    ry, _ks, _sha = g2_7.build_geometry()
+    grid = B.LocationGrid(5.0, 10.0)
+    w = np.zeros(grid.n)
+    w[grid.node_index(0.0, 0.0)] = 1.0
+    gw = B.GroupWeights(ks.e_bins, model="GSFG:GH")
+    cw = B.chain_weights(ry, B.line_nodes())
+    D, used = A3.grid_deficit(SKY, grid, w, gw, ks, cw)
+    Dr = np.roll(D, 3, axis=1)                       # sky rotated by +30 deg
+    M = a.M
+    t0 = A3.order_tangents(D, M, ks)
+    t1 = A3.order_tangents(Dr, M, ks)
+    alpha = np.radians(30.0)
+    by0 = {(m, p): dt for m, p, dt in t0}
+    by1 = {(m, p): dt for m, p, dt in t1}
+    idx = {t: i for i, t in enumerate(d["tangents"])}
+    dI_rot, ident = [], 0.0
+    scale = max(np.abs(dt).max() for _m, _p, dt in t0)
+    for m in range(M + 1):
+        c, sn = np.cos(m * alpha), np.sin(m * alpha)
+        dc = by0[(m, "c")]
+        ds = by0.get((m, "s"), np.zeros_like(dc))
+        Ic = d["dI"][idx[(m, "c")]]
+        Is = d["dI"][idx[(m, "s")]] if (m, "s") in idx else np.zeros_like(Ic)
+        for part, comb_t, comb_I in (("c", c * dc - sn * ds, c * Ic - sn * Is),
+                                     ("s", sn * dc + c * ds, sn * Ic + c * Is)):
+            if part == "s" and m == 0:
+                continue
+            ident = max(ident, float(np.abs(by1[(m, part)] - comb_t).max()) / scale)
+            dI_rot.append(((m, part), comb_I))
+    tl = [t for t in d["tangents"] if t[0] <= M]
+    dI0 = np.array([d["dI"][idx[t]] for t in tl])
+    phi = A3.azimuth_cells(d["mu0"], A3.azimuth_table(d["I0"], dI0, tl), ks)
+    phir = A3.azimuth_cells(d["mu0"], A3.azimuth_table(
+        d["I0"], np.array([x[1] for x in dI_rot]), [x[0] for x in dI_rot]), ks)
+    rel = np.abs(phir - np.roll(phi, 1, axis=-1)) / np.roll(phi, 1, axis=-1)
+    be, ce = np.asarray(A.G13_BAND_EDGES), np.asarray(A.G13_COSZ_EDGES)
+    ae = np.asarray(A3.AZ_EDGES)
+    wb = worst(rel, be, ce, ae)
+    ident = float(ident)
+    ok = bool(np.all(rel <= TOL_A)) and bool(ident < 1e-12)
+    out = {"part": "rotation", "M": M, "max_rel": wb, "pass": ok,
+           "identity_of_orders_max_rel": ident,
+           "inputs": {t: sha256(f) for t, f in files.items()},
+           "sky": used[0][2], "script_sha256": sha256(os.path.abspath(__file__)),
+           "command": " ".join(sys.argv)}
+    with open(js, "w") as fh:
+        json.dump(out, fh, indent=1)
+    L = ["# Gate G2.5, part (b): the cutoff sky rotated by 30 deg", "", GATE, "",
+         f"## (b): **{'PASS' if ok else 'FAIL'}**", "",
+         f"Site, M = {M}: the orders of the rotated deficit equal the phase-rotated "
+         f"orders to {ident:.1e} of the largest order. Largest |phi_rot(bin b) - "
+         f"phi(bin b - 1)| / phi(bin b - 1) over the 4800 cells: "
+         f"**{wb['value']:.3e}** (limit {TOL_A}) at {wb['species']}, "
+         f"{wb['band_GeV'][0]:.3g}-{wb['band_GeV'][1]:.3g} GeV, cos Z "
+         f"{wb['cosz'][0]:.1f}-{wb['cosz'][1]:.1f}, azimuth "
+         f"{wb['azimuth_deg'][0]:.0f}-{wb['azimuth_deg'][1]:.0f} deg.", "",
+         "By construction (entry of 2026-11-23): this tests the bookkeeping of the "
+         "assembly (frames, signs, phases), not the solver.", "", "Inputs (sha256):",
+         ""]
+    L += [f"- `{files[t]}` {h}" for t, h in out["inputs"].items()]
+    L += ["", f"Script sha256: {out['script_sha256']}", "", "Command:", "",
+          f"    {out['command']}", ""]
+    with open(md, "w") as fh:
+        fh.write("\n".join(L))
+    print("\n".join(L))
+    return 0 if ok else 1
+
+
+def cmd_residual(a):
+    md = os.path.join(a.outdir, f"G2.5_c_{a.name}.md")
+    js = os.path.join(a.outdir, f"G2.5_c_{a.name}.json")
+    for p in (md, js):
+        if os.path.exists(p):
+            raise SystemExit(f"{p} exists; result files are never overwritten")
+    tags = a.tags.split(",")
+    files = {t: os.path.join(a.solve_dir, f"tangents_{t}.npz") for t in tags}
+    res = None
+    for t, f in files.items():
+        z = np.load(f)
+        r = np.maximum(np.asarray(z["res"]), np.asarray(z["d_res"]).max(axis=0))
+        res = r if res is None else np.maximum(res, r)
+    ok = bool(np.all(res < TOL_C))
+    out = {"part": "residual", "name": a.name, "max_per_bin": res.tolist(),
+           "max": float(res.max()), "argmax_bin": int(np.argmax(res)), "pass": ok,
+           "inputs": {t: sha256(f) for t, f in files.items()},
+           "script_sha256": sha256(os.path.abspath(__file__)),
+           "command": " ".join(sys.argv)}
+    with open(js, "w") as fh:
+        json.dump(out, fh, indent=1)
+    L = [f"# Gate G2.5, part (c), solve `{a.name}`", "", GATE, "",
+         f"## (c): **{'PASS' if ok else 'FAIL'}**", "",
+         f"Largest same-bin sweep residual over the energy bins, primal and all "
+         f"tangents of `{a.solve_dir}`: {res.max():.2e} (bin {int(np.argmax(res))}; "
+         f"limit {TOL_C} in every bin).", "", "Inputs (sha256):", ""]
+    L += [f"- `{files[t]}` {h}" for t, h in out["inputs"].items()]
+    L += ["", f"Script sha256: {out['script_sha256']}", "", "Command:", "",
+          f"    {out['command']}", ""]
+    with open(md, "w") as fh:
+        fh.write("\n".join(L))
+    print("\n".join(L))
+    return 0 if ok else 1
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("part", choices=("orders",))
+    ap.add_argument("part", choices=("orders", "rotation", "residual"))
     ap.add_argument("--solve-dir", required=True)
     ap.add_argument("--tags", default="b1,b2,b3,b4,b5")
     ap.add_argument("--M", type=int, default=12)
     ap.add_argument("--outdir", required=True)
     ap.add_argument("--g27", default="")
+    ap.add_argument("--name", default="")
     a = ap.parse_args(argv)
     os.makedirs(a.outdir, exist_ok=True)
+    if a.part == "rotation":
+        return cmd_rotation(a)
+    if a.part == "residual":
+        if not a.name:
+            raise SystemExit("--name is needed for part residual")
+        return cmd_residual(a)
     return cmd_orders(a)
 
 

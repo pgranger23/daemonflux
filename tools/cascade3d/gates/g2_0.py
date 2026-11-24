@@ -27,7 +27,9 @@ Gate text: ``GATES.md`` section C2 and the entry "G2.0, the draw and the frames"
 Usage::
 
     taskset -c 0-7 $PY tools/cascade3d/gates/g2_0.py --sky-dir DIR --outdir OUT \
-        [--seed 2026112402] [--jobs 8]
+        [--seed 2026112402] [--jobs 8] [--spacing 5]
+    $PY tools/cascade3d/gates/g2_0.py --outdir OUT --spacing 5,1.25 \
+        --reeval OUT --name G2.0_gridB          # no tracing
 
 Exit status 0: no trigger; 1: a trigger; 2: input error.
 """
@@ -96,6 +98,7 @@ def load_tables(sky_dir, grid):
         if not os.path.exists(p):
             raise SystemExit(f"missing sky table {p}")
         tabs[i] = B.SkyTable.load(p)
+        grid.check_table(tabs[i], i)
         shas[os.path.basename(p)] = sha256(p)
     return tabs, shas
 
@@ -193,6 +196,12 @@ def main(argv=None):
     ap.add_argument("--block", type=int, default=200000)
     ap.add_argument("--jobs", type=int, default=8)
     ap.add_argument("--name", default="G2.0")
+    ap.add_argument("--spacing", default="5",
+                    help="location grid: one spacing or x,y [deg], e.g. 5,1.25")
+    ap.add_argument("--reeval", default="",
+                    help="directory of an earlier evaluation: its draw is regenerated "
+                    "(checked against the stored rigidities) and its stored verdicts "
+                    "are used; only the sky is recomputed, nothing is traced")
     a = ap.parse_args(argv)
     os.makedirs(a.outdir, exist_ok=True)
     md = os.path.join(a.outdir, a.name + ".md")
@@ -201,8 +210,15 @@ def main(argv=None):
         if os.path.exists(p):
             raise SystemExit(f"{p} exists; result files are never overwritten")
     w0, c0 = time.time(), time.process_time()
-    grid = B.LocationGrid(5.0, 10.0)
+    grid = B.LocationGrid(B.parse_spacing(a.spacing), 10.0)
     tabs, shas = load_tables(a.sky_dir, grid)
+    prev = None
+    if a.reeval:
+        with open(os.path.join(a.reeval, "G2.0.json")) as fh:
+            prev = json.load(fh)
+        st0 = np.load(os.path.join(a.reeval, "g2_0_states.npz"))
+        if prev["seed"] != a.seed or prev["block"] != a.block:
+            raise SystemExit("--seed/--block differ from the evaluation re-used")
 
     def log(s):
         print(s, flush=True)
@@ -243,10 +259,24 @@ def main(argv=None):
     T, cov2, hit = B.sky_transmission(r, u, R, tabs, grid, COVER_DEG)
     if not np.all(cov2):
         raise SystemExit("a covered state has no tables")
-    A, ntr, cpu_t = trace(r, u, R, a.jobs, os.path.join(a.outdir, "work_main"), log)
     rh, uh, Rh = d["r_cm"][hm], d["u"][hm], d["R"][hm]
-    Ah, ntrh, cpu_h = trace(rh, uh, Rh, a.jobs, os.path.join(a.outdir, "work_high"),
-                            log)
+    if prev is None:
+        A, ntr, cpu_t = trace(r, u, R, a.jobs, os.path.join(a.outdir, "work_main"),
+                              log)
+        Ah, ntrh, cpu_h = trace(rh, uh, Rh, a.jobs,
+                                os.path.join(a.outdir, "work_high"), log)
+    else:
+        same = (blk == prev["blocks"] and end == prev["prefix"]
+                and np.array_equal(idx, st0["idx"]) and np.array_equal(R, st0["R"])
+                and np.array_equal(Rh, st0["high_R"])
+                and np.array_equal(hit, st0["hit"]))
+        if not same:
+            raise SystemExit("the regenerated draw differs from the stored states")
+        A, Ah = st0["allowed"], st0["high_allowed"]
+        ntr, cpu_t = prev["traced"], prev["trace_cpu_s"]
+        ntrh, cpu_h = prev["high_R_miss"]["traced"], prev["high_R_miss"]["cpu_s"]
+        log(f"re-evaluation: draw and states of {a.reeval} reproduced exactly; "
+            "stored verdicts used")
     Th, covh, _ = B.sky_transmission(rh, uh, Rh, tabs, grid, COVER_DEG)
     mu, az = injection_frame(r, u)
     qd = quadrant(az)
@@ -256,8 +286,12 @@ def main(argv=None):
               "miss": class_table(~hit, R, mu, qd, T, A, rigidity_only=True)}
     trig = {k: [r_ for r_ in v if r_["trigger"]] for k, v in tables.items()}
     any_trig = any(trig.values())
-    np.savez(os.path.join(a.outdir, "g2_0_states.npz"), idx=idx, R=R, mu=mu, az=az,
-             hit=hit, T=T, allowed=A, high_R=Rh, high_allowed=Ah, high_T=Th)
+    sp = os.path.join(a.outdir, "g2_0_states.npz" if prev is None
+                      else f"g2_0_states_{a.name}.npz")
+    if os.path.exists(sp):
+        raise SystemExit(f"{sp} exists")
+    np.savez(sp, idx=idx, R=R, mu=mu, az=az, hit=hit, T=T, allowed=A, high_R=Rh,
+             high_allowed=Ah, high_T=Th)
     res = {"gate": "G2.0", "outcome": "TRIGGER" if any_trig else "no trigger",
            "seed": a.seed, "block": a.block, "blocks": blk, "prefix": end,
            "n_R_below_60_in_prefix": int((pre & lo).sum()),
@@ -271,6 +305,8 @@ def main(argv=None):
                            "cpu_s": cpu_h, "R_min": float(Rh.min()),
                            "R_max": float(Rh.max())},
            "classes": tables, "triggers": trig, "sky_tables_sha256": shas,
+           "grid": {"spacing_deg": list(grid.spacing_xy), "nodes": grid.n},
+           "reeval_of": a.reeval or None,
            "wall_s": time.time() - w0, "driver_cpu_s": time.process_time() - c0,
            "command": " ".join(sys.argv)}
     with open(js, "w") as fh:
@@ -286,6 +322,11 @@ def main(argv=None):
          f"{res['n_covered_miss']}), not covered {res['n_not_covered']} (counted, "
          f"left out). Traced: {ntr} (the rest decided by `gate`), "
          f"{cpu_t / 60:.1f} core-min.", "",
+         f"Location grid: {grid.label()} deg ({grid.n} tables)." + (
+             f" Re-evaluation of `{a.reeval}`: the draw was regenerated and checked "
+             "against the stored states (indices, rigidities, hit flags equal); "
+             "the stored verdicts were used; only the sky was recomputed; nothing "
+             "was traced." if prev else ""), "",
          f"All covered states: mean sky transmission {T.mean():.4f}, allowed "
          f"fraction {A.mean():.4f}.", "",
          f"Triggers: all {len(trig['all'])}, hit {len(trig['hit'])}, miss "
@@ -310,7 +351,7 @@ def main(argv=None):
           f"traced with `trace_gated`: allowed fraction {h['allowed_fraction']:.4f} "
           f"({h['traced']} traced); the sky gives {h['sky_mean']:.4f} (transmission "
           "1 above 60 GV by convention).", "",
-          "Sky tables (5-deg grid, h_ref = 0), sha256:", ""]
+          f"Sky tables ({grid.label()}-deg grid, h_ref = 0), sha256:", ""]
     L += [f"- `{k}` {v}" for k, v in sorted(shas.items())]
     L += ["", f"Wall {res['wall_s'] / 60:.1f} min.", "", "Command:", "",
           f"    {res['command']}", ""]
