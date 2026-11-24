@@ -2600,6 +2600,126 @@ Result files are under `/home/pigrange/mc3d_work/runs/native3d/` (`c0/gates/`, `
   - Next, as fixed: G2.3 by an agent that wrote neither the solver, the kernel sets
     nor the skies, on the frozen state; then the report to the PI before anything
     else is run.
+- **2026-11-24. Stage 1, item 5: G2.3 on the frozen state, FAIL. (a) 4481 of 4800
+  cells inside, 4640 needed: FAIL; (b) 88 of 100 pairs, 97 needed: FAIL; (c) 9 of 10
+  bands, 8 needed: PASS. Nothing else has been run; the result goes to the PI**
+  (an independent agent ran the gate at 17:18; the manager's verification and
+  description in `c2/manager/g23/`). This entry holds content of the reference and
+  of the result of G2.3: a solver agent does not read it.
+  - Who ran it. A new agent (Sonnet) that wrote nothing of the solver, of the kernel
+    sets or of the skies (rule 5). It ran the two commands of `RESULTS_C2.md`
+    ("The file of G2.3") from the exported code state 954abfb, on cores 21 to 23,
+    and changed no file of the repository. Exit status 0 for the file of G2.3 and 1
+    for the gate. The manager did not run the gate.
+  - Files in `c2/g23/` (sha256): `solver_g23.npz` `9d829947…`; `G2.3.md`
+    `9ba59497…`, the same bytes as `g23.log`; `G2.3.json` `f335e3b4…`;
+    `g23_file.log` `a446205d…`. Reference and thresholds as hashed in the freeze.
+  - Gated parts, cap of 10°.
+    - (a) cutoff factor per cell: 4481 of 4800 inside max(3%, 2σ); needed 4640:
+      **FAIL**. Every cell is counted. Under the first rule: 4654 needed, fail. The
+      plan's wording, 95% of the cells: 4560 needed, not met.
+    - (b) the two harmonics per band and row: 88 of 100 inside max(0.01, 2σ); needed
+      97: **FAIL**. Under the first rule: 97, fail.
+    - (c) horizontal over vertical per band: 9 of 10 inside max(2%, 2σ); needed 8:
+      **PASS**. Under the first rule: 9, pass. The band outside is 0.631 to 1 GeV:
+      0.8739 against 0.8996 ± 0.0064.
+  - The caveat on the threshold of (a) (entry of 2026-11-23) does not bear on this
+    result. An exactly right solver has 4675 ± 22 cells inside and falls below 4640
+    in 17.3% of the cases; a count from 4622 to 4639 was to go to the PI with that
+    number. The count is 4481, 8.7 standard deviations below 4675.
+  - Reported parts.
+    - (d) Φ_cut of the solver over `s`: 4404 of 4800 within max(3%, 2σ).
+    - (e) level of K per band: the ten bands inside max(2%, 2σ); the trigger did not
+      fire. The solver is below the Monte Carlo in all ten: by 0.06 to 0.74% (at
+      most 1.7 errors) in eight, by 1.38% (6.3 errors) at 0.631 to 1 GeV and by
+      1.08% (4.4 errors) at 2.51 to 3.98 GeV.
+    - (f) plan wording: 4369 of 4800.
+    - (g) cap of 5°: (a) 4420 of 4788, needed 4543; (b) 84 of 100, needed 94; (c) 9
+      of 10, needed 8. The same picture as the cap of 10°.
+    - (h) not evaluated, as fixed.
+  - Verification by the manager (`c2/manager/g23/verify_g23.py`, `.out`; it reads
+    files, no solve, no tracing).
+    - The file of G2.3 holds the frozen cells of `cap10_B` and `cap5_B` exactly.
+    - `G2.3.md` and `G2.3.json` agree.
+    - The manager's own formulas on the runs of the reference (K_MC, the jackknife,
+      the harmonics) give (a) 4481 inside with no flag differing from the gate's,
+      and (b) 88 inside with no pair differing.
+  - Where it fails (description of the result file: `describe_a.py`,
+    `describe_b.py` and their `.out` in the same directory).
+    - 319 cells outside; an exactly right solver has 125. The solver is below the
+      Monte Carlo in 238 of them and above in 81. Beyond 1.25, 1.5, 2 and 3 times
+      the tolerance: 164, 93, 29 and 3 cells. Mean of K_solver / K_MC − 1 over the
+      4800 cells: −0.40%.
+    - Expected numbers per region, below, are a per-cell estimate with Student's t
+      on the jackknife error. It gives 176 for all cells where the calibration
+      gives 125, so each is quoted as a range: 125/176 of the estimate, to the
+      estimate.
+    - By cos Z row: 108, 84 and 37 outside in the rows 0 to 0.1, 0.1 to 0.2 and 0.2
+      to 0.3, together 229 of 1440. In the seven rows above 0.3: 90 of 3360, with
+      70 to 99 expected; the solver is below the Monte Carlo in 72 of the 90.
+    - Below 1 GeV with cos Z below 0.3: 160 outside of 864 cells, with 33 to 47
+      expected.
+    - North against south, below 0.4 GeV. In the row 0 to 0.1 the solver is 6 to
+      9.5% below the Monte Carlo for the northern half of the azimuth (270° to 90°)
+      and 5 to 9% above it for the southern half; in the row 0.1 to 0.2, 3 to 4%
+      below and 1 to 5% above. The two halves cancel in the mean over the azimuth,
+      which is why the level of (e) is inside.
+    - (b): of the 12 pairs outside, 11 are outside by the cosine (north-south)
+      component and 1 by the sine (East-West) component; 8 lie in the row 0 to 0.1,
+      3 in 0.1 to 0.2, 1 in 0.2 to 0.3. The cosine component of the Monte Carlo at
+      0.1 to 0.158 GeV is +0.062, +0.027 and +0.010 in the three lowest rows; in the
+      row 0 to 0.1 it falls with the energy to +0.004 near 1 GeV. The solver has
+      −0.012 to 0 in all pairs. The sine component (Monte Carlo from −0.207 to 0)
+      agrees: rms of the difference 1.04 errors over the 100 pairs, against 3.73
+      for the cosine.
+    - Above 1 GeV with cos Z below 0.3: 69 outside of 576 cells, with 22 to 30
+      expected. No clear north-south pattern there.
+    - The two bands that are low in (e), 0.631 to 1 GeV and 2.51 to 3.98 GeV: mean
+      over their cells −1.12% and −0.95%; in the row 0 to 0.1, −3.6% and −3.3%.
+      They hold 31 and 35 of the cells outside.
+  - Reading of the manager. A hypothesis; nothing was run to test it.
+    - The north-south component of the Monte Carlo is not in its tally `n` (entry
+      "the two references of G2.3 compared": cosine of `n` within 1.1 errors of
+      zero). It comes with the cutoff.
+    - In the solver one map, the same at every location, takes the cap-averaged
+      sky to the flux, and a line of sight belongs to the location under its ground
+      point (h_ref = 0). The primary on the line of sight itself is exact. The
+      primaries at an angle to it are given the sky of the ground point, not the
+      sky above the point where the neutrino is born. A horizontal neutrino born at
+      15 km is born 437 km from the site (design, 3.4), 3.9° of latitude when it
+      comes from the north, where the cutoff is lower.
+    - Size, by hand. R_c ∝ cos⁴ of the dipole latitude (about 28° at the site)
+      gives about 3.7% per degree, so about 14% over 3.9°. With K ∝ R_c^−p, p from
+      0.5 to 1.7 (1.7 was used in the entry on the cap radius), the part of the
+      flux that comes from primaries at an angle is 7 to 24% higher from the north
+      and as much lower from the south. Seen, on the whole flux of the row 0 to 0.1
+      below 0.4 GeV: 6 to 9.5% and 5 to 9%. Same sign, same order of magnitude; a
+      hand estimate says no more.
+    - The fall over the three lowest rows at 0.1 to 0.158 GeV (1 : 0.44 : 0.16 in
+      the cosine component) goes roughly with the displacement at 15 km: 222 and
+      94 km at cos Z 0.05 and 0.15 (design), about 57 km at 0.25 (manager), that
+      is 1 : 0.42 : 0.26.
+    - The effect is of first order in the location and odd in the azimuth. The
+      cap average of G2.4(a) and the level of (e) do not see it.
+    - This is the homogeneity approximation of the design. Its risk note names it
+      ("genuine risk in the rows 0 to 0.2 below 0.5 GeV; that is the homogeneity
+      question itself"), and G2.4(b), the reference altitude with the displaced
+      location, is the gate written to test it. G2.4(b) is in stage 2 and has not
+      run. The staging was the manager's recommendation of 2026-11-24; with it the
+      one gate that tests this approximation came after G2.3.
+    - Not explained by this reading: the level of the two bands (0.631 to 1 GeV and
+      2.51 to 3.98 GeV), 4 to 6 errors low; the cells outside above 1 GeV near the
+      horizon; the solver being low by 0.3% on average above cos Z 0.3.
+  - Not run: stage 2, a diagnosis cycle, any solve, any table. No setting was
+    changed; `RESULTS_C2.md`, section 2, stays "None". Section 3 there records the
+    result.
+  - Blindness. No solver agent is running. This entry, `RESULTS_C2.md` section 3,
+    `c2/g23/` and `c2/manager/g23/` are closed to an agent that writes the solver
+    or the skies until the PI decides otherwise.
+  - Compute: seconds. Stage 1 about 17.4 of its ceiling of 20 core-h; C2 about 116.
+  - Next: the report to the PI (decision point 2). The recommendation fixed in
+    advance reads: "stop the phase if, after one diagnosis cycle, G2.3(a) fails".
+    The diagnosis cycle has not been opened.
 
 ## Decisions of the PI
 

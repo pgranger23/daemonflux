@@ -229,3 +229,45 @@ One location solve at M = 8 is one boundary of 17 tangents: about 3.4 core-h and
 ## 2. Changes after the freeze
 
 None.
+
+## 3. G2.3 on the frozen state
+
+This section holds the result of G2.3. It is closed to an agent that writes the solver
+or the skies until the PI decides otherwise.
+
+**G2.3: FAIL** (2026-11-24, cap of 10°). Run by an agent that wrote nothing of the
+solver, of the kernel sets or of the skies (rule 5), with the two commands of "The file
+of G2.3" above, from the code state of the freeze. No setting was changed between the
+freeze and the run.
+
+| Part (gated) | Items | Inside | Needed | Result | First rule: needed, result |
+|---|---|---|---|---|---|
+| (a) cutoff factor per cell | 4800 | 4481 | 4640 | **FAIL** | 4654, fail |
+| (b) harmonics per band and row | 100 | 88 | 97 | **FAIL** | 97, fail |
+| (c) horizontal over vertical per band | 10 | 9 | 8 | **PASS** | 9, pass |
+
+- The threshold of (a) has the caveat of the entry of 2026-11-23: an exactly right
+  solver has 4675 ± 22 cells inside and falls below 4640 in 17.3% of the cases. The
+  count is 8.7 standard deviations below 4675, so the caveat does not bear on it.
+- Reported parts: (d) 4404 of 4800; (e) the ten bands inside, the trigger did not
+  fire; (f) 4369 of 4800; (g) cap of 5°: (a) 4420 of 4788 against 4543, (b) 84 of 100
+  against 94, (c) 9 of 10 against 8; (h) not evaluated.
+- Result files, `c2/g23/`, never overwritten:
+  - `solver_g23.npz`, sha256
+    `9d8299472b2298644caaea14a987e84ec81979ae6466820610b86189d8abf0d1`;
+  - `G2.3.md`, sha256
+    `9ba59497c76310e4b6a80e6f44e3de38fac6357e1067c409b173eae61bdbb020`
+    (`g23.log` holds the same bytes);
+  - `G2.3.json`, sha256
+    `f335e3b4e0ca21aead34396ea660273e2541ac834c0d44a34f13c88573a539c3`;
+  - `g23_file.log`, sha256
+    `a446205dc9aae5d58252e71a772e4b59438fdcddc5acc724ba16c477ef521c75`.
+- Verification by the manager, `c2/manager/g23/` (files read, nothing solved):
+  `verify_g23.py` (`a42cb907…`) and `.out` (`ec8a0903…`). The file of G2.3 holds the
+  frozen cells exactly; the manager's own formulas on the runs of the reference give
+  the same 4481 and 88 with no flag differing.
+- Description of the cells outside: `describe_a.py` (`71804fd6…`), `.out`
+  (`378b31ff…`), `describe_b.py` (`71e63083…`), `.out` (`ce5e3fad…`). The text is in
+  the Results log of `GATES.md`, entry "Stage 1, item 5", with the manager's reading.
+- Stage 2 has not run. G2.4 and G2.5 stay incomplete. Nothing was run after G2.3; the
+  result goes to the PI first (decision point 2).
